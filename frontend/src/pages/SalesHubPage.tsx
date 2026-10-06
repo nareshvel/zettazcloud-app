@@ -18,7 +18,7 @@ import {
 } from '@/services/salesHubService';
 import {
   ShoppingCart, PlaneTakeoff, Wrench, Coins, FileStack, CalendarClock,
-  PiggyBank, ArrowUpRight, Settings as SettingsIcon,
+  PiggyBank, ArrowUpRight, Settings as SettingsIcon, UserCircle,
   LayoutDashboard, LogOut, ClipboardList, Search, Loader2, Receipt,
   RefreshCcw, Eye, Tag, X,
 } from 'lucide-react';
@@ -273,6 +273,9 @@ const SalesHubPage: React.FC = () => {
   // and degrade gracefully without them — see Dashboard.tsx.
   const canViewDashboard = hasAnyPermission(effectiveUser, ['dashboard.view']);
   const canSell = hasAnyPermission(effectiveUser, ['sales.create']);
+  // Settings writes need stores.edit/settings.edit — hide the menu item for
+  // view-only users rather than letting them hit 403s on save.
+  const canManageSettings = hasAnyPermission(effectiveUser, ['settings.edit', 'stores.edit']);
 
   const goToRecord = (record: SalesHubRecord, presetQuery: string) => {
     const dest = ACTION_DESTINATION[record.action] || { path: RECORD_TYPE_PATH[record.type] };
@@ -453,13 +456,24 @@ const SalesHubPage: React.FC = () => {
                         <LayoutDashboard className="h-4 w-4" /> Dashboard
                       </Link>
                     )}
+                    {/* Self-service — every user may view/edit their own
+                        profile, regardless of role permissions */}
                     <Link
-                      to="/settings"
+                      to="/profile"
                       className="flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-accent transition-colors"
                       onClick={() => setIsUserMenuOpen(false)}
                     >
-                      <SettingsIcon className="h-4 w-4" /> Settings
+                      <UserCircle className="h-4 w-4" /> My Profile
                     </Link>
+                    {canManageSettings && (
+                      <Link
+                        to="/settings"
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-accent transition-colors"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <SettingsIcon className="h-4 w-4" /> Settings
+                      </Link>
+                    )}
                     <div className="border-t border-border my-1" />
                     <button
                       onClick={handleLogout}

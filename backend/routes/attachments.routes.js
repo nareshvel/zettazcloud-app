@@ -15,6 +15,7 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../config/db');
 const { authenticate, requireTenantId } = require('../middleware/unifiedAuthMiddleware');
+const { requirePermission } = require('../middleware/rbacPermissionMiddleware');
 const storage = require('../services/storageService');
 const storageUsageService = require('../services/storageUsageService');
 const subscriptionService = require('../services/subscriptionService');
@@ -24,6 +25,27 @@ const tid = (req) => req.user?.tenant_id || req.query?.tenant_id || req.headers[
 const uid = (req) => req.user?.id || null;
 
 const ALLOWED_ENTITIES = ['product', 'product_piece', 'repair_order', 'customer', 'memo', 'layaway', 'store'];
+
+// Uploads/deletes mutate the owning entity, so they require that entity's
+// edit permission — previously any authenticated tenant user could upload.
+// Reads need the matching view permission.
+const ENTITY_PERMS = {
+  product:       { read: 'products.view',  write: 'products.edit' },
+  product_piece: { read: 'products.view',  write: 'products.edit' },
+  repair_order:  { read: 'sales.view',     write: 'sales.create' },
+  customer:      { read: 'customers.view', write: 'customers.edit' },
+  memo:          { read: 'inventory.view', write: 'inventory.adjust' },
+  layaway:       { read: 'sales.view',     write: 'sales.create' },
+  store:         { read: 'stores.view',    write: 'stores.edit' },
+};
+
+// Resolve the entity-scoped permission for the :entityType route param,
+// so requirePermission can be applied before the handler.
+const permFor = (kind) => (req, res, next) => {
+  const spec = ENTITY_PERMS[req.params.entityType];
+  if (!spec) return res.status(400).json({ status: 'error', message: 'invalid entity type' });
+  return requirePermission(spec[kind])(req, res, next);
+};
 const ALLOWED_MIME = /^(image\/(jpeg|png|webp|gif)|application\/pdf)$/;
 
 // Buffer in memory then hand to the storage driver (keeps drivers swappable).
@@ -41,7 +63,7 @@ const upload = multer({
 router.use(authenticate);
 router.use(requireTenantId);
 
-router.get('/:entityType/:entityId', async (req, res) => {
+router.get('/:entityType/:entityId', permFor('read'), async (req, res) => {
   try {
     const { entityType, entityId } = req.params;
     if (!ALLOWED_ENTITIES.includes(entityType)) return res.status(400).json({ status: 'error', message: 'invalid entity type' });
@@ -53,7 +75,7 @@ router.get('/:entityType/:entityId', async (req, res) => {
   } catch (e) { res.status(500).json({ status: 'error', message: e.message }); }
 });
 
-router.post('/:entityType/:entityId', upload.single('file'), async (req, res) => {
+router.post('/:entityType/:entityId', permFor('write'), upload.single('file'), async (req, res) => {
   try {
     const { entityType, entityId } = req.params;
     if (!ALLOWED_ENTITIES.includes(entityType)) return res.status(400).json({ status: 'error', message: 'invalid entity type' });
@@ -104,6 +126,19 @@ router.delete('/:id', async (req, res) => {
   try {
     const [[row]] = await pool.query('SELECT * FROM attachments WHERE id = ? AND tenant_id = ?', [req.params.id, tid(req)]);
     if (!row) return res.status(404).json({ status: 'error', message: 'not found' });
+
+    // The URL has no entity segment — enforce the owning entity's write
+    // permission against the row we just loaded.
+    const spec = ENTITY_PERMS[row.entity_type];
+    if (spec) {
+      const rbacService = require('../services/rbacService');
+      const allowed = (await rbacService.isTenantAdmin(req.user.id, tid(req))) ||
+        (await rbacService.hasPermission(req.user.id, spec.write, tid(req), req.user?.store_id || null));
+      if (!allowed) {
+        return res.status(403).json({ status: 'error', message: `Access denied. Required permission: ${spec.write}` });
+      }
+    }
+
     await storage.remove(row.file_path);
     await pool.execute('DELETE FROM attachments WHERE id = ? AND tenant_id = ?', [req.params.id, tid(req)]);
     res.json({ status: 'success' });
@@ -111,3 +146,6 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+// Exported for tests — the router is what Express mounts.
+module.exports.ALLOWED_ENTITIES = ALLOWED_ENTITIES;
+module.exports.ENTITY_PERMS = ENTITY_PERMS;

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../contexts/StoreContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 import { useI18n } from '../../hooks/useI18n';
 import { Store } from '../../types';
 import toast from 'react-hot-toast';
@@ -10,7 +12,12 @@ import { normalizeImageUrl } from '../../utils/imageUtils';
 
 const GeneralSettings: React.FC = () => {
   const { store, updateStore } = useStore();
+  const { user } = useAuth();
   const { t } = useI18n();
+
+  // The save path writes PATCH /stores/:id, which requires stores.edit —
+  // view-only users get a read-only form instead of a 403 on save.
+  const canEdit = hasPermission(user, 'stores.edit');
 
   const tSettings = (key: string, fallback: string) => t(key, { ns: 'settings', defaultValue: fallback });
 
@@ -221,20 +228,20 @@ const GeneralSettings: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
               <label htmlFor="name" className={labelCls}>{tSettings('general.store_name', 'Store Name')}</label>
-              <input type="text" name="name" id="name" value={generalSettings.name} onChange={handleChange} className={inputCls} placeholder="e.g. Zettaz Jewellers" />
+              <input type="text" name="name" id="name" value={generalSettings.name} onChange={handleChange} className={inputCls} placeholder="e.g. Zettaz Jewellers" disabled={!canEdit} />
             </div>
             <div>
               <label htmlFor="phone" className={labelCls}>{tSettings('general.phone', 'Phone Number')}</label>
-              <input type="text" name="phone" id="phone" value={generalSettings.phone} onChange={handleChange} className={inputCls} placeholder="+1 (555) 000-0000" />
+              <input type="text" name="phone" id="phone" value={generalSettings.phone} onChange={handleChange} className={inputCls} placeholder="+1 (555) 000-0000" disabled={!canEdit} />
             </div>
           </div>
           <div>
             <label htmlFor="email" className={labelCls}>{tSettings('general.email', 'Email Address')}</label>
-            <input type="email" name="email" id="email" value={generalSettings.email} onChange={handleChange} className={inputCls} placeholder="store@example.com" />
+            <input type="email" name="email" id="email" value={generalSettings.email} onChange={handleChange} className={inputCls} placeholder="store@example.com" disabled={!canEdit} />
           </div>
           <div>
             <label htmlFor="address" className={labelCls}>{tSettings('general.address', 'Store Address')}</label>
-            <textarea name="address" id="address" value={generalSettings.address} onChange={handleChange} rows={3} className={inputCls}></textarea>
+            <textarea name="address" id="address" value={generalSettings.address} onChange={handleChange} rows={3} className={inputCls} disabled={!canEdit}></textarea>
           </div>
 
           {/* Store Logo */}
@@ -243,12 +250,14 @@ const GeneralSettings: React.FC = () => {
             <div className="flex gap-4 items-start flex-wrap">
               {/* Drop zone / upload button */}
               <div
-                onDragOver={e => { e.preventDefault(); setLogoDragOver(true); }}
+                onDragOver={e => { if (!canEdit) return; e.preventDefault(); setLogoDragOver(true); }}
                 onDragLeave={() => setLogoDragOver(false)}
-                onDrop={e => { e.preventDefault(); setLogoDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleLogoUpload(f); }}
-                onClick={() => logoInputRef.current?.click()}
-                className={`flex flex-col items-center justify-center gap-2 w-40 h-28 rounded-xl border-2 border-dashed cursor-pointer transition-colors
-                  ${logoDragOver ? 'border-primary bg-primary/5' : 'border-gray-200 dark:border-border hover:border-primary/50 hover:bg-gray-50'}`}
+                onDrop={e => { if (!canEdit) return; e.preventDefault(); setLogoDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleLogoUpload(f); }}
+                onClick={() => { if (canEdit) logoInputRef.current?.click(); }}
+                className={`flex flex-col items-center justify-center gap-2 w-40 h-28 rounded-xl border-2 border-dashed transition-colors
+                  ${!canEdit ? 'border-gray-100 dark:border-border opacity-60 cursor-not-allowed'
+                    : `cursor-pointer ${logoDragOver ? 'border-primary bg-primary/5' : 'border-gray-200 dark:border-border hover:border-primary/50 hover:bg-gray-50'}`}`}
+                title={!canEdit ? 'You have view-only access to store settings' : undefined}
               >
                 {logoUploading
                   ? <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
@@ -262,6 +271,7 @@ const GeneralSettings: React.FC = () => {
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
                   className="hidden"
+                  disabled={!canEdit}
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ''; }}
                 />
               </div>
@@ -278,9 +288,10 @@ const GeneralSettings: React.FC = () => {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setGeneralSettings(prev => ({ ...prev, logoUrl: '' }))}
-                    className="absolute -top-2 -right-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-full p-0.5 shadow-sm hover:bg-red-50 hover:border-red-300 transition-colors"
-                    title="Remove logo"
+                    onClick={() => { if (canEdit) setGeneralSettings(prev => ({ ...prev, logoUrl: '' })); }}
+                    disabled={!canEdit}
+                    className="absolute -top-2 -right-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-full p-0.5 shadow-sm hover:bg-red-50 hover:border-red-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={canEdit ? 'Remove logo' : 'You have view-only access to store settings'}
                   >
                     <X className="h-3.5 w-3.5 text-gray-500 dark:text-muted-foreground hover:text-red-500" />
                   </button>
@@ -344,7 +355,8 @@ const GeneralSettings: React.FC = () => {
                   type="checkbox"
                   checked={isDutyFree}
                   onChange={(e) => setIsDutyFree(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-border text-primary focus:ring-2 focus:ring-primary/40"
+                  disabled={!canEdit}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-border text-primary focus:ring-2 focus:ring-primary/40 disabled:opacity-60"
                 />
                 <span>
                   <span className={labelCls}>
@@ -388,7 +400,7 @@ const GeneralSettings: React.FC = () => {
                   id="seqNumbering"
                   type="checkbox"
                   checked={numbering.sequential || numberingMandatory}
-                  disabled={numberingMandatory}
+                  disabled={numberingMandatory || !canEdit}
                   onChange={(e) => setNumbering({ ...numbering, sequential: e.target.checked })}
                   className="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-border text-primary focus:ring-2 focus:ring-primary/40 disabled:opacity-60"
                 />
@@ -407,6 +419,7 @@ const GeneralSettings: React.FC = () => {
                   id="showNumInvoice"
                   type="checkbox"
                   checked={numbering.onInvoice}
+                  disabled={!canEdit}
                   onChange={(e) => setNumbering({ ...numbering, onInvoice: e.target.checked })}
                   className="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-border text-primary focus:ring-2 focus:ring-primary/40"
                 />
@@ -423,6 +436,7 @@ const GeneralSettings: React.FC = () => {
                   id="showNumReceipt"
                   type="checkbox"
                   checked={numbering.onReceipt}
+                  disabled={!canEdit}
                   onChange={(e) => setNumbering({ ...numbering, onReceipt: e.target.checked })}
                   className="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-border text-primary focus:ring-2 focus:ring-primary/40"
                 />
@@ -436,8 +450,13 @@ const GeneralSettings: React.FC = () => {
             </div>
           )}
         </div>
-        <div className="px-5 py-4 bg-gray-50 dark:bg-muted/50 border-t border-gray-100 dark:border-border flex justify-end">
-          <button type="submit" className="px-5 py-2 bg-primary hover:bg-primary/90 text-white text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-colors">
+        <div className="px-5 py-4 bg-gray-50 dark:bg-muted/50 border-t border-gray-100 dark:border-border flex items-center justify-between gap-3">
+          {!canEdit && (
+            <p className="text-xs text-gray-500 dark:text-muted-foreground">
+              {tSettings('general.view_only', 'View-only access — ask a manager to make changes.')}
+            </p>
+          )}
+          <button type="submit" disabled={!canEdit} className="ml-auto px-5 py-2 bg-primary hover:bg-primary/90 text-white text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             {tSettings('buttons.save_changes', 'Save Changes')}
           </button>
         </div>
