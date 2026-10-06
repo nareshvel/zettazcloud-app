@@ -125,6 +125,33 @@ exports.createSale = async (req, res) => {
   // Ensure discount doesn't exceed subtotal, making total negative before tax
   calculatedOverallDiscountAmount = Math.min(calculatedOverallDiscountAmount, calculatedSubtotal);
 
+  // --- RBAC Phase 2d: role-level discount caps (opt-in via role_limits) ---
+  // Only runs when a discount is actually applied and a cap is configured —
+  // tenants without role_limits rows see zero behaviour change.
+  if (calculatedOverallDiscountAmount > 0) {
+    const limitService = require('../services/limitService');
+    const discountPercent = calculatedSubtotal > 0
+      ? (calculatedOverallDiscountAmount / calculatedSubtotal) * 100
+      : 0;
+    for (const [limitType, attempted] of [
+      ['discount_percent', discountPercent],
+      ['discount_amount', calculatedOverallDiscountAmount],
+    ]) {
+      const check = await limitService.enforceLimit({
+        req,
+        userId: actualCashierId,
+        tenantId: actualTenantId,
+        storeId: store_id,
+        limitType,
+        attemptedValue: attempted,
+        context: { action: 'sale_discount' },
+      });
+      if (!check.ok) {
+        return res.status(check.status).json(check.body);
+      }
+    }
+  }
+
   // --- Duty-free / export: the store's own jurisdiction setting governs, ---
   // --- not the client's tax figure -----------------------------------------
   //

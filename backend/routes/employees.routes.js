@@ -22,6 +22,7 @@ const { pool } = require('../config/db');
 const { authenticate, requireTenantId } = require('../middleware/unifiedAuthMiddleware');
 const { requirePermission } = require('../middleware/rbacPermissionMiddleware');
 const paytime = require('../services/paytimeService');
+const { auditReq } = require('../services/auditLogService');
 
 const tid = (req) => req.user?.tenant_id || req.query?.tenant_id || req.headers['x-tenant-id'];
 
@@ -233,6 +234,7 @@ router.put('/:id', requirePermission('employees.edit'), async (req, res) => {
     }
 
     const userId = b.user_id || employees[0].user_id;
+    let prevRoleIds = [];
     if (userId && (b.account_role_id !== undefined || b.account_status !== undefined)) {
       const fullName = `${b.first_name || ''} ${b.last_name || ''}`.trim();
       await conn.execute(
@@ -249,6 +251,10 @@ router.put('/:id', requirePermission('employees.edit'), async (req, res) => {
           [b.account_role_id, tenantId]
         );
         if (!matchingRoles.length) throw new Error('Selected role does not belong to this tenant');
+        const [oldRoleRows] = await conn.execute(
+          'SELECT role_id FROM user_roles WHERE user_id = ?', [userId]
+        );
+        prevRoleIds = (oldRoleRows || []).map(r => r.role_id);
         await conn.execute('DELETE FROM user_roles WHERE user_id = ?', [userId]);
         await conn.execute(
           `INSERT INTO user_roles (id, user_id, role_id, scope, store_id, assigned_by, created_at, updated_at)
@@ -262,6 +268,15 @@ router.put('/:id', requirePermission('employees.edit'), async (req, res) => {
     // Role assignment changed inside the transaction — flush cached permissions.
     if (userId && b.account_role_id !== undefined) {
       await require('../services/rbacService').invalidateUserCache(userId);
+      await auditReq(req, {
+        action: 'user_roles_updated',
+        entity_type: 'user_role',
+        entity_id: userId,
+        severity: 'high',
+        old_values: { role_ids: prevRoleIds },
+        new_values: { role_ids: b.account_role_id ? [b.account_role_id] : [] },
+        details: { source: 'employee_update', employee_id: req.params.id },
+      });
     }
     res.json({ status: 'success' });
   } catch (e) {

@@ -1,58 +1,73 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import AppLayout from './components/layout/AppLayout';
 import IndustryAwareLayout from './components/layout/IndustryAwareLayout';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { SALES_HUB_INDUSTRIES } from './utils/salesHubIndustries';
+import IndustryRoute from './components/common/IndustryRoute';
+
+// Eager: the three login-landing surfaces (Login.tsx getRedirectPath sends
+// cashiers to /pos or /sales-hub, admins to /admin|/dashboard) — keep them in
+// the main chunk so the first screen never flashes a loader.
 import Dashboard from './pages/Dashboard';
 import Pos from './pages/POSScreen';
 import SalesHubPage from './pages/SalesHubPage';
-import { SALES_HUB_INDUSTRIES } from './utils/salesHubIndustries';
-import Orders from './pages/OrdersPage';
-import Products from './pages/ProductsPage';
-import Customers from './pages/CustomersPage';
-import Suppliers from './pages/SuppliersPage';
-import Settings from './pages/Settings';
-import Promotions from './pages/PromotionalOffersPage';
-import ApplyPromotionalOffersPage from './pages/ApplyPromotionalOffersPage';
-import GoodsReceiving from './pages/GoodsReceivingPage';
-import PurchaseOrders from './pages/PurchaseManagementPage';
+
+// Lazy: everything else. This is what brings the 4.4MB main chunk down —
+// heavy deps like exceljs/jspdf only load when a page that needs them is
+// actually visited.
+const Orders = React.lazy(() => import('./pages/OrdersPage'));
+const Products = React.lazy(() => import('./pages/ProductsPage'));
+const Customers = React.lazy(() => import('./pages/CustomersPage'));
+const Suppliers = React.lazy(() => import('./pages/SuppliersPage'));
+const Settings = React.lazy(() => import('./pages/Settings'));
+const Promotions = React.lazy(() => import('./pages/PromotionalOffersPage'));
+const ApplyPromotionalOffersPage = React.lazy(() => import('./pages/ApplyPromotionalOffersPage'));
+const GoodsReceiving = React.lazy(() => import('./pages/GoodsReceivingPage'));
+const PurchaseOrders = React.lazy(() => import('./pages/PurchaseManagementPage'));
 // `Inventory` (./pages/Inventory) intentionally unused — see the removed-route comment below.
-import UserProfilePage from './pages/UserProfilePage';
-import RolesManagementPage from './pages/RolesManagementPage';
-import RolesDebugPage from './pages/RolesDebugPage';
-import SettingsPayments from './pages/SettingsPayments';
-import SalesReturnPage from './pages/SalesReturnPage';
-import EmployeesPage from './pages/EmployeesPage';
-import RepairsPage from './pages/RepairsPage';
-import OldGoldPage from './pages/OldGoldPage';
-import SerializedInventoryPage from './pages/SerializedInventoryPage';
-import IndustryRoute from './components/common/IndustryRoute';
-import MemoPage from './pages/MemoPage';
-import LayawayPage from './pages/LayawayPage';
-import SavingsSchemesPage from './pages/SavingsSchemesPage';
-import MetalRatesPage from './pages/MetalRatesPage';
-import CatalogSyncPage from './pages/CatalogSyncPage';
-import JewelryValuationReport from './pages/reports/JewelryValuationReport';
-import CycleCountPage from './pages/CycleCountPage';
-import StockCountPage from './pages/StockCountPage';
-import PrintJobHistory from './pages/PrintJobHistory';
-import PrintTemplateDesigner from './pages/PrintTemplateDesigner';
+const UserProfilePage = React.lazy(() => import('./pages/UserProfilePage'));
+const RolesManagementPage = React.lazy(() => import('./pages/RolesManagementPage'));
+const RolesDebugPage = React.lazy(() => import('./pages/RolesDebugPage'));
+const SettingsPayments = React.lazy(() => import('./pages/SettingsPayments'));
+const SalesReturnPage = React.lazy(() => import('./pages/SalesReturnPage'));
+const EmployeesPage = React.lazy(() => import('./pages/EmployeesPage'));
+const RepairsPage = React.lazy(() => import('./pages/RepairsPage'));
+const OldGoldPage = React.lazy(() => import('./pages/OldGoldPage'));
+const SerializedInventoryPage = React.lazy(() => import('./pages/SerializedInventoryPage'));
+const MemoPage = React.lazy(() => import('./pages/MemoPage'));
+const LayawayPage = React.lazy(() => import('./pages/LayawayPage'));
+const SavingsSchemesPage = React.lazy(() => import('./pages/SavingsSchemesPage'));
+const MetalRatesPage = React.lazy(() => import('./pages/MetalRatesPage'));
+const CatalogSyncPage = React.lazy(() => import('./pages/CatalogSyncPage'));
+const JewelryValuationReport = React.lazy(() => import('./pages/reports/JewelryValuationReport'));
+const CycleCountPage = React.lazy(() => import('./pages/CycleCountPage'));
+const StockCountPage = React.lazy(() => import('./pages/StockCountPage'));
+const PrintJobHistory = React.lazy(() => import('./pages/PrintJobHistory'));
+const PrintTemplateDesigner = React.lazy(() => import('./pages/PrintTemplateDesigner'));
 
 // New Reports Structure
-import ReportsLayout from './pages/reports';
-import ReportsCenter from './pages/reports/ReportsCenter';
-import SalesReport from './pages/reports/SalesReport';
-import InventoryReportPage from './pages/reports/InventoryReportPage';
-import PaymentReportPage from './pages/reports/PaymentReportPage';
-import UserActivityReportPage from './pages/reports/UserActivityReportPage';
-import CustomerValueReportPage from './pages/reports/CustomerValueReportPage';
-import ChargeAccountReportPage from './pages/reports/ChargeAccountReportPage';
-import TaxCollectedReport from './pages/reports/TaxCollectedReport';
-import SalesReturnsReport from './pages/reports/SalesReturnsReport';
-import EmployeePerformanceReport from './pages/reports/EmployeePerformanceReport';
-import CategorySalesReport from './pages/reports/CategorySalesReport';
+const ReportsLayout = React.lazy(() => import('./pages/reports'));
+const ReportsCenter = React.lazy(() => import('./pages/reports/ReportsCenter'));
+const SalesReport = React.lazy(() => import('./pages/reports/SalesReport'));
+const InventoryReportPage = React.lazy(() => import('./pages/reports/InventoryReportPage'));
+const PaymentReportPage = React.lazy(() => import('./pages/reports/PaymentReportPage'));
+const UserActivityReportPage = React.lazy(() => import('./pages/reports/UserActivityReportPage'));
+const CustomerValueReportPage = React.lazy(() => import('./pages/reports/CustomerValueReportPage'));
+const ChargeAccountReportPage = React.lazy(() => import('./pages/reports/ChargeAccountReportPage'));
+const TaxCollectedReport = React.lazy(() => import('./pages/reports/TaxCollectedReport'));
+const SalesReturnsReport = React.lazy(() => import('./pages/reports/SalesReturnsReport'));
+const EmployeePerformanceReport = React.lazy(() => import('./pages/reports/EmployeePerformanceReport'));
+const CategorySalesReport = React.lazy(() => import('./pages/reports/CategorySalesReport'));
+
+const RouteFallback = () => (
+  <div className="flex items-center justify-center min-h-[40vh]">
+    <span className="loading loading-spinner loading-lg" aria-label="Loading page" />
+  </div>
+);
 
 const AppRoutes: React.FC = () => {
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       {/* Fullscreen routes without AppLayout — the counter's own screens,
           no sidebar/topbar chrome. Sales staff land directly on one of these
@@ -155,6 +170,7 @@ const AppRoutes: React.FC = () => {
       {/* Add other routes, like a 404 page, here */}
       {/* <Route path="*" element={<NotFoundPage />} /> */}
     </Routes>
+    </Suspense>
   );
 };
 

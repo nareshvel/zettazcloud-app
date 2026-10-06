@@ -281,7 +281,26 @@ exports.createReturn = async (req, res, next) => {
     if (isNaN(totalReturnAmount)) {
       totalReturnAmount = 0;
     }
-    
+
+    // --- RBAC Phase 2d: per-role refund cap (opt-in via role_limits) ---
+    if (totalReturnAmount > 0) {
+      const limitService = require('../services/limitService');
+      const check = await limitService.enforceLimit({
+        req,
+        userId,
+        tenantId,
+        storeId,
+        limitType: 'refund_amount',
+        attemptedValue: totalReturnAmount,
+        context: { action: 'sales_return', original_sale_id },
+      });
+      if (!check.ok) {
+        await connection.rollback();
+        connection.release();
+        return res.status(check.status).json(check.body);
+      }
+    }
+
     logger.debug(`Final totalReturnAmount: ${totalReturnAmount}`);
 
     await connection.query(`

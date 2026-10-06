@@ -10,6 +10,7 @@ const { pool } = require('../config/db');
 const { authenticate, authorize, requireTenantId, requireStoreId } = require('../middleware/unifiedAuthMiddleware');
 // Import the new RBAC permission middleware
 const { requirePermission } = require('../middleware/rbacPermissionMiddleware');
+const { auditReq } = require('../services/auditLogService');
 // Legacy middleware imports removed - now fully migrated to RBAC
 
 /**
@@ -112,10 +113,18 @@ router.post('/system',
         description,
         permissions
       });
-      
-      res.status(201).json({ 
+
+      await auditReq(req, {
+        action: 'system_role_created',
+        entity_type: 'role',
+        entity_id: role?.id || null,
+        severity: 'high',
+        new_values: { name, description, permissions },
+      });
+
+      res.status(201).json({
         message: 'System role created successfully',
-        role 
+        role
       });
     } catch (error) {
       console.error('Error creating system role:', error);
@@ -150,14 +159,23 @@ router.put('/system/:id',
         description,
         permissions
       });
-      
+
       if (!updatedRole) {
         return res.status(404).json({ message: 'System role not found' });
       }
-      
-      res.json({ 
+
+      await auditReq(req, {
+        action: 'system_role_updated',
+        entity_type: 'role',
+        entity_id: id,
+        severity: 'high',
+        old_values: { name: role.name, description: role.description },
+        new_values: { name, description, permissions },
+      });
+
+      res.json({
         message: 'System role updated successfully',
-        role: updatedRole 
+        role: updatedRole
       });
     } catch (error) {
       console.error('Error updating system role:', error);
@@ -191,15 +209,23 @@ router.delete('/system/:id',
       }
       
       const result = await roleService.deleteSystemRole(id);
-      
+
       if (result.error) {
-        return res.status(400).json({ 
-          message: result.error 
+        return res.status(400).json({
+          message: result.error
         });
       }
-      
-      res.json({ 
-        message: 'System role deleted successfully' 
+
+      await auditReq(req, {
+        action: 'system_role_deleted',
+        entity_type: 'role',
+        entity_id: id,
+        severity: 'critical',
+        old_values: { name: role.name, description: role.description },
+      });
+
+      res.json({
+        message: 'System role deleted successfully'
       });
     } catch (error) {
       console.error('Error deleting system role:', error);
@@ -442,10 +468,17 @@ router.post('/tenant',
         description: description ?? '',
         permissions
       }, createdBy);
-      
-      res.status(201).json({ 
+
+      await auditReq(req, {
+        action: 'role_created',
+        entity_type: 'role',
+        entity_id: role?.id || null,
+        new_values: { name, description: description ?? '', permissions },
+      });
+
+      res.status(201).json({
         message: 'Role created successfully',
-        role 
+        role
       });
     } catch (error) {
       // Enhanced logging and error mapping
@@ -504,14 +537,22 @@ router.put('/tenant/:id',
         description,
         permissions
       });
-      
+
       if (!updatedRole) {
         return res.status(404).json({ message: 'Role not found' });
       }
-      
-      res.json({ 
+
+      await auditReq(req, {
+        action: 'role_updated',
+        entity_type: 'role',
+        entity_id: id,
+        old_values: { name: role?.name, description: role?.description },
+        new_values: { name: updatedRole.name ?? name, description, permissions },
+      });
+
+      res.json({
         message: 'Role updated successfully',
-        role: updatedRole 
+        role: updatedRole
       });
     } catch (error) {
       console.error('Error updating tenant role:', error);
@@ -546,15 +587,23 @@ router.delete('/tenant/:id',
       }
       
       const result = await roleService.deleteTenantRole(id, tenantId);
-      
+
       if (result.error) {
-        return res.status(400).json({ 
-          message: result.error 
+        return res.status(400).json({
+          message: result.error
         });
       }
-      
-      res.json({ 
-        message: 'Role deleted successfully' 
+
+      await auditReq(req, {
+        action: 'role_deleted',
+        entity_type: 'role',
+        entity_id: id,
+        severity: 'high',
+        old_values: { name: role.name, description: role.description },
+      });
+
+      res.json({
+        message: 'Role deleted successfully'
       });
     } catch (error) {
       console.error('Error deleting tenant role:', error);
@@ -617,11 +666,33 @@ router.put('/permissions/:roleId',
         }
       }
 
+      // Snapshot the old permission set for the audit trail before rewriting
+      const oldPerms = await permissionService.getPermissionsByRoleId(roleId, isSystemRole);
+      const oldNames = (Array.isArray(oldPerms) ? oldPerms : []).map(p => p.name).sort();
+
       await permissionService.updateRolePermissions(roleId, permissions, isSystemRole);
 
       // Flush cached permission sets for every user holding this role
       const rbacService = require('../services/rbacService');
       await rbacService.invalidateRoleUsersCache(roleId);
+
+      // Resolve the new permission names for the audit record
+      const [newRows] = permissions.length
+        ? await pool.query(
+            `SELECT name FROM permissions WHERE id IN (${permissions.map(() => '?').join(',')})`,
+            permissions
+          )
+        : [[]];
+      const newNames = (newRows || []).map(r => r.name).sort();
+
+      await auditReq(req, {
+        action: 'role_permissions_updated',
+        entity_type: 'role_permission',
+        entity_id: roleId,
+        severity: 'high',
+        old_values: { isSystemRole, permissions: oldNames },
+        new_values: { isSystemRole, permissions: newNames },
+      });
 
       res.json({ success: true, message: 'Role permissions updated successfully' });
     } catch (error) {
@@ -661,6 +732,101 @@ router.get('/user/:userId/permissions',
     } catch (error) {
       console.error('Error fetching user permissions:', error);
       res.status(500).json({ message: 'Failed to fetch user permissions' });
+    }
+  }
+);
+
+/**
+ * @route GET /api/roles/tenant/:id/limits
+ * @desc List numeric caps configured for a tenant role (Phase 2d)
+ * @access Private - roles.view
+ */
+router.get('/tenant/:id/limits',
+  authenticate,
+  requirePermission('roles.view'),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId || req.user?.tenant_id;
+      const role = await roleService.getTenantRoleById(req.params.id, tenantId);
+      if (!role) return res.status(404).json({ message: 'Role not found' });
+
+      const [rows] = await pool.query(
+        'SELECT id, limit_type, limit_value FROM role_limits WHERE role_id = ? AND tenant_id = ? ORDER BY limit_type',
+        [req.params.id, tenantId]
+      );
+      res.json({ limits: rows });
+    } catch (error) {
+      console.error('Error fetching role limits:', error);
+      res.status(500).json({ message: 'Failed to fetch role limits' });
+    }
+  }
+);
+
+/**
+ * @route PUT /api/roles/tenant/:id/limits
+ * @desc Replace a tenant role's numeric caps.
+ *       Body: { limits: [{ limit_type: 'discount_percent'|'discount_amount'|'refund_amount', limit_value: number }] }
+ *       Missing types are cleared — the body is the complete desired set.
+ * @access Private - roles.edit
+ */
+router.put('/tenant/:id/limits',
+  authenticate,
+  requirePermission('roles.edit'),
+  async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+      const tenantId = req.tenantId || req.user?.tenant_id;
+      const role = await roleService.getTenantRoleById(req.params.id, tenantId);
+      if (!role) return res.status(404).json({ message: 'Role not found' });
+
+      const VALID = ['discount_percent', 'discount_amount', 'refund_amount'];
+      const limits = Array.isArray(req.body?.limits) ? req.body.limits : [];
+      for (const l of limits) {
+        if (!VALID.includes(l.limit_type)) {
+          return res.status(400).json({ message: `Invalid limit_type: ${l.limit_type}` });
+        }
+        const v = Number(l.limit_value);
+        if (!isFinite(v) || v < 0) {
+          return res.status(400).json({ message: `limit_value must be a non-negative number for ${l.limit_type}` });
+        }
+      }
+
+      const [oldRows] = await connection.query(
+        'SELECT limit_type, limit_value FROM role_limits WHERE role_id = ? AND tenant_id = ?',
+        [req.params.id, tenantId]
+      );
+
+      await connection.beginTransaction();
+      await connection.query('DELETE FROM role_limits WHERE role_id = ? AND tenant_id = ?', [req.params.id, tenantId]);
+      for (const l of limits) {
+        await connection.query(
+          `INSERT INTO role_limits (tenant_id, role_id, limit_type, limit_value, created_by)
+           VALUES (?, ?, ?, ?, ?)`,
+          [tenantId, req.params.id, l.limit_type, Number(l.limit_value), req.user.id]
+        );
+      }
+      await connection.commit();
+
+      // Caps live inside effective-permission decisions — flush holders
+      const rbacService = require('../services/rbacService');
+      await rbacService.invalidateRoleUsersCache(req.params.id);
+
+      await auditReq(req, {
+        action: 'role_limits_updated',
+        entity_type: 'role',
+        entity_id: req.params.id,
+        severity: 'high',
+        old_values: { limits: oldRows },
+        new_values: { limits },
+      });
+
+      res.json({ message: 'Role limits updated' });
+    } catch (error) {
+      await connection.rollback().catch(() => {});
+      console.error('Error updating role limits:', error);
+      res.status(500).json({ message: 'Failed to update role limits' });
+    } finally {
+      connection.release();
     }
   }
 );

@@ -136,7 +136,8 @@ class PermissionSeedingService {
       { name: 'sales.discount', description: 'Apply discounts', module: 'sales' },
       { name: 'sales.delete', description: 'Delete sales', module: 'sales' },
       { name: 'sales.override_tax_mode', description: 'Override store tax mode at checkout', module: 'sales' },
-      
+      { name: 'approvals.manager_override', description: 'Approve over-limit refunds and discounts via manager PIN', module: 'approvals' },
+
       // Sales Return (4)
       { name: 'sales-return.view', description: 'View sales returns', module: 'sales-return' },
       { name: 'sales-return.create', description: 'Create sales returns', module: 'sales-return' },

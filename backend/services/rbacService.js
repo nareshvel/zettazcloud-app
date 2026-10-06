@@ -157,7 +157,7 @@ const removeSystemRole = async (userId, roleId) => {
  * @param {string} assignedBy - User ID who assigned the role
  * @returns {Promise<Object>} Assignment result
  */
-const assignTenantRole = async (userId, roleId, tenantId, scope = 'tenant', storeId = null, assignedBy) => {
+const assignTenantRole = async (userId, roleId, tenantId, scope = 'tenant', storeId = null, assignedBy, expiresAt = null) => {
   // Early validation to prevent errors
   if (!userId || !roleId || !tenantId) {
     throw new Error('User ID, Role ID, and Tenant ID are required');
@@ -206,10 +206,10 @@ const assignTenantRole = async (userId, roleId, tenantId, scope = 'tenant', stor
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     
     await connection.query(
-      `INSERT INTO user_roles 
-       (id, user_id, role_id, scope, store_id, assigned_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [assignmentId, userId, roleId, scope, scope === 'store' ? storeId : null, assignedBy, now, now]
+      `INSERT INTO user_roles
+       (id, user_id, role_id, scope, expires_at, store_id, assigned_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [assignmentId, userId, roleId, scope, expiresAt, scope === 'store' ? storeId : null, assignedBy, now, now]
     );
     
     await connection.commit();
@@ -298,6 +298,7 @@ const getUserTenantRoles = async (userId, tenantId, options = {}) => {
         ur.id as assignment_id,
         ur.scope,
         ur.store_id,
+        ur.expires_at,
         ur.created_at as assigned_at,
         ur.assigned_by,
         s.name as store_name
@@ -413,8 +414,9 @@ const getUserRolesAndPermissions = async (userId, tenantId = null, storeId = nul
           user_roles ur
         JOIN 
           roles r ON ur.role_id = r.id
-        WHERE 
+        WHERE
           ur.user_id = ?
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
           ${constraintSQL}
       `;
       
@@ -537,8 +539,51 @@ const getUserRolesAndPermissions = async (userId, tenantId = null, storeId = nul
         .filter(role => !role.tenant_id)
         .map(role => role.name);
 
+      // Per-user grant/deny overrides (Phase 2c). Tenant-wide rows
+      // (store_id IS NULL) apply everywhere; store-scoped rows apply only in
+      // that store context and win over a tenant-wide row for the same
+      // permission. deny beats grant at the same scope. Expired rows are
+      // ignored at read time.
+      const overrides = [];
+      try {
+        const [overrideRows] = await pool.query(
+          `SELECT p.name AS permission_name, upo.effect, upo.store_id
+           FROM user_permission_overrides upo
+           JOIN permissions p ON p.id = upo.permission_id
+           WHERE upo.user_id = ?
+             AND upo.tenant_id = ?
+             AND (upo.store_id IS NULL OR upo.store_id = ?)
+             AND (upo.expires_at IS NULL OR upo.expires_at > NOW())`,
+          [userId, tenantId, storeId || '']
+        );
+        overrides.push(...(overrideRows || []));
+      } catch (ovErr) {
+        // Table may not exist pre-migration — fail open to role-only grants
+        if (ovErr.code !== 'ER_NO_SUCH_TABLE') {
+          logger.error(`[RBAC] Error fetching permission overrides: ${ovErr.message}`);
+        }
+      }
+
+      // Apply least-specific first, then store-scoped; deny wins ties
+      overrides.sort((a, b) => (a.store_id ? 1 : 0) - (b.store_id ? 1 : 0));
+      const overrideMap = {};
+      overrides.forEach(o => {
+        const prev = overrideMap[o.permission_name];
+        // deny sticks; a store-scoped row overrides a tenant-wide decision
+        if (!prev || (prev.scope !== o.store_id) || (prev.effect === 'grant' && o.effect === 'deny')) {
+          overrideMap[o.permission_name] = { effect: o.effect, scope: o.store_id };
+        }
+      });
+      Object.entries(overrideMap).forEach(([perm, o]) => {
+        if (o.effect === 'deny') {
+          permissionSet.delete(perm);
+        } else {
+          permissionSet.add(perm);
+        }
+      });
+
       // Extract just the permission names for easier consumption
-      const permissionNames = permissions.map(p => p.name);
+      const permissionNames = [...permissionSet];
 
       // Create the final result object
       const result = {
@@ -659,6 +704,88 @@ const getUserPermissions = async (userId, tenantId, storeId = null) => {
   }
 };
 
+/*************************************
+ * PER-USER PERMISSION OVERRIDES (Phase 2c)
+ *************************************/
+
+// Permissions that must never be grantable via tenant-level overrides —
+// same boundary the role-permission write path enforces.
+const TENANT_BLOCKED_PREFIX = /^(platform|system|tenants|subscriptions|plans|support)\./;
+
+/**
+ * List a user's permission overrides for a tenant.
+ */
+const getUserPermissionOverrides = async (userId, tenantId) => {
+  const [rows] = await pool.query(
+    `SELECT upo.id, upo.user_id, upo.tenant_id, upo.store_id, upo.effect,
+            upo.expires_at, upo.reason, upo.created_by, upo.created_at, upo.updated_at,
+            p.name AS permission_name, p.id AS permission_id,
+            s.name AS store_name
+     FROM user_permission_overrides upo
+     JOIN permissions p ON p.id = upo.permission_id
+     LEFT JOIN stores s ON s.id = upo.store_id
+     WHERE upo.user_id = ? AND upo.tenant_id = ?
+     ORDER BY upo.store_id IS NULL DESC, p.name`,
+    [userId, tenantId]
+  );
+  return rows;
+};
+
+/**
+ * Upsert a grant/deny override. (user_id, permission_id, store_id) is unique;
+ * NULL store_id needs an application-level dedup since MySQL unique keys
+ * ignore NULLs.
+ * @returns the override row id
+ */
+const setUserPermissionOverride = async ({ userId, tenantId, storeId = null, permissionId, effect, expiresAt = null, reason = null, createdBy = null }) => {
+  if (!userId || !tenantId || !permissionId) throw new Error('userId, tenantId and permissionId are required');
+  if (!['grant', 'deny'].includes(effect)) throw new Error('effect must be grant or deny');
+
+  // Resolve the permission — must exist and (for grants) be tenant-scoped
+  const [permRows] = await pool.query('SELECT id, name FROM permissions WHERE id = ?', [permissionId]);
+  if (!permRows.length) throw new Error('Permission not found');
+  if (effect === 'grant' && TENANT_BLOCKED_PREFIX.test(permRows[0].name)) {
+    throw new Error(`System permissions cannot be granted via user overrides: ${permRows[0].name}`);
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query(
+      `DELETE FROM user_permission_overrides
+       WHERE user_id = ? AND permission_id = ? AND tenant_id = ?
+         AND (store_id = ? OR (store_id IS NULL AND ? IS NULL))`,
+      [userId, permissionId, tenantId, storeId, storeId]
+    );
+    const id = uuidv4();
+    await connection.query(
+      `INSERT INTO user_permission_overrides
+         (id, user_id, tenant_id, store_id, permission_id, effect, expires_at, reason, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, userId, tenantId, storeId, permissionId, effect, expiresAt, reason, createdBy]
+    );
+    await connection.commit();
+    invalidateUserCache(userId);
+    return id;
+  } catch (e) {
+    await connection.rollback().catch(() => {});
+    throw e;
+  } finally {
+    connection.release();
+  }
+};
+
+const removeUserPermissionOverride = async (overrideId, tenantId) => {
+  const [rows] = await pool.query(
+    'SELECT user_id FROM user_permission_overrides WHERE id = ? AND tenant_id = ?',
+    [overrideId, tenantId]
+  );
+  if (!rows.length) return false;
+  await pool.query('DELETE FROM user_permission_overrides WHERE id = ?', [overrideId]);
+  invalidateUserCache(rows[0].user_id);
+  return true;
+};
+
 module.exports = {
   // Role assignment functions
   assignSystemRole,
@@ -675,6 +802,11 @@ module.exports = {
   getUserPermissions,
   hasPermission,
   isTenantAdmin,
+
+  // Per-user permission overrides
+  getUserPermissionOverrides,
+  setUserPermissionOverride,
+  removeUserPermissionOverride,
 
   // Cache invalidation (call after any user_roles / role_permissions write)
   invalidateUserCache,

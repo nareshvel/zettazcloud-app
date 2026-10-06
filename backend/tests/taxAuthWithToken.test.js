@@ -1,6 +1,10 @@
 const request = require('supertest');
 const sinon = require('sinon');
 const app = require('../server');
+// Other test files swap ../config/db in require.cache with a fake that lacks
+// `execute` (the stubModule technique). Force a fresh require so `pool` here
+// is the real mysql2 pool regardless of test-file ordering.
+delete require.cache[require.resolve('../config/db')];
 const { pool } = require('../config/db');
 const { signTestToken } = require('./utils/jwtHelper');
 
@@ -12,9 +16,15 @@ describe('Tax routes auth + headers with signed JWT', function () {
   let stubs = [];
 
   beforeEach(() => {
-    // Stub DB calls to avoid touching a real database during tests
-    stubs.push(sinon.stub(pool, 'query').callsFake(async () => [[], []]));
-    stubs.push(sinon.stub(pool, 'execute').callsFake(async () => [[], []]));
+    // Stub DB calls to avoid touching a real database during tests.
+    // Defensive: only stub methods that exist — if another file's
+    // require.cache stub of config/db leaked, `execute` may be absent.
+    if (typeof pool.query === 'function' && !pool.query.restore) {
+      stubs.push(sinon.stub(pool, 'query').callsFake(async () => [[], []]));
+    }
+    if (typeof pool.execute === 'function' && !pool.execute.restore) {
+      stubs.push(sinon.stub(pool, 'execute').callsFake(async () => [[], []]));
+    }
   });
 
   afterEach(() => {

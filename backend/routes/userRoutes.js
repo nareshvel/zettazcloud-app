@@ -22,7 +22,7 @@ const { authenticate } = require('../middleware/unifiedAuthMiddleware');
 const multer = require('multer');
 const signupService = require('../services/signupService'); // reuse validatePhoneNumber, don't reinvent
 const storageService = require('../services/storageService'); // same storage driver attachments.routes.js uses
-const { logActivity } = require('../services/auditLogService');
+const { logActivity, auditReq } = require('../services/auditLogService');
 const { withinUsageLimits } = require('../middleware/subscriptionMiddleware'); // Plan `limits.users` enforcement
 const subscriptionService = require('../services/subscriptionService');
 const storageUsageService = require('../services/storageUsageService');
@@ -147,15 +147,182 @@ router.put('/:userId/roles', authenticate, requirePermission('users.edit'), asyn
       }
     }
     
+    // Optional batch expiry for time-bound assignment (Phase 2e)
+    const expiresAt = req.body.expires_at || req.body.expiresAt || null;
+
     // Then assign the new roles
     for (const roleId of actualRoleIds) {
-      await rbacService.assignTenantRole(userId, roleId, tenant_id, 'tenant', null, req.user.id);
+      await rbacService.assignTenantRole(userId, roleId, tenant_id, 'tenant', null, req.user.id, expiresAt);
     }
-    
+
+    // Audit the role-set change (names on both sides so the log is readable)
+    let newRoleNames = [];
+    if (actualRoleIds.length) {
+      const [rows] = await db.pool.query(
+        `SELECT name FROM roles WHERE id IN (${actualRoleIds.map(() => '?').join(',')})`,
+        actualRoleIds
+      );
+      newRoleNames = (rows || []).map(r => r.name);
+    }
+    await auditReq(req, {
+      action: 'user_roles_updated',
+      entity_type: 'user_role',
+      entity_id: userId,
+      severity: 'high',
+      old_values: { roles: existingRoles.map(r => r.name), role_ids: existingRoles.map(r => r.id) },
+      new_values: { roles: newRoleNames, role_ids: actualRoleIds },
+    });
+
     return res.json({ message: 'Roles assigned successfully' });
   } catch (error) {
     console.error(`[ERROR] PUT /api/users/${req.params.userId}/roles:`, error);
     return res.status(500).json({ message: 'Failed to assign roles to user', error: error.message });
+  }
+});
+
+/**
+ * @route   GET /api/users/:userId/effective-permissions
+ * @desc    Resolved effective permissions for a user after role stacking and
+ *          store scoping — the same resolution the authz middleware uses.
+ * @access  Private (self, tenant admin, or users.view)
+ */
+router.get('/:userId/effective-permissions', authenticate, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const tenantId = req.user?.tenant_id;
+    const storeId = req.headers['store-id'] || req.query?.store_id || null;
+
+    const isSelf = userId === req.user.id;
+    const canView = isSelf ||
+      (await rbacService.isTenantAdmin(req.user.id, tenantId)) ||
+      (await rbacService.hasPermission(req.user.id, 'users.view', tenantId, storeId));
+    if (!canView) {
+      return res.status(403).json({ message: 'Not authorized to view effective permissions' });
+    }
+
+    // Tenant containment — never resolve permissions for another tenant's user
+    const [uRows] = await db.pool.query('SELECT tenant_id FROM users WHERE id = ?', [userId]);
+    if (!uRows.length || uRows[0].tenant_id !== tenantId) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const effective = await rbacService.getUserRolesAndPermissions(userId, tenantId, storeId);
+    const tenantAdmin = await rbacService.isTenantAdmin(userId, tenantId);
+
+    res.json({
+      userId,
+      tenantId,
+      storeId,
+      tenantAdmin,
+      // Tenant admins bypass permission checks entirely — '*' marks that
+      permissions: tenantAdmin ? '*' : effective.permissions,
+      roles: effective.roleNames,
+      systemRoles: effective.systemRoles,
+      roleDetails: effective.roles.map(r => ({
+        id: r.id, name: r.name, scope: r.scope, storeId: r.storeId,
+      })),
+      overrides: await rbacService.getUserPermissionOverrides(userId, tenantId).catch(() => []),
+    });
+  } catch (error) {
+    console.error(`[ERROR] GET /api/users/${req.params.userId}/effective-permissions:`, error);
+    res.status(500).json({ message: 'Failed to resolve effective permissions' });
+  }
+});
+
+/**
+ * @route   GET /api/users/:userId/permission-overrides
+ * @desc    List a user's per-user grant/deny overrides
+ * @access  Private (users.view)
+ */
+router.get('/:userId/permission-overrides', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const tenantId = req.user?.tenant_id;
+    const overrides = await rbacService.getUserPermissionOverrides(userId, tenantId);
+    res.json({ overrides });
+  } catch (error) {
+    console.error(`[ERROR] GET /api/users/${req.params.userId}/permission-overrides:`, error);
+    res.status(500).json({ message: 'Failed to fetch permission overrides' });
+  }
+});
+
+/**
+ * @route   POST /api/users/:userId/permission-overrides
+ * @desc    Set (upsert) a grant/deny override for a user
+ *          Body: { permission_id | permission, effect: 'grant'|'deny',
+ *                  store_id?, expires_at?, reason? }
+ * @access  Private (users.edit)
+ */
+router.post('/:userId/permission-overrides', authenticate, requirePermission('users.edit'), async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const tenantId = req.user?.tenant_id;
+    const { permission_id, permission, effect, store_id, expires_at, reason } = req.body || {};
+
+    // Tenant containment — never touch another tenant's user
+    const [uRows] = await db.pool.query('SELECT tenant_id FROM users WHERE id = ?', [userId]);
+    if (!uRows.length || uRows[0].tenant_id !== tenantId) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Accept either a permission id or name
+    let permissionId = permission_id;
+    if (!permissionId && permission) {
+      const [pRows] = await db.pool.query('SELECT id FROM permissions WHERE name = ?', [String(permission)]);
+      if (!pRows.length) return res.status(400).json({ message: `Unknown permission: ${permission}` });
+      permissionId = pRows[0].id;
+    }
+    if (!permissionId) return res.status(400).json({ message: 'permission_id or permission is required' });
+
+    const id = await rbacService.setUserPermissionOverride({
+      userId, tenantId,
+      storeId: store_id || null,
+      permissionId,
+      effect,
+      expiresAt: expires_at || null,
+      reason: reason || null,
+      createdBy: req.user.id,
+    });
+
+    await auditReq(req, {
+      action: `user_permission_${effect === 'deny' ? 'denied' : 'granted'}`,
+      entity_type: 'user_role',
+      entity_id: userId,
+      severity: 'high',
+      new_values: { permission_id: permissionId, effect, store_id: store_id || null, expires_at: expires_at || null, reason },
+    });
+
+    res.status(201).json({ id, message: 'Permission override saved' });
+  } catch (error) {
+    console.error(`[ERROR] POST /api/users/${req.params.userId}/permission-overrides:`, error);
+    res.status(400).json({ message: error.message || 'Failed to save permission override' });
+  }
+});
+
+/**
+ * @route   DELETE /api/users/:userId/permission-overrides/:overrideId
+ * @desc    Remove a grant/deny override
+ * @access  Private (users.edit)
+ */
+router.delete('/:userId/permission-overrides/:overrideId', authenticate, requirePermission('users.edit'), async (req, res) => {
+  try {
+    const { userId, overrideId } = req.params;
+    const tenantId = req.user?.tenant_id;
+    const removed = await rbacService.removeUserPermissionOverride(overrideId, tenantId);
+    if (!removed) return res.status(404).json({ message: 'Override not found' });
+
+    await auditReq(req, {
+      action: 'user_permission_override_removed',
+      entity_type: 'user_role',
+      entity_id: userId,
+      severity: 'high',
+      old_values: { override_id: overrideId },
+    });
+
+    res.json({ message: 'Permission override removed' });
+  } catch (error) {
+    console.error(`[ERROR] DELETE /api/users/${req.params.userId}/permission-overrides/${req.params.overrideId}:`, error);
+    res.status(500).json({ message: 'Failed to remove permission override' });
   }
 });
 
@@ -637,6 +804,38 @@ router.patch('/me', authenticate, async (req, res) => {
  *          default) rather than a separate storage path.
  * @access  Private (own row only)
  */
+/**
+ * @route   POST /api/users/me/pos-pin
+ * @desc    Set or clear the caller's manager-override POS PIN (Phase 2d).
+ *          The PIN authorizes over-limit refunds/discounts only if the
+ *          user's roles carry approvals.manager_override.
+ * @access  Private (self)
+ */
+router.post('/me/pos-pin', authenticate, async (req, res) => {
+  try {
+    const pin = req.body?.pin;
+
+    if (pin === null || pin === '') {
+      // Explicit clear
+      await db.pool.query('UPDATE users SET pos_pin_hash = NULL WHERE id = ?', [req.user.id]);
+      await auditReq(req, { action: 'pos_pin_cleared', entity_type: 'user', entity_id: req.user.id, severity: 'high' });
+      return res.json({ message: 'POS PIN cleared' });
+    }
+
+    if (!/^\d{4,8}$/.test(String(pin))) {
+      return res.status(400).json({ message: 'PIN must be 4-8 digits' });
+    }
+
+    const hash = await bcrypt.hash(String(pin), 10);
+    await db.pool.query('UPDATE users SET pos_pin_hash = ? WHERE id = ?', [hash, req.user.id]);
+    await auditReq(req, { action: 'pos_pin_set', entity_type: 'user', entity_id: req.user.id, severity: 'high' });
+    res.json({ message: 'POS PIN set' });
+  } catch (error) {
+    console.error('[ERROR] POST /api/users/me/pos-pin:', error);
+    res.status(500).json({ message: 'Failed to set POS PIN' });
+  }
+});
+
 router.post('/me/avatar', authenticate, avatarUpload.single('file'), async (req, res) => {
   try {
     const userId = req.user?.id;

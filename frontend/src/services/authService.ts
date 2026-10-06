@@ -639,90 +639,6 @@ function resolveStoreId(backendData: BackendUserForApi, tenantId: string): strin
   return null;
 }
 
-/**
- * Comprehensive role inference based on permission patterns
- * Analyzes user permissions to determine the most appropriate role
- */
-function inferRoleFromPermissions(permissions: string[]): string {
-  const permissionSet = new Set(permissions);
-  const permissionCount = permissions.length;
-  
-  // Debug logging removed for cleaner console output
-  
-  // Admin indicators - comprehensive permissions including tenant-level access
-  const adminIndicators = [
-    'tenant.subscription.view',
-    'tenant.subscription.upgrade',
-    'tenant.subscription.manage',
-    'stores.create',
-    'stores.delete',
-    'tenant.manage',
-    'tenant.admin',
-    'tenant:*'
-  ];
-  
-  // Manager indicators - comprehensive store management but no tenant-level access
-  const managerIndicators = [
-    'users.create', 'users.edit', 'users.delete',
-    'roles.create', 'roles.edit', 'roles.delete',
-    'stores.edit', 'inventory.adjust', 'inventory.transfer',
-    'dashboard.view', 'reports.view', 'analytics.view',
-    'inventory.manage', 'products.manage', 'categories.manage'
-  ];
-  
-  // Cashier indicators - limited POS and basic operations
-  const cashierIndicators = [
-    'sales.create', 'sales.view', 'sales.refund',
-    'customers.create', 'customers.edit', 'customers.view',
-    'products.view', 'inventory.view'
-  ];
-  
-  // Count matches for each role type
-  const adminMatches = adminIndicators.filter(perm => permissionSet.has(perm)).length;
-  const managerMatches = managerIndicators.filter(perm => permissionSet.has(perm)).length;
-  const cashierMatches = cashierIndicators.filter(perm => permissionSet.has(perm)).length;
-  
-  // Enhanced debug logging
-  // Debug logging removed for cleaner console output
-  
-  // Role determination logic based on permission patterns (order matters!)
-  // Check for admin first - highest privilege level
-  if (adminMatches > 0 || permissionCount >= 40) {
-    // Debug logging removed for cleaner console output
-    return 'tenant_admin';
-  }
-  
-  // Check for manager - comprehensive store management
-  if (managerMatches >= 3 || (permissionCount >= 15 && permissionCount < 40)) {
-    // Additional check for manager-specific permissions
-    const hasManagerPermissions = (
-      permissionSet.has('dashboard.view') && 
-      (permissionSet.has('inventory.manage') || permissionSet.has('reports.view'))
-    );
-    
-    if (hasManagerPermissions || managerMatches >= 3) {
-      // Debug logging removed for cleaner console output
-      return 'manager';
-    }
-  }
-  
-  // Check for cashier - limited permissions and low count
-  if ((permissionCount <= 20 && cashierMatches >= 2) || 
-      (permissionSet.has('sales.create') && permissionSet.has('customers.view'))) {
-    // Debug logging removed for cleaner console output
-    return 'cashier';
-  }
-  
-  // Fallback for users with dashboard access but unclear role
-  if (permissionSet.has('dashboard.view')) {
-    // Debug logging removed for cleaner console output
-    return 'employee';
-  }
-  
-  // Debug logging removed for cleaner console output
-  return 'user';
-}
-
 function mapBackendDataToUser(backendData: BackendUserForApi): User {
   // Debug logging removed for cleaner console output
 
@@ -768,56 +684,26 @@ function mapBackendDataToUser(backendData: BackendUserForApi): User {
   const storeId = resolveStoreId(backendData, tenantId);
   // Debug logging removed for cleaner console output
 
-  // Enhanced role determination with priority to permission-based inference
+  // Role bucket derives ONLY from the user's actual assigned role names.
+  // Permission-pattern inference (the removed inferRoleFromPermissions and
+  // the has*Permissions checks below) was a security hazard in the other
+  // direction too: 'reports.view' or a permission COUNT >= 15 used to label
+  // a user 'manager', and permissionCount >= 40 labelled them
+  // 'tenant_admin' — neither reflects a real assignment.
   let userRole = 'user';
-  
-  // Debug logging removed for cleaner console output
-  
-  // Check for admin permissions first (highest priority)
-  const hasAdminPermissions = permissions.includes('*') || 
-    permissions.some(p => p.includes('admin') || p === 'tenant.admin' || p === 'tenant:*');
-    
-  // Check for manager permissions (second priority)
-  const hasManagerPermissions = permissions.some(p => 
-    p.includes('manager') || 
-    p.includes('store.admin') || 
-    p === 'store.manage' ||
-    p === 'store:*' ||
-    p === 'inventory.manage' ||
-    p === 'reports.view' ||
-    p === 'dashboard.view' && permissions.length > 5 // If they have dashboard.view plus other permissions
-  );
-  
-  // Check for explicit roles from the backend
   const normalizedRoles = roles.map(r => r.toLowerCase().trim());
 
   const hasAdminRole = normalizedRoles.some(r => ['admin', 'tenant_admin', 'tenant admin', 'tenantadmin'].includes(r));
   const hasManagerRole = normalizedRoles.some(r => ['manager', 'store_manager', 'store manager', 'store.admin', 'storemanager'].includes(r));
-  
-  // Role determination logic with priority:
-  // 1. Admin permissions or roles
-  // 2. Manager permissions or roles
-  // 3. Explicit roles from backend
-  // 4. Infer from permissions
-  if (hasAdminPermissions || hasAdminRole) {
-    userRole = 'tenant_admin';  // Fixed: Use tenant_admin instead of admin
-  } 
-  else if (hasManagerPermissions || hasManagerRole) {
+
+  if (hasAdminRole) {
+    userRole = 'tenant_admin';
+  }
+  else if (hasManagerRole) {
     userRole = 'manager';
   }
-  // If we have explicit roles but they didn't match admin/manager, use them
   else if (normalizedRoles.length > 0) {
-    if (normalizedRoles.some(r => ['cashier', 'employee', 'staff'].includes(r))) {
-      userRole = normalizedRoles.find(r => ['cashier', 'employee', 'staff'].includes(r)) || 'user';
-    } else {
-      userRole = normalizedRoles[0];
-    }
-    // Debug logging removed
-  }
-  // Finally, try to infer role from permissions if we still don't have a match
-  else if (permissions.length > 0) {
-    userRole = inferRoleFromPermissions(permissions);
-    // Debug logging removed
+    userRole = normalizedRoles.find(r => ['cashier', 'employee', 'staff'].includes(r)) || normalizedRoles[0];
   }
   
   // Final validation of the determined role

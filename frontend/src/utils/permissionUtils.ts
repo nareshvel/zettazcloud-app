@@ -127,38 +127,3 @@ export const isAdminUser = (user: User | null | undefined): boolean => {
     Boolean(user.systemRoles?.includes('Tenant Admin'))
   );
 };
-
-/**
- * Legacy compatibility helper to map roles to permissions
- * This helps during the transition from role-based to permission-based access
- * 
- * @param role - Legacy role string
- * @returns string[] - Array of equivalent permissions
- */
-export const mapRoleToPermissions = (role: string | undefined): string[] => {
-  if (!role) return [];
-  
-  const lowerRole = role.toLowerCase();
-  
-  switch (lowerRole) {
-    case 'tenant_admin':
-      return ['*']; // Admin has all permissions
-    case 'manager':
-      return [
-        'products.*',
-        'inventory.*', 
-        'sales.view', 
-        'sales.create',
-        'customers.*',
-        'reports.view'
-      ];
-    case 'cashier':
-      return [
-        'products.view',
-        'sales.view', 
-        'sales.create'
-      ];
-    default:
-      return [];
-  }
-};

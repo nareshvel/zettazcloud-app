@@ -1,10 +1,36 @@
 const request = require('supertest');
+const sinon = require('sinon');
 const app = require('../server');
+// Other test files swap ../config/db in require.cache with a fake that may
+// lack methods — force a fresh require so `pool` is the real mysql2 pool.
+delete require.cache[require.resolve('../config/db')];
+const { pool } = require('../config/db');
+const { signTestToken } = require('./utils/jwtHelper');
 
 // These tests focus on auth/header middleware behavior only (no DB setup required)
 // They assert early failures (401/400) that occur before hitting controllers.
 
+const TENANT_ID = 'test-tenant';
+
 describe('Tax headers and auth preconditions', function () {
+  let stubs = [];
+
+  beforeEach(() => {
+    // Stub DB calls so session-revocation / RBAC lookups can't hit a real
+    // database — these tests only exercise the auth + store-id gates.
+    if (typeof pool.query === 'function' && !pool.query.restore) {
+      stubs.push(sinon.stub(pool, 'query').callsFake(async () => [[], []]));
+    }
+    if (typeof pool.execute === 'function' && !pool.execute.restore) {
+      stubs.push(sinon.stub(pool, 'execute').callsFake(async () => [[], []]));
+    }
+  });
+
+  afterEach(() => {
+    stubs.forEach(s => s.restore());
+    stubs = [];
+  });
+
   it('should return 401 when no token and no tenant headers are provided', async function () {
     const res = await request(app)
       .get('/api/v1/settings/taxes/classes')
@@ -19,9 +45,20 @@ describe('Tax headers and auth preconditions', function () {
   });
 
   it('should return 400 when tenant header is present but store header is missing', async function () {
+    // A signed token is required — the old tenant-id-header dev fallback is
+    // gated behind ALLOW_DEV_HEADER_AUTH and doesn't run in tests.
+    const token = signTestToken({
+      id: 'test-user',
+      tenant_id: TENANT_ID,
+      // Intentionally omit store_id
+      roles: ['Tenant Admin'],
+      permissions: ['*'],
+    });
+
     const res = await request(app)
       .get('/api/v1/settings/taxes/classes')
-      .set('tenant-id', 'test-tenant') // triggers dev fallback user in authenticate
+      .set('Authorization', `Bearer ${token}`)
+      .set('tenant-id', TENANT_ID)
       .expect('Content-Type', /json/);
 
     if (res.status !== 400) {
@@ -33,9 +70,17 @@ describe('Tax headers and auth preconditions', function () {
   });
 
   it('should return 400 on POST /classes when store header is missing', async function () {
+    const token = signTestToken({
+      id: 'test-user',
+      tenant_id: TENANT_ID,
+      roles: ['Tenant Admin'],
+      permissions: ['*'],
+    });
+
     const res = await request(app)
       .post('/api/v1/settings/taxes/classes')
-      .set('tenant-id', 'test-tenant')
+      .set('Authorization', `Bearer ${token}`)
+      .set('tenant-id', TENANT_ID)
       .send({ name: 'Sample Class' })
       .expect('Content-Type', /json/);
 

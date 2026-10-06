@@ -110,8 +110,11 @@ describe('buildParties', () => {
     expect(cols[0].lines).toEqual([]);
   });
 
-  it('returns nothing at all for a sale with no customer', () => {
-    expect(buildParties({})).toEqual([]);
+  it('labels the bill-to column "Walk-in Customer" when no customer was selected', () => {
+    // Deliberate: real jewelry/retail invoices conventionally print a
+    // walk-in label rather than leaving the bill-to blank.
+    const cols = buildParties({});
+    expect(cols).toEqual([{ label: 'Bill to', heading: 'Walk-in Customer', lines: [] }]);
   });
 
   it('carries the customer tax number, which a B2B invoice needs', () => {

@@ -5,9 +5,12 @@
  * (docs/17-migration-and-roadmap/13_POS_Hub_Proposal.md, §5 Option A):
  *
  *   * a store whose jurisdiction resolves `zeroRated: true` (duty_free or
- *     export) must have its sale recorded with tax = 0, REGARDLESS of what
- *     the client posted — this was the gap where `calculateSaleTaxesWithJurisdiction`
- *     existed and was unit-tested but had zero callers in the real request path.
+ *     export) must have its sale recorded with tax = 0 when the sale
+ *     carries traveller evidence (the Duty-Free Sale intake flow),
+ *     REGARDLESS of what the client posted. Since 2026-09-03, a store's
+ *     zero-rated configuration alone does NOT zero-rate a sale with no
+ *     traveller evidence — that prevented anonymous walk-ins being
+ *     silently exempted; such sales record sales_mode='domestic'.
  *   * `sales_mode` / `zero_rate_reason` are frozen onto the sale row from the
  *     jurisdiction lookup at creation time.
  *   * a non-zero-rated (domestic/mixed) sale is unaffected — it still goes
@@ -51,8 +54,11 @@ function loadController({ jurisdiction, verifyTaxResult, queryLog = [], paymentM
     async beginTransaction() {},
     async query(sql, values) {
       queryLog.push({ sql, values });
-      if (/SELECT stock_quantity FROM products/.test(sql)) {
-        return [[{ stock_quantity: 10 }]];
+      // Controller locks the product row (SELECT store_id, stock_quantity ...
+      // FOR UPDATE) then decrements stock itself for non-shared products —
+      // store_id must be non-null or it takes the store_product_listings path.
+      if (/SELECT .*\bstock_quantity\b.*FROM products/.test(sql)) {
+        return [[{ store_id: 'store-1', stock_quantity: 10 }]];
       }
       // sale_items bulk insert and other statements don't need real results.
       return [{ affectedRows: 0, insertId: 0 }];
@@ -129,6 +135,17 @@ const BASE_BODY = {
   tax: 25, // client-computed tax — deliberately wrong for the zero-rated cases below
 };
 
+// 2026-09-03 behavior change: a duty-free/export STORE no longer
+// zero-rates every sale — zero-rating requires traveller evidence on the
+// specific transaction (the Duty-Free Sale intake flow), otherwise the
+// sale is recorded sales_mode='domestic'. The zero-rating tests below
+// therefore post traveller data like the intake modal does.
+const TRAVELLER = {
+  travellerIdType: 'passport',
+  travellerIdNumber: 'N1234567',
+  travelMethodType: 'flight',
+};
+
 /** Find the `INSERT INTO sales (...)` call and map its `?` values by column name. */
 function findSaleInsert(queryLog) {
   const call = queryLog.find((q) => /INSERT INTO sales \(/.test(q.sql));
@@ -146,7 +163,7 @@ describe('createSaleController — duty-free zero-rating', function () {
       jurisdiction: { zeroRated: true, isDutyFree: true, isExport: false, salesMode: 'duty_free' },
     });
     try {
-      const req = fakeReq({ ...BASE_BODY });
+      const req = fakeReq({ ...BASE_BODY, ...TRAVELLER });
       const res = fakeRes();
       await controller.createSale(req, res);
 
@@ -163,7 +180,7 @@ describe('createSaleController — duty-free zero-rating', function () {
       jurisdiction: { zeroRated: true, isDutyFree: false, isExport: true, salesMode: 'export' },
     });
     try {
-      const req = fakeReq({ ...BASE_BODY });
+      const req = fakeReq({ ...BASE_BODY, ...TRAVELLER });
       const res = fakeRes();
       await controller.createSale(req, res);
 
@@ -193,19 +210,23 @@ describe('createSaleController — duty-free zero-rating', function () {
     } finally { restore(); }
   });
 
-  it('does not zero-rate a "mixed" store — that mode is not auto zero-rated', async function () {
+  it('does not zero-rate a "mixed" store even with traveller evidence — that mode is not auto zero-rated', async function () {
     const { controller, queryLog, restore } = loadController({
       jurisdiction: { zeroRated: false, isDutyFree: false, isExport: false, salesMode: 'mixed' },
       verifyTaxResult: { tax: 25, reject: false, mismatch: false },
     });
     try {
-      const req = fakeReq({ ...BASE_BODY });
+      // Traveller data alone cannot make a non-zero-rated store export-
+      // eligible — storeDefaultIsZeroRated still gates the outcome, and a
+      // non-zero-rated sale is recorded sales_mode='domestic' (not the
+      // store's 'mixed') since the 2026-09-03 evidence requirement.
+      const req = fakeReq({ ...BASE_BODY, ...TRAVELLER });
       const res = fakeRes();
       await controller.createSale(req, res);
 
       const row = findSaleInsert(queryLog);
       assert.strictEqual(row.tax, 25);
-      assert.strictEqual(row.sales_mode, 'mixed');
+      assert.strictEqual(row.sales_mode, 'domestic');
       assert.strictEqual(row.zero_rate_reason, null);
     } finally { restore(); }
   });
@@ -217,7 +238,7 @@ describe('createSaleController — duty-free zero-rating', function () {
       async beginTransaction() {},
       async query(sql, values) {
         queryLog.push({ sql, values });
-        if (/SELECT stock_quantity FROM products/.test(sql)) return [[{ stock_quantity: 10 }]];
+        if (/SELECT .*\bstock_quantity\b.*FROM products/.test(sql)) return [[{ store_id: 'store-1', stock_quantity: 10 }]];
         return [{}];
       },
       async commit() {}, async rollback() {}, release() {},
@@ -245,7 +266,8 @@ describe('createSaleController — duty-free zero-rating', function () {
       assert.strictEqual(res.statusCode, 201, 'a jurisdiction lookup failure must not block the sale');
       const row = findSaleInsert(queryLog);
       assert.strictEqual(row.tax, 25, 'falls through to the normal verified-tax path');
-      assert.strictEqual(row.sales_mode, null);
+      // Lookup failed → no evidence of eligibility → recorded 'domestic'.
+      assert.strictEqual(row.sales_mode, 'domestic');
     } finally {
       delete require.cache[controllerPath];
       for (const { resolved, saved } of stubs) {
