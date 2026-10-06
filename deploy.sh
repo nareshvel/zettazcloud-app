@@ -1,36 +1,49 @@
 #!/usr/bin/env bash
-# Full production deploy for Zettaz Cloud on the VPS.
+# Full production deploy for Zettaz Cloud.
 # Usage: ./deploy.sh [branch]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 BRANCH="${1:-main}"
-API_APP="${PM2_API_APP:-zettaz-api}"
+APP_NAME="zettaz-api"
 
 log() { printf '\n==> %s\n' "$*"; }
 
 cd "$ROOT"
 
-# Remove local-only SQL dumps that can block git pull
-log "Removing untracked SQL dump files"
-rm -f database/dumps/*.sql database/dumps/*.zip
-
 log "Pulling origin/${BRANCH}"
-git fetch origin "$BRANCH"
+git checkout "$BRANCH"
 git pull --ff-only origin "$BRANCH"
 
 log "Installing backend dependencies"
 cd "$ROOT/backend"
 npm ci
 
-log "Restarting backend"
-pm2 restart "$API_APP" --update-env
+log "Starting / restarting backend"
+if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+  pm2 restart "$APP_NAME" --update-env
+else
+  pm2 start server.js --name "$APP_NAME"
+fi
+pm2 save
 
-log "Building frontend"
-cd "$ROOT"
-bash deploy-frontend.sh
+log "Creating frontend/.env.production if missing"
+if [ ! -f "$ROOT/frontend/.env.production" ]; then
+  JWT_SECRET=$(grep -E '^JWT_SECRET=' "$ROOT/backend/.env" | cut -d= -f2-)
+  cat > "$ROOT/frontend/.env.production" <<EOF
+VITE_API_URL=https://api.zettaz.com
+VITE_API_BASE_URL=https://api.zettaz.com
+VITE_JWT_SECRET=$JWT_SECRET
+EOF
+fi
+
+log "Installing and building frontend"
+cd "$ROOT/frontend"
+npm ci
+npm run build
 
 log "Reloading nginx"
-sudo nginx -t && sudo systemctl reload nginx
+nginx -t && systemctl reload nginx
 
 log "Full deploy complete"
+pm2 status
