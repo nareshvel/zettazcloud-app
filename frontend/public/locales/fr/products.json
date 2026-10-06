@@ -1,0 +1,32 @@
+{
+  "title": "Produits",
+  "add_product": "Ajouter un Produit",
+  "product_list": "Liste des Produits",
+  "search": "Rechercher des produits...",
+  "columns": {
+    "name": "Nom",
+    "sku": "UGS",
+    "category": "Catégorie",
+    "price": "Prix",
+    "stock": "Stock",
+    "status": "Statut",
+    "actions": "Actions"
+  },
+  "filters": {
+    "all": "Tous les Produits",
+    "active": "Actifs",
+    "low_stock": "Stock Faible",
+    "out_of_stock": "Rupture de Stock"
+  },
+  "actions": {
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "view": "Voir les Détails"
+  },
+  "status": {
+    "active": "Actif",
+    "inactive": "Inactif",
+    "low_stock": "Stock Faible",
+    "out_of_stock": "Rupture de Stock"
+  }
+}

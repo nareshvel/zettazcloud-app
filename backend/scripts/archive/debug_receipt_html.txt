@@ -1,0 +1,144 @@
+&lt;style>
+    body {
+      font-family: 'Courier New', monospace;
+      margin: 0;
+      padding: 8px;
+      width: 80mm;
+    }
+    .receipt {
+      width: 100%;
+      text-align: center;
+    }
+    .receipt-header {
+      margin-bottom: 10px;
+    }
+    .receipt-header h2 {
+      margin: 0 0 5px;
+      font-size: 1.2em;
+    }
+    .receipt-header p {
+      margin: 0;
+      font-size: 0.9em;
+    }
+    .receipt-info {
+      margin-bottom: 10px;
+      text-align: left;
+    }
+    .receipt-info p {
+      margin: 0;
+      font-size: 0.9em;
+    }
+    .receipt-items {
+      margin-bottom: 10px;
+      border-top: 1px dashed #000;
+      border-bottom: 1px dashed #000;
+      padding: 10px 0;
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .items-table th {
+      text-align: left;
+      font-size: 0.8em;
+      padding-bottom: 5px;
+    }
+    .items-table td {
+      font-size: 0.9em;
+      padding: 3px 0;
+    }
+    .item-price {
+      text-align: right;
+    }
+    .item-quantity {
+      text-align: center;
+    }
+    .receipt-totals {
+      text-align: right;
+      margin-bottom: 10px;
+    }
+    .receipt-total-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 5px 0;
+    }
+    .receipt-footer {
+      margin-top: 10px;
+      font-size: 0.8em;
+    }
+    .thank-you {
+      font-weight: bold;
+      margin-top: 10px;
+    }
+  &lt;/style>
+    &lt;div class="receipt">
+      &lt;div class="receipt-header">
+        &lt;h2 class="store-name">Zettaz Mart&lt;/h2>
+        &lt;p class="store-address">123 Main Street, Maryland Heights, MO 63043&lt;/p>
+        &lt;p class="store-phone">+1 (268) 456-7890&lt;/p>
+        &lt;p class="store-email">stores@zettaz.com&lt;/p>
+        
+      &lt;/div>
+      
+      &lt;div class="receipt-info">
+        &lt;p class="receipt-number">Receipt #: 9a6944e8&lt;/p>
+        &lt;p class="receipt-date">Date: 2025-06-07 09:14&lt;/p>
+        
+      &lt;/div>
+      
+      &lt;!-- Both ID and class name are critical for the backend receipt extractor -->
+      &lt;div id="receipt-items" class="receipt-items">
+        &lt;!-- Header row for items -->
+        &lt;div style="display: flex; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 8px;">
+          &lt;div style="flex: 3; text-align: left;">Item&lt;/div>
+          &lt;div style="flex: 1; text-align: center;">Qty&lt;/div>
+          &lt;div style="flex: 1; text-align: right;">Price&lt;/div>
+        &lt;/div>
+        
+        &lt;!-- Individual receipt items with the exact structure the backend expects -->
+        
+          &lt;!-- Specific structure for item to match exactly what backend parser expects -->
+          &lt;div class="receipt-item" style="display: flex; margin-bottom: 5px;">
+            &lt;div class="item-name" style="flex: 3; text-align: left;">Garnier Whole Blends Honey Treasures&lt;/div>
+            &lt;div class="item-qty" style="flex: 1; text-align: center;">3&lt;/div>
+            &lt;div class="item-price" style="flex: 1; text-align: right;">$7.80&lt;/div>
+          &lt;/div>
+        
+          &lt;!-- Specific structure for item to match exactly what backend parser expects -->
+          &lt;div class="receipt-item" style="display: flex; margin-bottom: 5px;">
+            &lt;div class="item-name" style="flex: 3; text-align: left;">Dove Pink Soap &lt;/div>
+            &lt;div class="item-qty" style="flex: 1; text-align: center;">3&lt;/div>
+            &lt;div class="item-price" style="flex: 1; text-align: right;">$5.00&lt;/div>
+          &lt;/div>
+        
+      &lt;/div>
+      
+      &lt;!-- The class name below is critical for the backend receipt extractor -->
+      &lt;div id="receipt-totals" class="receipt-totals">
+        &lt;div class="subtotal receipt-total-row">
+          &lt;span class="total-label">Subtotal:&lt;/span>
+          &lt;span class="total-value">$38.40&lt;/span>
+        &lt;/div>
+        
+        
+        
+        
+          &lt;div class="tax receipt-total-row">
+            &lt;span class="total-label">Tax:&lt;/span>
+            &lt;span class="total-value">$3.17&lt;/span>
+          &lt;/div>
+        
+        
+        &lt;div class="total receipt-total-row">
+          &lt;span class="total-label">Total:&lt;/span>
+          &lt;span class="total-value">$41.57&lt;/span>
+        &lt;/div>
+      &lt;/div>
+      
+      &lt;div class="receipt-footer">
+        &lt;p class="payment-method">Payment Method: Cash&lt;/p>
+        &lt;p class="thank-you">Thank you for your business!&lt;/p>
+        Return policy: 30 days with receipt, for Qualified items Only!
+      &lt;/div>
+    &lt;/div>
+  

@@ -1,0 +1,19 @@
+SET @fk := (SELECT COUNT(1) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='stock_adjustments' AND CONSTRAINT_NAME='stock_adjustments_ibfk_1');
+SET @sql := IF(@fk>0, 'ALTER TABLE `stock_adjustments` DROP FOREIGN KEY `stock_adjustments_ibfk_1`', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @fk := (SELECT COUNT(1) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='stock_adjustments' AND CONSTRAINT_NAME='stock_adjustments_ibfk_2');
+SET @sql := IF(@fk>0, 'ALTER TABLE `stock_adjustments` DROP FOREIGN KEY `stock_adjustments_ibfk_2`', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+ALTER TABLE `stock_adjustments`
+  MODIFY COLUMN `product_id` char(36) NOT NULL,
+  MODIFY COLUMN `user_id` char(36) NOT NULL;
+
+SET @fk := (SELECT COUNT(1) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='stock_adjustments' AND CONSTRAINT_NAME='stock_adjustments_ibfk_1');
+SET @sql := IF(@fk=0, 'ALTER TABLE `stock_adjustments` ADD CONSTRAINT `stock_adjustments_ibfk_1` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @fk := (SELECT COUNT(1) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='stock_adjustments' AND CONSTRAINT_NAME='stock_adjustments_ibfk_2');
+SET @sql := IF(@fk=0, 'ALTER TABLE `stock_adjustments` ADD CONSTRAINT `stock_adjustments_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;

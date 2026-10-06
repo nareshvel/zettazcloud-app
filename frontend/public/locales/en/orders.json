@@ -1,0 +1,40 @@
+{
+  "title": "Orders",
+  "new_order": "New Order",
+  "order_list": "Order List",
+  "search": "Search orders...",
+  "columns": {
+    "order_id": "Order ID",
+    "customer": "Customer",
+    "date": "Date",
+    "amount": "Amount",
+    "status": "Status",
+    "payment": "Payment",
+    "actions": "Actions"
+  },
+  "filters": {
+    "all": "All Orders",
+    "pending": "Pending",
+    "processing": "Processing",
+    "completed": "Completed",
+    "cancelled": "Cancelled"
+  },
+  "status": {
+    "pending": "Pending",
+    "processing": "Processing",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "refunded": "Refunded"
+  },
+  "payment": {
+    "paid": "Paid",
+    "unpaid": "Unpaid",
+    "partial": "Partial"
+  },
+  "actions": {
+    "view": "View Details",
+    "edit": "Edit",
+    "delete": "Delete",
+    "print": "Print Invoice"
+  }
+}

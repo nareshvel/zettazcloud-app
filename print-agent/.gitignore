@@ -1,0 +1,6 @@
+dist-app/
+installer/macos/build/
+installer/windows/output/
+*.log
+.env
+.DS_Store

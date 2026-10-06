@@ -1,0 +1,21 @@
+{
+  "title": "డాష్‌బోర్డ్",
+  "welcome": "తిరిగి స్వాగతం",
+  "stats": {
+    "total_sales": "మొత్తం అమ్మకాలు",
+    "total_orders": "మొత్తం ఆర్డర్లు",
+    "total_customers": "మొత్తం కస్టమర్లు",
+    "total_products": "మొత్తం ఉత్పత్తులు"
+  },
+  "recent": {
+    "orders": "ఇటీవలి ఆర్డర్లు",
+    "customers": "ఇటీవలి కస్టమర్లు",
+    "view_all": "అన్నింటినీ చూడండి"
+  },
+  "charts": {
+    "sales_overview": "అమ్మకాల అవలోకనం",
+    "top_products": "అగ్ర ఉత్పత్తులు",
+    "sales_by_category": "వర్గం వారీగా అమ్మకాలు",
+    "monthly_revenue": "నెలవారీ ఆదాయం"
+  }
+}

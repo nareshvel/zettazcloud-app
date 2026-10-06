@@ -1,0 +1,33 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "saving": "Saving...",
+    "loading": "Loading..."
+  },
+  "roles": {
+    "manage_roles": "Manage Roles & Permissions",
+    "modal_description": "Assign or remove roles and manage user permissions",
+    "search_roles": "Search roles...",
+    "filter_roles": "Filter roles",
+    "filter_all": "All roles",
+    "filter_assigned": "Assigned roles",
+    "filter_unassigned": "Unassigned roles",
+    "no_roles_found": "No roles found",
+    "no_description": "No description available",
+    "permissions": "Permissions",
+    "loading_permissions": "Loading permissions...",
+    "no_permissions": "No permissions available for this role",
+    "system_role": "System role"
+  },
+  "errors": {
+    "error": "Error",
+    "load_roles_failed": "Failed to load roles",
+    "load_permissions_failed": "Failed to load permissions",
+    "save_roles_failed": "Failed to save role assignments"
+  },
+  "success": {
+    "roles_updated": "Roles updated successfully",
+    "roles_update_description": "The user's role assignments have been updated"
+  }
+}

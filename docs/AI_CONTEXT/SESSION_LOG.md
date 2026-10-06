@@ -1,0 +1,154 @@
+# AI Session Log
+
+Append-only. Newest entry at the bottom. See `HANDOFF_PROTOCOL.md` for the
+entry format and the rules around it. Don't rewrite or delete old entries —
+if something described here turned out to be wrong, add a new entry that
+says so rather than editing history.
+
+---
+
+## 2026-09-09 — Claude (Cowork)
+**Changed:** Added a per-transaction tax-mode override for duty-free/domestic
+sales (backend `createSaleController.js`, frontend `CartContext.tsx` +
+`Cart.tsx`), with real-world compliance logic — a walk-in customer with no
+traveller evidence can never be zero-rated, even via manual override. Fixed
+a React stale-state bug where switching the override back to Domestic didn't
+restore tax. Traced and fixed cashiers being able to see/click a Dashboard
+shortcut they shouldn't (`isAdminUser` vs. `dashboard.view` confusion —
+`dashboard.view` is deliberately granted to Cashier for an unrelated purpose
+and is NOT a valid admin-nav gate); added `isAdminUser()` to
+`permissionUtils.ts`, applied to `SalesHubPage.tsx` and `Breadcrumbs.tsx`,
+and removed `dashboard.view` from Cashier in both the live signup seed
+(`permissionSeedingService.js`) and existing tenants (migration
+`2026-09-03_remove_dashboard_view_from_cashier_roles.sql`, not yet run by
+the user). Added pagination (10/25/50/100 dropdown) to `ReusableTable.tsx`
+and wired it into `CustomersPage.tsx` and `StockCountPage.tsx`; fixed a
+missing `itemsPerPage` dependency in `StockCountPage.tsx`'s pagination memo
+that caused the row count to not update when the page-size dropdown changed.
+**Files:** `backend/controllers/createSaleController.js`,
+`frontend/src/contexts/CartContext.tsx`, `frontend/src/components/pos/Cart.tsx`,
+`frontend/src/services/templateReceiptService.ts`,
+`frontend/src/utils/permissionUtils.ts`,
+`frontend/src/components/common/Breadcrumbs.tsx`,
+`frontend/src/pages/SalesHubPage.tsx` (+ `.test.tsx`),
+`backend/services/permissionSeedingService.js`,
+`database/migrations/2026-09-03_sales_tax_mode_override_permission.sql`,
+`database/migrations/2026-09-03_remove_dashboard_view_from_cashier_roles.sql`,
+`frontend/src/components/ReusableTable.tsx`,
+`frontend/src/pages/StockCountPage.tsx`, `frontend/src/pages/CustomersPage.tsx`.
+**Verified:** `tsc --noEmit` clean throughout. `SalesHubPage.test.tsx` 30/30
+passing after the final `isAdminUser` fix. Tax-mode override logic reviewed
+against real-world compliance requirements but not yet exercised end-to-end
+against a live checkout. Pagination changes verified via `tsc` only, not
+manually clicked through in a browser.
+**In-flight / not yet done:**
+- User has NOT yet run `2026-09-03_remove_dashboard_view_from_cashier_roles.sql`
+  against the database — needs `npm run migrate:status` then `npm run migrate`.
+- Original "footer not pinned to page bottom" report was investigated (ruled
+  out stale template config) but never root-caused or fixed — may still be
+  broken.
+- No end-to-end test sale (walk-in + discount + duty-free override + print)
+  has been done since the tax-mode/stale-state/compliance fixes landed.
+- Reorganized the entire `docs/` folder (223 files, 33 old numbered folders)
+  into the new taxonomy described in `docs/README.md`: `AI_CONTEXT/`,
+  `ARCHITECTURE/`, `archive/`, `CLIENTS/`, `DECISIONS/`, `FEATURES/`,
+  `HANDOFF/`, `ISSUES_FIXES/`, `MODULES/`, `STRATEGY/`, `TESTING/`. Nothing
+  deleted — superseded/duplicate content (old GRN drafts, old RBAC migration
+  docs, `OLD_FILES_FOR_REFERENCE_ONLY/`) moved to `archive/`. `CLAUDE.md`'s
+  "Docs index" table still needs its paths updated to match — that's the
+  very next step in this session, not yet done as of this log entry.
+
+**Update, same session:** `CLAUDE.md`'s "Docs index" table and every other
+`docs/...` reference inside it (18 total) rewritten to the new paths and
+verified with a repo-wide grep — zero stale `docs/1-...` through `docs/18-...`
+references remain in `CLAUDE.md`, `AGENTS.md`, or any backend/frontend source
+file. Also discovered and filled in an empty "Imported Claude Cowork project
+instructions" section at the bottom of the pre-existing `AGENTS.md` (written
+by an earlier Codex/Cursor session) — it now points back to `CLAUDE.md` and
+`AI_CONTEXT/` instead of sitting empty; added a reciprocal pointer from
+`CLAUDE.md` to `AGENTS.md` so either file leads to both. Discovered `docs/`
+is entirely gitignored (`.gitignore` line 41) — no version history exists for
+any doc, old or new; flagged in `HANDOFF_PROTOCOL.md` as the reason this
+session log is the only durable record of doc changes, and recommended
+removing that gitignore line (not yet done — the user's call).
+**Known gap:** ~12 files *inside* `docs/` (mostly in `HANDOFF/`, `ARCHITECTURE/`,
+`STRATEGY/`) still contain internal cross-links to old sibling paths like
+`docs/17-migration-and-roadmap/NN_....md` pointing at docs that moved — these
+are doc-to-doc links, not code references, so nothing is broken outside
+`docs/`, but a reader following an old internal link inside one of these
+files will hit a 404. Not rewritten in this pass (223-file link audit was out
+of scope); worth a follow-up grep-and-fix pass if it becomes annoying.
+**Next:** Run the pending `dashboard.view` migration, do the deferred
+end-to-end sale/print test, revisit the footer-pinning report if the user
+hits it again, and optionally fix the internal doc cross-links noted above.
+
+---
+
+## 2026-09-09 — Claude (Cowork), follow-up
+**Changed:** User removed the `/docs/` line from `.gitignore` (line 41) —
+closing the gap flagged above. Ran `git add docs/ && git commit`, giving the
+whole reorganized 225-file structure a single baseline commit
+(`9ee16530c`) under `git config user.email/user.name` set to the project
+owner. Updated `HANDOFF_PROTOCOL.md`'s "Known gap" section to reflect that
+`docs/` is now tracked — `git log`/`git blame` work normally on doc paths
+going forward, though history before this commit doesn't exist (one-time
+gap from the baseline squash, not ongoing).
+**Files:** `.gitignore` (user's change), `docs/AI_CONTEXT/HANDOFF_PROTOCOL.md`.
+**Verified:** `git status --short docs` clean after commit; `git log -1
+--stat` confirms all 225 files landed in the one commit.
+**In-flight:** none.
+**Next:** No change to the prior entry's "Next" list — this was purely
+closing the git-tracking gap. Future doc edits get normal per-commit history
+from here on; no special handling needed.
+
+---
+
+## 2026-09-09 — Devin
+**Changed:** Built a native VoterMatrix-style aside menu in `Sidebar.tsx` (no Metronic/Bootstrap): dark navy floating rounded panel, bright-blue active leaf, grouped sections with uppercase headers, single-open accordion, permission/industry filtering, collapsed-mode flyouts, wider `w-72` panel, flattened Sales Floor, renamed Team → "Team & Access". Updated `MainLayout.tsx` offsets for the floating panel. Fixed idle/blank-menu issues in `i18n/index.ts` (always invoke backend read callback, even when tab is hidden) and `main.tsx` (dev-only reload after 2-min hidden). Wrapped `useI18n.ts` `t` in `useCallback` for stable dependency arrays.
+**Files:** `frontend/src/components/layout/Sidebar.tsx`, `frontend/src/components/layout/MainLayout.tsx`, `frontend/src/hooks/useI18n.ts`, `frontend/src/i18n/index.ts`, `frontend/src/main.tsx`.
+**Verified:** `npx tsc --noEmit`, `npx eslint` on changed files, and `npm run build` all clean. UI tested via screenshots/feedback during the session; no formal browser QA pass.
+**In-flight:** none — menu work is complete, though the user may further tweak rounded corners or copy the style to another app.
+**Next:** No change to the prior "Next" list: run the pending `dashboard.view` migration, do the end-to-end sale/print test, revisit footer-pinning if it recurs, and optionally fix the ~12 old internal doc cross-links.
+
+---
+
+## 2026-09-09 — Devin, pending-task audit
+**Changed:** Reviewed the `dashboard.view` migration status and the per-transaction duty-free override state against `CLAUDE.md`'s "Known pending work" list. `2026-09-03_remove_dashboard_view_from_cashier_roles.sql` is already applied to `digitpulse_zcloud` (shown by `npm run migrate:status`), so that item is done. The per-transaction sales-mode override for duty-free/domestic is implemented in `CartContext.tsx`, `Cart.tsx`, `createSaleController.js`, and the `sales.override_tax_mode` permission, so it is also built — `CLAUDE.md` was still listing it as pending. Updated `CLAUDE.md` "Known pending work" to reflect these two items are no longer open.
+**Files:** `docs/AI_CONTEXT/SESSION_LOG.md`, `docs/CLAUDE.md`.
+**Verified:** `npm run migrate:status` in `backend/` (65 applied, 0 pending); `grep` confirmed `sales.override_tax_mode` UI and backend code exist. Not field-verified with a live checkout.
+**In-flight:** none — audit and doc update only.
+**Next:** True remaining tasks are: end-to-end sale/print test, footer-pinning report if it recurs, ~12 internal doc cross-links, and the broader `CLAUDE.md` work that remains (Sales Hub glance strip, mobile/tablet QA, market-rate cron, `weight_unit` typing, Print Agent Go build vet, print-module next phases, etc.).
+
+---
+
+## 2026-09-10 — Devin
+**Changed:** Completed the Sales Hub glance strip: added `GET /api/sales-hub/glance` endpoint, `getSalesHubGlance()` service, and red count badges on the Repair and Memo out shortcuts. Investigated the "footer not pinned" report and confirmed the `pageFooter` block already pins correctly in both the print stylesheet and the canvas preview. Implemented the per-item `show_on_receipt` industry-attributes block for print templates: new `itemAttributes` block type, `PrintContext.fieldOverrides` plumbing in `saleToPrintData.ts`, renderer in `printTemplateRenderer.ts`, preview in `TemplateCanvas.tsx`, and `getTenantFieldOverrides('product')` supplied by `receiptService.ts`. Confirmed with the user that `cost_code` must **not** appear on customer-facing receipts/invoices — it remains internal-only.
+**Files:** `backend/controllers/salesHubController.js`, `backend/routes/salesHub.routes.js`, `frontend/src/services/salesHubService.ts`, `frontend/src/pages/SalesHubPage.tsx`, `frontend/src/types/printTemplate.ts`, `frontend/src/utils/saleToPrintData.ts`, `frontend/src/utils/printTemplateRenderer.ts`, `frontend/src/components/print-templates/TemplateCanvas.tsx`, `frontend/src/services/receiptService.ts`.
+**Verified:** `npx tsc --noEmit` in `frontend/` passes. No browser/print QA run.
+**In-flight:** none — the requested print/Sales Hub items are done.
+**Next:** Update `CLAUDE.md` "Known pending work" to remove the completed items.
+
+---
+
+## 2026-09-10 — Devin, follow-up
+**Changed:** Fixed the Memo & Consignment page `Overdue` KPI. It was incorrectly using `status='cancelled'` as its filter, so clicking it produced an empty list. The `Overdue` card now sets `statusFilter='overdue'`, `listMemosPaged` passes `overdue=1` to the backend, and `backend/routes/memo.routes.js` filters for `status='open' AND due_date < CURDATE()`.
+**Files:** `frontend/src/pages/MemoPage.tsx`, `frontend/src/services/jewelryOpsService.ts`, `backend/routes/memo.routes.js`.
+**Verified:** `npx tsc --noEmit` in `frontend/` passes.
+
+---
+
+## 2026-10-06 — Devin
+**Changed:** Created a PaisePath-style local Docker MySQL setup for Zettaz (`docker-compose.yml`). Restored the shared-hosting dump `digitpulse_zcloud.zip` into a local `digitpulse_zcloud` DB. The dump contained generated-column values that MySQL 8 rejects, so a preprocessing step removed them before import. Built a clean production dump at `database/dumps/digitpulse_zcloud_clean.sql` containing only the owner/test tenants (`Global Retail LLC / zettaz.com` plus the five `demo*` demo tenants); all real customer tenant data and rows were removed.
+**Files:** `docker-compose.yml` (new), `database/dumps/digitpulse_zcloud_clean.sql` (new).
+**Verified:** `docker compose up -d mysql` started cleanly; full dump loaded into `digitpulse_zcloud`; `digitpulse_zcloud_clean` contains 6 tenants, 10 users, 7 stores, 410 products, 49 sales (vs. 9 / 15 / 10 / 576 / 54 in the full dump); `mysqldump` of the clean DB produces a 4,287-line file with `CREATE DATABASE digitpulse_zcloud` and `USE digitpulse_zcloud`.
+**In-flight:** none.
+**Next:** Update `backend/.env` to point the local app at the Docker MySQL (`zettaz_dev` or `digitpulse_zcloud`) and import `database/dumps/digitpulse_zcloud_clean.sql` to the production server when ready.
+
+---
+
+## 2026-10-06 — Devin, production DB migration
+**Changed:** Migrated the production Zettaz backend from the shared remote MySQL (`mysql.us.cloudlogin.co`) to a local MySQL 8.0 instance on the production VPS. Steps: uploaded `digitpulse_zcloud_full.sql` to the server, created `zettazcloud_prod` database, restored the full dump, created `zettazcloud_systemadmin`@`127.0.0.1` DB user, updated `.env.production`/`backend/.env` to `MYSQL_HOST=localhost`/`MYSQL_DATABASE=zettazcloud_prod` and `BEHIND_REVERSE_PROXY=true`/`ENABLE_EXPRESS_CORS=true`. Switched nginx from remote to local MySQL by copying `.env.production` over `.env` and restarting `zettaz-api` via PM2.
+**Files:** `backend/.env` (server), `backend/.env.production` (server), `backend/controllers/reportsController.js` (server — 4 date-format fixes for MySQL 8 `DATE()` compatibility).
+**Verified:** PM2 `zettaz-api` starts with `Environment: production` and `Database setup check passed`; `https://api.zettaz.com/` returns 404 through nginx on port 5172; browser login to `https://cloud.zettaz.com` succeeds; dashboard loads without 500s after removing `NO_ZERO_DATE` from MySQL `sql_mode` and fixing date parameters.
+**In-flight:** MySQL `sql_mode` `NO_ZERO_DATE`/`NO_ZERO_IN_DATE` was removed with `SET GLOBAL` but is not yet persisted in `mysqld.cnf` — will revert on MySQL restart until added to config.
+**Next:** Persist the `sql_mode` change in `/etc/mysql/mysql.conf.d/mysqld.cnf` and restart MySQL; optionally commit the `reportsController.js` date-format fixes to source; verify the local `zettaz_dev` Docker setup remains working for local dev.

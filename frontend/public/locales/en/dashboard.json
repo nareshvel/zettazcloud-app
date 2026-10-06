@@ -1,0 +1,27 @@
+{
+  "title": "Dashboard",
+  "welcome": "Welcome back",
+  "stats": {
+    "revenue": "Revenue",
+    "orders": "Orders",
+    "customers": "Customers",
+    "products": "Products"
+  },
+  "recent": {
+    "orders": "Recent Orders",
+    "customers": "Recent Customers",
+    "view_all": "View All"
+  },
+  "charts": {
+    "sales": "Sales Overview",
+    "inventory": "Inventory Status"
+  },
+  "inventoryStatus": {
+    "lowStock": "Low Stock",
+    "mediumStock": "Medium Stock",
+    "highStock": "High Stock"
+  },
+  "errors": {
+    "loadInventoryFailed": "Failed to load inventory data"
+  }
+}

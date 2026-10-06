@@ -1,0 +1,108 @@
+{
+  "title": "सेटिंग्स",
+  "tabs": {
+    "general": "सामान्य",
+    "localization": "स्थानीयकरण",
+    "users": "उपयोगकर्ता",
+    "billing": "बिलिंग",
+    "notifications": "सूचनाएँ",
+    "integrations": "एकीकरण",
+    "security": "सुरक्षा"
+  },
+  "general": {
+    "title": "सामान्य सेटिंग्स",
+    "store_name": "स्टोर का नाम",
+    "store_phone": "फोन नंबर",
+    "store_email": "ईमेल पता",
+    "tax_rate": "कर दर (%)",
+    "store_address": "स्टोर का पता",
+    "store_logo": "स्टोर लोगो",
+    "change": "बदलें",
+    "save_changes": "परिवर्तन सहेजें"
+  },
+  "localization": {
+    "title": "स्थानीयकरण सेटिंग्स",
+    "description": "भाषा, दिनांक प्रारूप, मुद्रा और संख्या प्रारूप सहित क्षेत्रीय सेटिंग्स कॉन्फ़िगर करें।",
+    "language_selection": "भाषा चुनें",
+    "language_selection_help": "एप्लिकेशन इंटरफ़ेस के लिए अपनी पसंदीदा भाषा चुनें।",
+    "locale": "भाषा और क्षेत्र",
+    "locale_help": "डिफ़ॉल्ट भाषा और क्षेत्रीय प्रारूपण निर्धारित करता है",
+    "currency": "मुद्रा",
+    "currency_help": "सभी मूल्य और मौद्रिक मूल्य प्रदर्शनों के लिए उपयोग किया जाता है",
+    "number_format": "संख्या प्रारूप",
+    "number_format_help": "संख्याओं के लिए हजार विभाजक और दशमलव बिंदु को नियंत्रित करता है",
+    "decimal_precision": "दशमलव परिशुद्धता",
+    "decimal_precision_help": "मौद्रिक मूल्यों और मात्राओं के लिए दिखाने के लिए दशमलव स्थानों की संख्या",
+    "measurement_system": "मापन प्रणाली",
+    "measurement_system_help": "वजन, लंबाई और आयतन के लिए उपयोग की जाने वाली इकाइयां",
+    "date_format": "दिनांक प्रारूप",
+    "date_format_help": "पूरे एप्लिकेशन में दिनांक प्रदर्शित करने के लिए प्रारूप",
+    "time_format": "समय प्रारूप",
+    "time_format_help": "पूरे एप्लिकेशन में समय प्रदर्शित करने के लिए प्रारूप",
+    "timezone": "समय क्षेत्र",
+    "timezone_help": "दिनांक और समय की गणना के लिए उपयोग किया जाने वाला समय क्षेत्र",
+    "preview": "पूर्वावलोकन",
+    "preview_currency": "मुद्रा",
+    "preview_date": "तिथि",
+    "option": {
+      "metric": "मेट्रिक (किग्रा, सेमी, लीटर)",
+      "imperial": "इम्पीरियल (पाउंड, इंच, गैलन)"
+    }
+  },
+  "success_message": "सेटिंग्स सफलतापूर्वक सहेजी गईं",
+  "error_message": "सेटिंग्स सहेजने में विफल",
+  
+  "payments": {
+    "title": "भुगतान सेटिंग्स",
+    "cash": "नकद",
+    "enabled": "सक्षम",
+    "card": "क्रेडिट/डेबिट कार्ड",
+    "upi": "UPI",
+    "stripe": "Stripe",
+    "stripe_description": "ऑनलाइन भुगतान स्वीकार करने के लिए Stripe से जुड़ें",
+    "connect": "जुड़ें"
+  },
+  
+  "users": {
+    "title": "उपयोगकर्ता प्रबंधन",
+    "add_user": "उपयोगकर्ता जोड़ें",
+    "name": "नाम",
+    "email": "ईमेल",
+    "role": "भूमिका",
+    "status": "स्थिति",
+    "actions": "कार्रवाई",
+    "admin": "प्रशासक",
+    "manager": "प्रबंधक",
+    "cashier": "कैशियर",
+    "active": "सक्रिय",
+    "edit": "संपादित करें",
+    "deactivate": "निष्क्रिय करें"
+  },
+  
+  "security": {
+    "title": "सुरक्षा सेटिंग्स",
+    "password_requirements": "पासवर्ड आवश्यकताएं",
+    "minimum_characters": "न्यूनतम 8 अक्षर",
+    "uppercase_letter": "कम से कम एक बड़ा अक्षर",
+    "number": "कम से कम एक संख्या",
+    "special_character": "कम से कम एक विशेष कैरेक्टर",
+    "session_settings": "सत्र सेटिंग्स",
+    "session_timeout": "सत्र समय समाप्ति (मिनटों में)",
+    "logout_browser_close": "ब्राउज़र बंद होने पर लॉगआउट",
+    "two_factor_authentication": "दो कारक प्रमाणीकरण",
+    "setup_2fa": "2FA सेटअप करें",
+    "save_security_settings": "सुरक्षा सेटिंग्स सहेजें"
+  },
+  
+  "notifications": {
+    "title": "सूचना सेटिंग्स",
+    "email_notifications": "ईमेल सूचनाएं",
+    "low_stock_alerts": "कम स्टॉक अलर्ट",
+    "daily_sales_summary": "दैनिक बिक्री सारांश",
+    "user_account_activity": "उपयोगकर्ता खाता गतिविधि",
+    "in_app_notifications": "ऐप में सूचनाएं",
+    "real_time_low_stock_alerts": "रीयल-टाइम कम स्टॉक अलर्ट",
+    "system_updates_and_announcements": "सिस्टम अपडेट और घोषणाएं",
+    "save_notification_settings": "सूचना सेटिंग्स सहेजें"
+  }
+}

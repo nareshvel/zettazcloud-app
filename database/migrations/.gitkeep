@@ -1,0 +1,2 @@
+# Empty on purpose: pending (un-applied) migrations live here.
+# After applying a migration to the database, move it to ./applied/

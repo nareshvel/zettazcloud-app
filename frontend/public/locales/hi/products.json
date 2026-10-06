@@ -1,0 +1,39 @@
+{
+  "title": "उत्पाद",
+  "add_product": "उत्पाद जोड़ें",
+  "product_list": "उत्पाद सूची",
+  "search": "उत्पाद खोजें...",
+  "columns": {
+    "id": "आईडी",
+    "name": "नाम",
+    "category": "श्रेणी",
+    "price": "मूल्य",
+    "stock": "स्टॉक",
+    "status": "स्थिति",
+    "actions": "कार्रवाई"
+  },
+  "filters": {
+    "all": "सभी",
+    "active": "सक्रिय",
+    "inactive": "निष्क्रिय",
+    "low_stock": "कम स्टॉक"
+  },
+  "details": {
+    "basic_info": "मूल जानकारी",
+    "pricing": "मूल्य निर्धारण",
+    "inventory": "इन्वेंटरी",
+    "media": "मीडिया",
+    "variants": "प्रकार"
+  },
+  "status": {
+    "active": "सक्रिय",
+    "inactive": "निष्क्रिय",
+    "discontinued": "बंद किया गया"
+  },
+  "messages": {
+    "product_added": "उत्पाद सफलतापूर्वक जोड़ा गया",
+    "product_updated": "उत्पाद सफलतापूर्वक अपडेट किया गया",
+    "product_deleted": "उत्पाद सफलतापूर्वक हटा दिया गया",
+    "confirm_delete": "क्या आप वाकई इस उत्पाद को हटाना चाहते हैं?"
+  }
+}

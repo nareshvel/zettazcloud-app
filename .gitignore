@@ -1,0 +1,68 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?;
+
+# Editor directories and files
+backup_collapsed/*
+
+print-agent/dist-app
+print-agent/installer/macos/build*
+print-agent/installer/macos/zettaz-print-agent-macos.pkg
+
+*/env.production
+local.crt
+local.key
+localhost-key.pem
+localhost.pem
+
+# Environment files containing secrets
+/scripts/
+database/backup/*
+database/dumps/*
+backend/.env
+frontend/.env
+frontend/.env.production
+
+# Runtime data and server-only files
+backend/.env*
+backend/.env.*
+backend/ecosystem.config.js
+backend/uploads/
+frontend/public/downloads/*.pkg
+frontend/public/downloads/manifest.json
+graphify-out/
+
+# Local/dev/generated files
+.devin/
+*.tsbuildinfo
+backend/*.db
+backend/*.sqlite
+backend/dashboard_response.json
+backend/fix_dairy_eggs_image_url.sql
+backend/public/uploads/
+backend/public/images/products/
+backend/public/*test*.html
+backend/middleware/backup/
+frontend/tailwind.config new*.js
+frontend/tailwind.config original.js

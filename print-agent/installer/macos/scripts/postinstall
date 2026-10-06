@@ -1,0 +1,14 @@
+#!/bin/sh
+/usr/bin/pkill -f "^/Applications/Zettaz Print Agent.app/Contents/MacOS/zettaz-print-agent$" 2>/dev/null || true
+/usr/bin/pkill -f "^/Applications/Zettaz Print Agent.app/Contents/MacOS/zettaz-print-agent-service$" 2>/dev/null || true
+chmod +x "/Applications/Zettaz Print Agent.app/Contents/MacOS/zettaz-print-agent"
+chmod +x "/Applications/Zettaz Print Agent.app/Contents/MacOS/zettaz-print-agent-service"
+CONSOLE_USER=$(/usr/bin/stat -f '%Su' /dev/console)
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && [ "$CONSOLE_USER" != "loginwindow" ]; then
+  USER_ID=$(/usr/bin/id -u "$CONSOLE_USER")
+  # The installer's TMPDIR points to a sandbox that is deleted after install.
+  # Clear it so the launched app gets a normal, persistent user temp directory.
+  unset TMPDIR
+  /bin/launchctl asuser "$USER_ID" /usr/bin/open -a "/Applications/Zettaz Print Agent.app" || true
+fi
+exit 0

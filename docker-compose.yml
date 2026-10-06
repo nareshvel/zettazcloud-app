@@ -1,0 +1,32 @@
+version: '3.8'
+
+# Local dev infrastructure. App services run via npm:
+#   backend:  cd backend && npm run dev   (port 5172)
+#   frontend: cd frontend && npm run dev   (port 5173)
+#
+# Usage: docker compose up -d mysql
+# Then point backend/.env at: MYSQL_HOST=localhost MYSQL_PORT=3306
+#   MYSQL_USER=zettaz MYSQL_PASSWORD=zettaz_dev MYSQL_DATABASE=zettaz_dev
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: zettaz-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: zettaz_dev
+      MYSQL_USER: zettaz
+      MYSQL_PASSWORD: zettaz_dev
+    ports:
+      - "3306:3306"
+    volumes:
+      - zettaz_mysql_data:/var/lib/mysql
+    networks:
+      - zettaz-network
+
+volumes:
+  zettaz_mysql_data:
+
+networks:
+  zettaz-network:
+    driver: bridge

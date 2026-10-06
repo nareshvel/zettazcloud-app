@@ -1,0 +1,67 @@
+{
+  "language": "Langue",
+  "app": {
+    "name": "Zettaz Cloud Enterprise",
+    "loading": "Chargement...",
+    "error": "Une erreur est survenue",
+    "confirm": "Êtes-vous sûr ?"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "pos": "Caisse",
+    "inventory": "Inventaire",
+    "products": "Produits",
+    "suppliers": "Fournisseurs",
+    "purchase_orders": "Bons de Commande",
+    "goods_receiving": "Réception des Marchandises",
+    "customers": "Clients",
+    "orders": "Commandes de Vente",
+    "sales_return": "Retour de Vente",
+    "reports": "Rapports",
+    "settings": "Paramètres",
+    "user_management": "Gestion des Utilisateurs",
+    "employees": "Employees",
+    "repairs": "Repairs",
+    "old_gold": "Old Gold",
+    "serialized_stock": "Serialized Stock",
+    "memos": "Memo & Consignment",
+    "layaways": "Layaway",
+    "savings_schemes": "Savings Schemes",
+    "metal_rates": "Metal Rates",
+    "catalog_channels": "Sales Channels",
+    "jewelry_valuation": "Purity Valuation",
+    "cycle_count": "Inventaire Cyclique",
+    "users_roles": "Utilisateurs et Rôles"
+  },
+  "sections": {
+    "sales_operations": "Opérations de Vente",
+    "sales_return": "Retour de Vente",
+    "inventory": "Inventaire",
+    "customers": "Clients",
+    "reports": "Rapports",
+    "system": "Système",
+    "administration": "Administration"
+  },
+  "actions": {
+    "add": "Ajouter",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "search": "Rechercher",
+    "filter": "Filtrer",
+    "view": "Voir",
+    "print": "Imprimer",
+    "export": "Exporter",
+    "import": "Importer"
+  },
+  "messages": {
+    "saved": "Enregistré avec succès",
+    "deleted": "Supprimé avec succès",
+    "error": "Une erreur est survenue",
+    "required": "Ce champ est obligatoire",
+    "invalid": "Ce champ n'est pas valide",
+    "confirm_delete": "Êtes-vous sûr de vouloir supprimer cet élément ?"
+  }
+}

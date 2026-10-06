@@ -1,0 +1,32 @@
+{
+  "title": "Productos",
+  "add_product": "Añadir Producto",
+  "product_list": "Lista de Productos",
+  "search": "Buscar productos...",
+  "columns": {
+    "name": "Nombre",
+    "sku": "SKU",
+    "category": "Categoría",
+    "price": "Precio",
+    "stock": "Existencias",
+    "status": "Estado",
+    "actions": "Acciones"
+  },
+  "filters": {
+    "all": "Todos los Productos",
+    "active": "Activos",
+    "low_stock": "Bajo Stock",
+    "out_of_stock": "Sin Stock"
+  },
+  "actions": {
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "view": "Ver Detalles"
+  },
+  "status": {
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "low_stock": "Bajo Stock",
+    "out_of_stock": "Sin Stock"
+  }
+}

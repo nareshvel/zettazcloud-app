@@ -1,0 +1,183 @@
+{
+  "manage_roles_for": "Manage Roles for",
+  "manage_description": "Assign or remove roles for this user. Each role provides a set of permissions.",
+  "search_roles": "Search roles...",
+  "filter_all": "All",
+  "filter_assigned": "Assigned",
+  "filter_unassigned": "Unassigned",
+  "system_role": "System Role",
+  "permissions": "Permissions",
+  "loading_permissions": "Loading permissions...",
+  "no_roles_found": "No roles found",
+  "all_permissions": "All Permissions",
+  "loading_roles": "Loading roles...",
+  "error_loading": "Error loading roles",
+  "roles_updated": "User roles updated successfully",
+  "error_updating": "Error updating user roles",
+  
+  "permissions_module": {
+    "sales": "Sales",
+    "customers": "Customers",
+    "products": "Products",
+    "inventory": "Inventory",
+    "dashboard": "Dashboard",
+    "reports": "Reports",
+    "categories": "Categories",
+    "users": "Users",
+    "roles": "Roles",
+    "settings": "Settings",
+    "stores": "Stores",
+    "tenant": "Tenant",
+    "system": "System",
+    "platform": "Platform"
+  },
+  
+  "permissions_actions": {
+    "view": "View",
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "import": "Import",
+    "export": "Export",
+    "refund": "Refund",
+    "void": "Void",
+    "discount": "Discount",
+    "adjust": "Adjust",
+    "history": "View History",
+    "transfer": "Transfer",
+    "upgrade": "Upgrade"
+  },
+  
+  "permission_names": {
+    "sales.create": "Create Sales",
+    "sales.view": "View Sales",
+    "sales.refund": "Process Refunds",
+    "sales.void": "Void Transactions",
+    "sales.discount": "Apply Discounts",
+    "sales.history": "View Sales History",
+    "sales.export": "Export Sales Data",
+    "sales.delete": "Delete Sales",
+    
+    "customers.view": "View Customers",
+    "customers.create": "Create Customers",
+    "customers.edit": "Edit Customer Data",
+    "customers.delete": "Delete Customers",
+    "customers.import": "Import Customers",
+    "customers.export": "Export Customers",
+    
+    "products.view": "View Products",
+    "products.create": "Create Products",
+    "products.edit": "Edit Products",
+    "products.delete": "Delete Products",
+    "products.import": "Import Products",
+    "products.export": "Export Products",
+    
+    "inventory.view": "View Inventory",
+    "inventory.adjust": "Adjust Inventory",
+    "inventory.transfer": "Transfer Inventory",
+    "inventory.import": "Import Inventory",
+    "inventory.export": "Export Inventory",
+    
+    "categories.view": "View Categories",
+    "categories.create": "Create Categories",
+    "categories.edit": "Edit Categories",
+    "categories.delete": "Delete Categories",
+    
+    "dashboard.view": "View Dashboard",
+    
+    "reports.view": "View Reports",
+    "reports.export": "Export Reports",
+    
+    "users.view": "View Users",
+    "users.create": "Create Users",
+    "users.edit": "Edit Users",
+    "users.delete": "Delete Users",
+    
+    "roles.view": "View Roles",
+    "roles.create": "Create Roles",
+    "roles.edit": "Edit Roles",
+    "roles.delete": "Delete Roles",
+    
+    "settings.view": "View Settings",
+    "settings.edit": "Edit Settings",
+    
+    "stores.view": "View Stores",
+    "stores.create": "Create Stores",
+    "stores.edit": "Edit Stores",
+    "stores.delete": "Delete Stores",
+    
+    "tenant.view": "View Tenant Information",
+    "tenant.edit": "Edit Tenant Information",
+    "tenant.subscription.view": "View Subscription",
+    "tenant.subscription.upgrade": "Upgrade Subscription",
+    
+    "system.view": "View System Settings",
+    "system.edit": "Edit System Settings",
+    "system.maintenance": "Perform System Maintenance",
+    
+    "platform.view": "View Platform Settings",
+    "platform.edit": "Edit Platform Settings",
+    "platform.manage": "Manage Platform",
+    
+    "system.users.view": "View System Users",
+    "system.users.create": "Create System Users",
+    "system.users.edit": "Edit System Users",
+    "system.users.delete": "Delete System Users",
+    
+    "platform.tenants.view": "View Tenants",
+    "platform.tenants.create": "Create Tenants",
+    "platform.tenants.edit": "Edit Tenants",
+    "platform.tenants.delete": "Delete Tenants",
+    
+    "platform.settings.view": "View Platform Settings",
+    "platform.settings.edit": "Edit Platform Settings"
+  },
+  
+  "permission_descriptions": {
+    "sales.create": "Create new sales and transactions",
+    "sales.view": "View sales history and details",
+    "sales.refund": "Process refunds for existing sales",
+    "sales.void": "Cancel transactions before they're finalized",
+    "sales.discount": "Apply discounts to sales items",
+    "sales.history": "Access historical sales data",
+    "sales.export": "Export sales data to external formats",
+    "sales.delete": "Permanently remove sales records",
+    
+    "customers.view": "View customer details and history",
+    "customers.create": "Add new customers to the system",
+    "customers.edit": "Modify existing customer information",
+    "customers.delete": "Remove customers from the database",
+    "customers.import": "Import customer data from external sources",
+    "customers.export": "Export customer data to external formats",
+    
+    "products.view": "Browse and search products",
+    "products.create": "Add new products to inventory",
+    "products.edit": "Modify product details and pricing",
+    "products.delete": "Remove products from the catalog",
+    "products.import": "Import product data from external sources",
+    "products.export": "Export product data to external formats",
+    
+    "inventory.view": "Check current inventory levels",
+    "inventory.adjust": "Make manual adjustments to inventory",
+    "inventory.transfer": "Move inventory between locations",
+    
+    "dashboard.view": "Access the dashboard and overview reports",
+    
+    "reports.view": "Access detailed business reports",
+    "reports.export": "Export reports to external formats",
+    
+    "roles.view": "See available roles and their permissions",
+    "roles.create": "Create new roles for users",
+    "roles.edit": "Modify existing role permissions",
+    
+    "users.view": "View user accounts in the system",
+    "users.create": "Create new user accounts",
+    "users.edit": "Modify user account details and permissions",
+    
+    "tenant.view": "View tenant information and settings",
+    "tenant.subscription.view": "View subscription details and status",
+    
+    "system.view": "View system configuration settings",
+    "platform.view": "View platform-wide settings and options"
+  }
+}

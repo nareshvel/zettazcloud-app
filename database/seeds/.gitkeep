@@ -1,0 +1,2 @@
+# Empty on purpose: pending (un-applied) seeds live here.
+# After applying a seed, move it to ./applied/

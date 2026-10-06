@@ -1,0 +1,168 @@
+{
+  "title": "Settings",
+  "tabs": {
+    "general": "General",
+    "localization": "Localization",
+    "users": "Users",
+    "billing": "Billing",
+    "notifications": "Notifications",
+    "integrations": "Integrations",
+    "security": "Security"
+  },
+  "general": {
+    "title": "General Settings",
+    "store_name": "Store Name",
+    "store_phone": "Phone Number",
+    "store_email": "Email Address",
+    "tax_rate": "Tax Rate (%)",
+    "store_address": "Store Address",
+    "store_logo": "Store Logo",
+    "change": "Change",
+    "save_changes": "Save Changes"
+  },
+  "localization": {
+    "title": "Localization Settings",
+    "description": "Configure regional settings including language, date formats, currency, and number formats.",
+    "language_selection": "Select Language",
+    "language_selection_help": "Choose your preferred language for the application interface.",
+    "locale": "Locale",
+    "locale_help": "Determines language and regional formatting defaults",
+    "currency": "Currency",
+    "currency_help": "Used for all price and monetary value displays",
+    "number_format": "Number Format",
+    "number_format_help": "Controls the thousand separator and decimal point for numbers",
+    "decimal_precision": "Decimal Precision",
+    "decimal_precision_help": "Number of decimal places to show for monetary values and quantities",
+    "measurement_system": "Measurement System",
+    "measurement_system_help": "Units used for weight, length, and volume throughout the system",
+    "date_format": "Date Format",
+    "date_format_help": "Format for displaying dates throughout the application",
+    "time_format": "Time Format",
+    "time_format_help": "Format for displaying times throughout the application",
+    "timezone": "Timezone",
+    "timezone_help": "Timezone used for date and time calculations",
+    "preview": "Preview",
+    "preview_currency": "Currency",
+    "preview_date": "Date",
+    "save_changes": "Save Localization Settings",
+    "option": {
+      "metric": "Metric (kg, cm, L)",
+      "imperial": "Imperial (lb, in, gal)"
+    }
+  },
+  "success_message": "Settings saved successfully",
+  "error_message": "Failed to save settings",
+  
+  "payments": {
+    "title": "Payment Settings",
+    "cash": "Cash",
+    "enabled": "Enabled",
+    "card": "Credit/Debit Card",
+    "upi": "UPI",
+    "stripe": "Stripe",
+    "stripe_description": "Connect with Stripe to accept online payments",
+    "connect": "Connect"
+  },
+  
+  "users": {
+    "title": "User Management",
+    "add_user": "Add User",
+    "name": "Name",
+    "email": "Email",
+    "role": "Role",
+    "status": "Status",
+    "actions": "Actions",
+    "admin": "Admin",
+    "manager": "Manager",
+    "cashier": "Cashier",
+    "active": "Active",
+    "edit": "Edit",
+    "deactivate": "Deactivate"
+  },
+  
+  "security": {
+    "title": "Security Settings",
+    "password_requirements": "Password Requirements",
+    "minimum_characters": "Minimum 8 characters",
+    "uppercase_letter": "At least one uppercase letter",
+    "number": "At least one number",
+    "special_character": "At least one special character",
+    "session_settings": "Session Settings",
+    "session_timeout": "Session Timeout (minutes)",
+    "logout_browser_close": "Logout on browser close",
+    "two_factor_authentication": "Two-Factor Authentication",
+    "setup_2fa": "Set up 2FA",
+    "save_security_settings": "Save Security Settings",
+    "change_password_title": "Change Password",
+    "current_password_label": "Current Password",
+    "new_password_label": "New Password",
+    "confirm_new_password_label": "Confirm New Password",
+    "password_mismatch_error": "New passwords do not match.",
+    "password_length_error": "Password must be at least 8 characters.",
+    "all_password_fields_required": "Please fill in all password fields.",
+    "change_password_button": "Change Password",
+    "password_changed_success": "Password changed successfully.",
+    "password_change_failed": "Failed to change password. Please check your current password.",
+    "two_factor_auth_title": "Two-Factor Authentication",
+    "two_factor_auth_description": "Add an extra layer of security to your account.",
+    "two_factor_auth_status_enabled": "Two-Factor Authentication is enabled.",
+    "two_factor_auth_status_disabled": "Two-Factor Authentication is disabled.",
+    "disable_two_factor_auth_button": "Disable 2FA",
+    "enable_two_factor_auth_button": "Enable 2FA",
+    "two_factor_auth_disabled_toast": "Two-Factor Authentication disabled.",
+    "two_factor_auth_enabled_toast": "Two-Factor Authentication enabled."
+  },
+  
+  "notifications": {
+    "title": "Notification Settings",
+    "email_notifications": "Email Notifications",
+    "low_stock_alerts": "Low Stock Alerts",
+    "daily_sales_summary": "Daily Sales Summary",
+    "user_account_activity": "User Account Activity",
+    "in_app_notifications": "In-App Notifications",
+    "real_time_low_stock_alerts": "Real-time Low Stock Alerts",
+    "system_updates_and_announcements": "System Updates & Announcements",
+    "save_notification_settings": "Save Notification Settings",
+    "description": "Manage how you receive notifications from us.",
+    "product_updates_label": "Product Updates",
+    "product_updates_description": "Get notified about new features and product improvements.",
+    "promotional_offers_label": "Promotional Offers",
+    "promotional_offers_description": "Receive information about special offers and discounts.",
+    "security_alerts_label": "Security Alerts",
+    "security_alerts_description": "Receive notifications for important security events related to your account.",
+    "preference_updated": "preference updated"
+  },
+  "billing": {
+    "title": "Billing & Subscriptions",
+    "coming_soon_title": "Billing Feature Coming Soon!",
+    "coming_soon_description": "We're working hard to bring you a comprehensive billing and subscription management system. Stay tuned for updates.",
+    "current_plan_label": "Current Plan",
+    "upgrade_button": "Upgrade Plan",
+    "manage_subscription_button": "Manage Subscription",
+    "plans": {
+      "free": {
+        "name": "Starter",
+        "price": "$49/month",
+        "feature1": "Basic access to core features",
+        "feature2": "Limited data storage",
+        "feature3": "Community support"
+      },
+      "standard": {
+        "name": "Standard Plan",
+        "price": "$69/month",
+        "feature1": "Full access to core features",
+        "feature2": "Increased data storage",
+        "feature3": "Email support",
+        "feature4": "Basic analytics"
+      },
+      "premium": {
+        "name": "Premium Plan",
+        "price": "$99/month",
+        "feature1": "All Standard features",
+        "feature2": "Unlimited data storage",
+        "feature3": "Priority support",
+        "feature4": "Advanced analytics & reporting"
+      }
+    }
+  }
+}

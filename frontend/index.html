@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/images/zettaz-cloud-icon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/zettaz-cloud-icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zettaz Cloud - Enterprise POS System</title>
+    <script>
+      // Suppress console logs
+      (function() {
+        // Store original console methods
+        const originalConsole = {
+          log: console.log,
+          info: console.info,
+          warn: console.warn
+        };
+
+        // Filter patterns we want to suppress
+        const suppressPatterns = [
+          'Download the React DevTools',
+          'Initialized driver at',
+          'i18next',
+          'Initialized chextloader'
+        ];
+
+        // Override console methods to filter out unwanted logs
+        console.log = function(...args) {
+          if (args.length === 0 || !suppressPatterns.some(pattern => 
+              typeof args[0] === 'string' && args[0].includes(pattern))) {
+            originalConsole.log(...args);
+          }
+        };
+
+        console.info = function(...args) {
+          if (args.length === 0 || !suppressPatterns.some(pattern => 
+              typeof args[0] === 'string' && args[0].includes(pattern))) {
+            originalConsole.info(...args);
+          }
+        };
+
+        console.warn = function(...args) {
+          if (args.length === 0 || !suppressPatterns.some(pattern => 
+              typeof args[0] === 'string' && args[0].includes(pattern))) {
+            originalConsole.warn(...args);
+          }
+        };
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

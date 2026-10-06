@@ -1,0 +1,68 @@
+{
+  "language": "Language",
+  "app": {
+    "name": "Zettaz Cloud Enterprise",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "confirm": "Are you sure?"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "pos": "POS Screen",
+    "inventory": "Inventory",
+    "products": "Products",
+    "suppliers": "Suppliers",
+    "purchase_orders": "Purchase Orders",
+    "goods_receiving": "Goods Receiving",
+    "customers": "Customers",
+    "orders": "Sales Orders",
+    "sales_return": "Sales Return",
+    "promotions": "Promotional Offers",
+    "reports": "Reports",
+    "settings": "Settings",
+    "user_management": "User Management",
+    "employees": "Employees",
+    "repairs": "Repairs",
+    "old_gold": "Old Gold",
+    "serialized_stock": "Serialized Stock",
+    "memos": "Memo & Consignment",
+    "layaways": "Layaway",
+    "savings_schemes": "Savings Schemes",
+    "metal_rates": "Metal Rates",
+    "catalog_channels": "Sales Channels",
+    "jewelry_valuation": "Purity Valuation",
+    "cycle_count": "Cycle Count",
+    "users_roles": "Users & Roles"
+  },
+  "sections": {
+    "sales_operations": "Sales Operations",
+    "sales_return": "Sales Return",
+    "inventory": "Inventory",
+    "customers": "Customers",
+    "reports": "Reports",
+    "system": "System",
+    "administration": "Administration"
+  },
+  "actions": {
+    "add": "Add",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "search": "Search",
+    "filter": "Filter",
+    "view": "View",
+    "print": "Print",
+    "export": "Export",
+    "import": "Import"
+  },
+  "messages": {
+    "saved": "Successfully saved",
+    "deleted": "Successfully deleted",
+    "error": "An error occurred",
+    "required": "This field is required",
+    "invalid": "This field is invalid",
+    "confirm_delete": "Are you sure you want to delete this item?"
+  }
+}

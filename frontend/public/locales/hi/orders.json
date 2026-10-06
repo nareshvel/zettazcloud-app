@@ -1,0 +1,40 @@
+{
+  "title": "आदेश",
+  "new_order": "नया आदेश",
+  "order_list": "आदेश सूची",
+  "search": "आदेश खोजें...",
+  "columns": {
+    "id": "आदेश आईडी",
+    "customer": "ग्राहक",
+    "date": "दिनांक",
+    "status": "स्थिति",
+    "total": "कुल",
+    "actions": "कार्रवाई"
+  },
+  "status": {
+    "pending": "अपूर्ण",
+    "processing": "प्रसंस्करण",
+    "shipped": "भेज दिया गया",
+    "delivered": "पहुंचा दिया गया",
+    "cancelled": "रद्द किया गया",
+    "refunded": "वापस किया गया"
+  },
+  "details": {
+    "summary": "आदेश सारांश",
+    "items": "आदेश वस्तुएं",
+    "customer_info": "ग्राहक जानकारी",
+    "shipping": "शिपिंग जानकारी",
+    "payment": "भुगतान जानकारी"
+  },
+  "actions": {
+    "update_status": "स्थिति अपडेट करें",
+    "print_invoice": "चालान प्रिंट करें",
+    "cancel_order": "आदेश रद्द करें",
+    "refund": "धनवापसी"
+  },
+  "messages": {
+    "order_created": "आदेश सफलतापूर्वक बनाया गया",
+    "order_updated": "आदेश सफलतापूर्वक अपडेट किया गया",
+    "confirm_cancel": "क्या आप वाकई इस आदेश को रद्द करना चाहते हैं?"
+  }
+}

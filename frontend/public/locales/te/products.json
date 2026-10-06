@@ -1,0 +1,52 @@
+{
+  "title": "ఉత్పత్తులు",
+  "add_product": "ఉత్పత్తిని జోడించండి",
+  "product_list": "ఉత్పత్తుల జాబితా",
+  "search": "ఉత్పత్తులను శోధించండి...",
+  "columns": {
+    "image": "చిత్రం",
+    "name": "పేరు",
+    "sku": "SKU",
+    "price": "ధర",
+    "stock": "స్టాక్",
+    "category": "వర్గం",
+    "status": "స్థితి",
+    "actions": "చర్యలు"
+  },
+  "form": {
+    "basic_info": "ప్రాథమిక సమాచారం",
+    "pricing": "ధర నిర్ణయం",
+    "inventory": "ఇన్వెంటరీ",
+    "product_name": "ఉత్పత్తి పేరు",
+    "product_description": "ఉత్పత్తి వివరణ",
+    "product_sku": "ఉత్పత్తి SKU",
+    "product_image": "ఉత్పత్తి చిత్రం",
+    "product_category": "ఉత్పత్తి వర్గం",
+    "product_price": "ఉత్పత్తి ధర",
+    "product_cost": "ఉత్పత్తి ఖర్చు",
+    "product_tax": "ఉత్పత్తి పన్ను",
+    "product_stock": "ఉత్పత్తి స్టాక్",
+    "low_stock_threshold": "తక్కువ స్టాక్ థ్రెషోల్డ్",
+    "manage_stock": "స్టాక్ నిర్వహించండి",
+    "status": "స్థితి",
+    "upload_image": "చిత్రాన్ని అప్‌లోడ్ చేయండి",
+    "drag_drop": "చిత్రాన్ని డ్రాగ్ & డ్రాప్ చేయండి లేదా"
+  },
+  "status": {
+    "active": "యాక్టివ్",
+    "inactive": "ఇన్‌యాక్టివ్",
+    "out_of_stock": "స్టాక్ అయిపోయింది"
+  },
+  "validation": {
+    "name_required": "ఉత్పత్తి పేరు అవసరం",
+    "sku_required": "SKU అవసరం",
+    "price_required": "ధర అవసరం",
+    "price_numeric": "ధర సంఖ్యలో ఉండాలి"
+  },
+  "messages": {
+    "product_added": "ఉత్పత్తి విజయవంతంగా జోడించబడింది",
+    "product_updated": "ఉత్పత్తి విజయవంతంగా నవీకరించబడింది",
+    "product_deleted": "ఉత్పత్తి విజయవంతంగా తొలగించబడింది",
+    "error": "ఏదో తప్పు జరిగింది. దయచేసి మళ్ళీ ప్రయత్నించండి."
+  }
+}

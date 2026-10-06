@@ -1,0 +1,67 @@
+{
+  "language": "भाषा",
+  "app": {
+    "name": "Zettaz Cloud Enterprise",
+    "loading": "लोड हो रहा है...",
+    "error": "एक त्रुटि हुई",
+    "confirm": "क्या आप सुनिश्चित हैं?"
+  },
+  "nav": {
+    "dashboard": "डैशबोर्ड",
+    "pos": "बिक्री पॉइंट",
+    "inventory": "इन्वेंटरी",
+    "products": "उत्पाद",
+    "suppliers": "आपूर्तिकर्ता",
+    "purchase_orders": "खरीद आदेश",
+    "goods_receiving": "माल प्राप्ति",
+    "customers": "ग्राहक",
+    "orders": "बिक्री आदेश",
+    "sales_return": "बिक्री वापसी",
+    "reports": "रिपोर्ट",
+    "settings": "सेटिंग्स",
+    "user_management": "उपयोगकर्ता प्रबंधन",
+    "employees": "Employees",
+    "repairs": "Repairs",
+    "old_gold": "Old Gold",
+    "serialized_stock": "Serialized Stock",
+    "memos": "Memo & Consignment",
+    "layaways": "Layaway",
+    "savings_schemes": "Savings Schemes",
+    "metal_rates": "Metal Rates",
+    "catalog_channels": "Sales Channels",
+    "jewelry_valuation": "Purity Valuation",
+    "cycle_count": "चक्र गणना",
+    "users_roles": "उपयोगकर्ता और भूमिकाएं"
+  },
+  "sections": {
+    "sales_operations": "बिक्री संचालन",
+    "sales_return": "बिक्री वापसी",
+    "inventory": "इन्वेंटरी",
+    "customers": "ग्राहक",
+    "reports": "रिपोर्ट",
+    "system": "सिस्टम",
+    "administration": "Administration"
+  },
+  "actions": {
+    "add": "जोड़ें",
+    "edit": "संपादित करें",
+    "delete": "हटाएं",
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "close": "बंद करें",
+    "search": "खोजें",
+    "filter": "फ़िल्टर",
+    "view": "देखें",
+    "print": "प्रिंट करें",
+    "export": "निर्यात करें",
+    "import": "आयात करें",
+    "retry": "पुनः प्रयास करें"
+  },
+  "messages": {
+    "success": "सफलतापूर्वक पूरा हुआ",
+    "error": "कुछ गलत हो गया",
+    "confirm_delete": "क्या आप वाकई इस आइटम को हटाना चाहते हैं?",
+    "no_results": "कोई परिणाम नहीं",
+    "required_field": "यह फ़ील्ड आवश्यक है"
+  }
+}

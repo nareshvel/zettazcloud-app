@@ -1,0 +1,19 @@
+{
+  "title": "Panel de Control",
+  "welcome": "Bienvenido de nuevo",
+  "stats": {
+    "revenue": "Ingresos",
+    "orders": "Pedidos",
+    "customers": "Clientes",
+    "products": "Productos"
+  },
+  "recent": {
+    "orders": "Pedidos Recientes",
+    "customers": "Clientes Recientes",
+    "view_all": "Ver Todos"
+  },
+  "charts": {
+    "sales": "Resumen de Ventas",
+    "inventory": "Estado del Inventario"
+  }
+}

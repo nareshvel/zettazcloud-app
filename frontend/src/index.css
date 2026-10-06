@@ -1,0 +1,186 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hide spinners from number inputs */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+.animate-pulse-stock {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@layer base {
+  /* Default light theme variables */
+  :root {
+    --background: 0 0% 100%; /* White */
+    --foreground: 0 0% 3.9%;  /* Near-black */
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+
+    /* Your primary HSL values for light mode (original default) */
+    --primary: 226 85% 17%; /* Navy Blue */
+    --primary-foreground: 0 0% 98%; /* White */
+
+    /* Your secondary HSL values for light mode */
+    --secondary: 0 0% 96.1%; /* Light Gray */
+    --secondary-foreground: 0 0% 9%; /* Dark Gray */
+
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+
+    --radius: 0.5rem;
+    
+    /* Custom HSL for modal overlay to be theme-aware */
+    --modal-overlay: 0 0% 0% / 0.6; /* black / 60% opacity */
+  }
+
+  /* Dark theme variables */
+  .dark {
+    --background: 220 18% 12%; /* Dark charcoal / very dark blue-gray */
+    --foreground: 210 20% 98%; /* Off-white for dark mode text */
+
+    --card: 220 18% 12%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 220 18% 12%;
+    --popover-foreground: 210 20% 98%;
+
+    /* Your primary HSL values for dark mode.
+       These should be a different shade of navy than the light mode primary.
+       Example: slightly desaturated and lighter navy for dark backgrounds.
+       Adjust these HSL values to fit your desired dark primary aesthetic. */
+    --primary: 226 85% 30%; /* Darker Navy for dark background, still distinct */
+    --primary-foreground: 210 20% 98%; /* Light text on dark primary */
+
+    /* Your secondary HSL values for dark mode.
+       Example: a darker, more muted gray. */
+    --secondary: 210 20% 25%; /* Darker, slightly desaturated gray */
+    --secondary-foreground: 210 20% 98%; /* Light text on dark secondary */
+
+    --muted: 210 20% 25%;
+    --muted-foreground: 215 14% 70%; /* Lighter gray for muted text */
+
+    --accent: 210 20% 25%;
+    --accent-foreground: 210 20% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 210 20% 25%;
+    --input: 210 20% 25%;
+    --ring: 210 20% 83.1%;
+
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 340 75% 55%;
+
+    /* Custom HSL for modal overlay in dark mode */
+    --modal-overlay: 0 0% 0% / 0.8; /* black / 80% opacity, slightly darker */
+  }
+
+
+  /* Base styles that use the HSL variables */
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-foreground; /* Use foreground for headings */
+  }
+}
+
+/* Dark mode: override @tailwindcss/forms white input backgrounds */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dark select,
+.dark textarea {
+  background-color: hsl(var(--input));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+  color-scheme: dark;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+/* Print specific styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .print-modal-overlay,
+  .print-modal-overlay * {
+    visibility: visible;
+  }
+
+  .print-content-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    overflow: visible; /* Ensure all content is printed */
+    box-shadow: none; /* Remove shadow for print */
+    border: none; /* Remove border for print if any */
+    margin: 0;
+    padding: 10px; /* Add some padding for print */
+  }
+
+  .print-modal-overlay {
+    position: fixed; /* Or absolute, depending on desired print layout */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: white !important; /* Ensure background is white for print */
+    display: block !important; /* Ensure it's displayed */
+    z-index: 10000 !important; /* Ensure it's on top */
+    padding: 0;
+    margin: 0;
+  }
+
+  .hide-on-export {
+    display: none !important;
+  }
+}

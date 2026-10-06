@@ -1,0 +1,40 @@
+{
+  "title": "Pedidos",
+  "new_order": "Nuevo Pedido",
+  "order_list": "Lista de Pedidos",
+  "search": "Buscar pedidos...",
+  "columns": {
+    "order_id": "ID de Pedido",
+    "customer": "Cliente",
+    "date": "Fecha",
+    "amount": "Importe",
+    "status": "Estado",
+    "payment": "Pago",
+    "actions": "Acciones"
+  },
+  "filters": {
+    "all": "Todos los Pedidos",
+    "pending": "Pendientes",
+    "processing": "En Proceso",
+    "completed": "Completados",
+    "cancelled": "Cancelados"
+  },
+  "status": {
+    "pending": "Pendiente",
+    "processing": "En Proceso",
+    "completed": "Completado",
+    "cancelled": "Cancelado",
+    "refunded": "Reembolsado"
+  },
+  "payment": {
+    "paid": "Pagado",
+    "unpaid": "No Pagado",
+    "partial": "Parcial"
+  },
+  "actions": {
+    "view": "Ver Detalles",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "print": "Imprimir Factura"
+  }
+}

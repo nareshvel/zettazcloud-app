@@ -1,0 +1,60 @@
+export type Currency = {
+  code: string; // ISO 4217 e.g., 'USD'
+  name: string; // English name
+  symbol: string;
+};
+
+export const CURRENCIES: Currency[] = [
+  { code: 'USD', name: 'US Dollar', symbol: '$' },
+  { code: 'EUR', name: 'Euro', symbol: '€' },
+  { code: 'GBP', name: 'British Pound', symbol: '£' },
+  { code: 'JPY', name: 'Japanese Yen', symbol: '¥' },
+  { code: 'CNY', name: 'Chinese Yuan', symbol: '¥' },
+  { code: 'INR', name: 'Indian Rupee', symbol: '₹' },
+  { code: 'AUD', name: 'Australian Dollar', symbol: '$' },
+  { code: 'CAD', name: 'Canadian Dollar', symbol: '$' },
+  { code: 'CHF', name: 'Swiss Franc', symbol: 'CHF' },
+  { code: 'SEK', name: 'Swedish Krona', symbol: 'kr' },
+  { code: 'NZD', name: 'New Zealand Dollar', symbol: '$' },
+  { code: 'SGD', name: 'Singapore Dollar', symbol: '$' },
+  { code: 'HKD', name: 'Hong Kong Dollar', symbol: '$' },
+  { code: 'KRW', name: 'South Korean Won', symbol: '₩' },
+  { code: 'BRL', name: 'Brazilian Real', symbol: 'R$' },
+  { code: 'ZAR', name: 'South African Rand', symbol: 'R' },
+  { code: 'RUB', name: 'Russian Ruble', symbol: '₽' },
+  { code: 'TRY', name: 'Turkish Lira', symbol: '₺' },
+  { code: 'MXN', name: 'Mexican Peso', symbol: '$' },
+  { code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp' },
+  { code: 'THB', name: 'Thai Baht', symbol: '฿' },
+  { code: 'VND', name: 'Vietnamese Dong', symbol: '₫' },
+  { code: 'AED', name: 'UAE Dirham', symbol: 'د.إ' },
+  { code: 'SAR', name: 'Saudi Riyal', symbol: '﷼' },
+  // Caribbean
+  { code: 'XCD', name: 'East Caribbean Dollar', symbol: 'EC$' },
+  { code: 'JMD', name: 'Jamaican Dollar', symbol: 'J$' },
+  { code: 'TTD', name: 'Trinidad and Tobago Dollar', symbol: 'TT$' },
+  { code: 'BBD', name: 'Barbados Dollar', symbol: 'Bds$' },
+  { code: 'BSD', name: 'Bahamian Dollar', symbol: 'B$' },
+  { code: 'BZD', name: 'Belize Dollar', symbol: 'BZ$' },
+  { code: 'DOP', name: 'Dominican Peso', symbol: 'RD$' },
+  { code: 'HTG', name: 'Haitian Gourde', symbol: 'G' },
+  { code: 'CUP', name: 'Cuban Peso', symbol: '$' },
+  // Central America (often grouped with Caribbean region commercially)
+  { code: 'CRC', name: 'Costa Rican Colón', symbol: '₡' },
+  { code: 'GTQ', name: 'Guatemalan Quetzal', symbol: 'Q' },
+  { code: 'HNL', name: 'Honduran Lempira', symbol: 'L' },
+  { code: 'NIO', name: 'Nicaraguan Córdoba', symbol: 'C$' },
+  { code: 'PAB', name: 'Panamanian Balboa', symbol: 'B/.' },
+  { code: 'SVC', name: 'Salvadoran Colón', symbol: '₡' },
+  // South America
+  { code: 'ARS', name: 'Argentine Peso', symbol: '$' },
+  { code: 'BOB', name: 'Boliviano', symbol: 'Bs' },
+  { code: 'CLP', name: 'Chilean Peso', symbol: '$' },
+  { code: 'COP', name: 'Colombian Peso', symbol: '$' },
+  { code: 'PEN', name: 'Peruvian Sol', symbol: 'S/' },
+  { code: 'PYG', name: 'Paraguayan Guaraní', symbol: '₲' },
+  { code: 'UYU', name: 'Uruguayan Peso', symbol: '$U' },
+  { code: 'VES', name: 'Venezuelan Bolívar Soberano', symbol: 'Bs.' },
+  { code: 'GYD', name: 'Guyanese Dollar', symbol: 'GY$' },
+  { code: 'SRD', name: 'Surinamese Dollar', symbol: '$' },
+];

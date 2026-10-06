@@ -1,0 +1,76 @@
+name: Build Zettaz Print Agent v2
+
+on:
+  push:
+    tags:
+      - 'print-agent-v*'
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: print-agent
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: print-agent/go.mod
+      - run: go test ./...
+      - run: go vet ./...
+
+  build-macos:
+    needs: test
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: print-agent
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: print-agent/go.mod
+      - name: Build macOS package
+        run: |
+          chmod +x installer/macos/package.sh installer/macos/scripts/postinstall
+          installer/macos/package.sh
+          mkdir -p dist-app
+          cp installer/macos/build/zettaz-print-agent-macos.pkg "dist-app/Zettaz Print Agent-2.0.0.pkg"
+          shasum -a 256 "dist-app/Zettaz Print Agent-2.0.0.pkg" > dist-app/SHA256SUMS-macos.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zettaz-print-agent-macos-installer
+          path: |
+            print-agent/dist-app/Zettaz Print Agent-2.0.0.pkg
+            print-agent/dist-app/SHA256SUMS-macos.txt
+
+  build-windows:
+    needs: test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: print-agent
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: print-agent/go.mod
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $env:GOOS='windows'; $env:GOARCH='amd64'
+          go build -trimpath -ldflags="-s -w -H windowsgui" -o "zettaz-print-agent.exe" ./cmd/zettaz-print-agent
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer\windows\zettaz-print-agent.iss"
+          New-Item -ItemType Directory -Force -Path dist-app | Out-Null
+          Copy-Item "installer\windows\output\zettaz-print-agent-setup.exe" "dist-app\Zettaz Print Agent Setup 2.0.0.exe"
+          (Get-FileHash "dist-app\Zettaz Print Agent Setup 2.0.0.exe" -Algorithm SHA256).Hash.ToLower() + "  Zettaz Print Agent Setup 2.0.0.exe" | Out-File -Encoding ascii dist-app\SHA256SUMS-windows.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zettaz-print-agent-windows-installer
+          path: |
+            print-agent/dist-app/Zettaz Print Agent Setup 2.0.0.exe
+            print-agent/dist-app/SHA256SUMS-windows.txt

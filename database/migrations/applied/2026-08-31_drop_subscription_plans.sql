@@ -1,0 +1,27 @@
+-- =============================================================================
+-- 2026-08-31  Drop the dead `subscription_plans` table
+-- =============================================================================
+-- WHY THIS EXISTS
+-- ----------------
+-- `subscription_plans` (baseline schema) and `plans` (also baseline schema)
+-- were two differently-shaped tables for the same concept, created in the same
+-- baseline migration. `plans` is the one every actual service/route reads and
+-- writes (getPlans, createCheckoutSession, signupService's plan lookup, the
+-- Stripe billing module's stripe_price_id_monthly/_yearly columns all live on
+-- `plans`) — confirmed via a full-codebase grep during the 2026-08-31 Stripe
+-- billing audit: zero backend references to `subscription_plans` anywhere.
+--
+-- A hand-written, never-migration-tracked cleanup script already existed at
+-- scripts/delete_subscription_plans_table.sql, confirming via query that no
+-- `subscriptions.plan_id` ever pointed at a `subscription_plans` row — but
+-- because it lived in scripts/ instead of database/migrations/, it was never
+-- actually run by the migration tooling and its execution status against any
+-- given database was unknowable from the repo alone. This migration replaces
+-- that script as the tracked, idempotent way to actually remove the table.
+--
+-- DROP TABLE IF EXISTS is natively idempotent — no INFORMATION_SCHEMA/PREPARE
+-- guard needed (that pattern in other migrations is specifically for
+-- ALTER TABLE ADD COLUMN, which has no native IF NOT EXISTS in older MySQL).
+-- =============================================================================
+
+DROP TABLE IF EXISTS `subscription_plans`;

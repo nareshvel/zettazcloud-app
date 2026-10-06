@@ -1,0 +1,108 @@
+{
+  "title": "Paramètres",
+  "tabs": {
+    "general": "Général",
+    "localization": "Localisation",
+    "users": "Utilisateurs",
+    "billing": "Facturation",
+    "notifications": "Notifications",
+    "integrations": "Intégrations",
+    "security": "Sécurité"
+  },
+  "general": {
+    "title": "Paramètres Généraux",
+    "store_name": "Nom du Magasin",
+    "store_phone": "Numéro de Téléphone",
+    "store_email": "Adresse Email",
+    "tax_rate": "Taux de Taxe (%)",
+    "store_address": "Adresse du Magasin",
+    "store_logo": "Logo du Magasin",
+    "change": "Modifier",
+    "save_changes": "Enregistrer les Modifications"
+  },
+  "localization": {
+    "title": "Paramètres de Localisation",
+    "description": "Configurez les paramètres régionaux, y compris la langue, les formats de date, la devise et les formats numériques.",
+    "language_selection": "Sélectionner la Langue",
+    "language_selection_help": "Choisissez votre langue préférée pour l'interface de l'application.",
+    "locale": "Langue et Région",
+    "locale_help": "Détermine la langue et les formats régionaux par défaut",
+    "currency": "Devise",
+    "currency_help": "Utilisée pour tous les prix et valeurs monétaires",
+    "number_format": "Format des Nombres",
+    "number_format_help": "Contrôle le séparateur de milliers et la virgule décimale pour les nombres",
+    "decimal_precision": "Précision Décimale",
+    "decimal_precision_help": "Nombre de décimales à afficher pour les valeurs monétaires et les quantités",
+    "measurement_system": "Système de Mesure",
+    "measurement_system_help": "Unités utilisées pour le poids, la longueur et le volume dans tout le système",
+    "date_format": "Format de Date",
+    "date_format_help": "Format d'affichage des dates dans toute l'application",
+    "time_format": "Format d'Heure",
+    "time_format_help": "Format d'affichage des heures dans toute l'application",
+    "timezone": "Fuseau Horaire",
+    "timezone_help": "Fuseau horaire utilisé pour les calculs de date et d'heure",
+    "preview": "Aperçu",
+    "preview_currency": "Devise",
+    "preview_date": "Date",
+    "option": {
+      "metric": "Métrique (kg, cm, L)",
+      "imperial": "Impérial (lb, in, gal)"
+    }
+  },
+  "success_message": "Paramètres enregistrés avec succès",
+  "error_message": "Échec de l'enregistrement des paramètres",
+  
+  "payments": {
+    "title": "Paramètres de Paiement",
+    "cash": "Espèces",
+    "enabled": "Activé",
+    "card": "Carte de Crédit/Débit",
+    "upi": "UPI",
+    "stripe": "Stripe",
+    "stripe_description": "Connectez-vous avec Stripe pour accepter les paiements en ligne",
+    "connect": "Connecter"
+  },
+  
+  "users": {
+    "title": "Gestion des Utilisateurs",
+    "add_user": "Ajouter un Utilisateur",
+    "name": "Nom",
+    "email": "Email",
+    "role": "Rôle",
+    "status": "Statut",
+    "actions": "Actions",
+    "admin": "Administrateur",
+    "manager": "Gestionnaire",
+    "cashier": "Caissier",
+    "active": "Actif",
+    "edit": "Modifier",
+    "deactivate": "Désactiver"
+  },
+  
+  "security": {
+    "title": "Paramètres de Sécurité",
+    "password_requirements": "Exigences de Mot de Passe",
+    "minimum_characters": "Minimum 8 caractères",
+    "uppercase_letter": "Au moins une lettre majuscule",
+    "number": "Au moins un chiffre",
+    "special_character": "Au moins un caractère spécial",
+    "session_settings": "Paramètres de Session",
+    "session_timeout": "Délai d'Expiration de Session (minutes)",
+    "logout_browser_close": "Déconnexion à la fermeture du navigateur",
+    "two_factor_authentication": "Authentification à Deux Facteurs",
+    "setup_2fa": "Configurer 2FA",
+    "save_security_settings": "Enregistrer les Paramètres de Sécurité"
+  },
+  
+  "notifications": {
+    "title": "Paramètres de Notification",
+    "email_notifications": "Notifications par Email",
+    "low_stock_alerts": "Alertes de Stock Bas",
+    "daily_sales_summary": "Résumé Quotidien des Ventes",
+    "user_account_activity": "Activité de Compte Utilisateur",
+    "in_app_notifications": "Notifications dans l'Application",
+    "real_time_low_stock_alerts": "Alertes de Stock Bas en Temps Réel",
+    "system_updates_and_announcements": "Mises à Jour et Annonces du Système",
+    "save_notification_settings": "Enregistrer les Paramètres de Notification"
+  }
+}

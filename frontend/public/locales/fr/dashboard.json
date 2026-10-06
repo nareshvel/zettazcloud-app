@@ -1,0 +1,19 @@
+{
+  "title": "Tableau de Bord",
+  "welcome": "Bienvenue à nouveau",
+  "stats": {
+    "revenue": "Revenu",
+    "orders": "Commandes",
+    "customers": "Clients",
+    "products": "Produits"
+  },
+  "recent": {
+    "orders": "Commandes Récentes",
+    "customers": "Clients Récents",
+    "view_all": "Voir Tout"
+  },
+  "charts": {
+    "sales": "Aperçu des Ventes",
+    "inventory": "État de l'Inventaire"
+  }
+}

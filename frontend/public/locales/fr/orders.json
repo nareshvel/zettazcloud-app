@@ -1,0 +1,40 @@
+{
+  "title": "Commandes",
+  "new_order": "Nouvelle Commande",
+  "order_list": "Liste des Commandes",
+  "search": "Rechercher des commandes...",
+  "columns": {
+    "order_id": "ID de Commande",
+    "customer": "Client",
+    "date": "Date",
+    "amount": "Montant",
+    "status": "Statut",
+    "payment": "Paiement",
+    "actions": "Actions"
+  },
+  "filters": {
+    "all": "Toutes les Commandes",
+    "pending": "En Attente",
+    "processing": "En Traitement",
+    "completed": "Terminées",
+    "cancelled": "Annulées"
+  },
+  "status": {
+    "pending": "En Attente",
+    "processing": "En Traitement",
+    "completed": "Terminée",
+    "cancelled": "Annulée",
+    "refunded": "Remboursée"
+  },
+  "payment": {
+    "paid": "Payé",
+    "unpaid": "Non Payé",
+    "partial": "Partiel"
+  },
+  "actions": {
+    "view": "Voir Détails",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "print": "Imprimer Facture"
+  }
+}

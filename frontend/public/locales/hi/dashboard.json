@@ -1,0 +1,19 @@
+{
+  "title": "डैशबोर्ड",
+  "welcome": "वापस आने पर स्वागत है",
+  "stats": {
+    "revenue": "राजस्व",
+    "orders": "आदेश",
+    "customers": "ग्राहक",
+    "products": "उत्पाद"
+  },
+  "recent": {
+    "orders": "हाल के आदेश",
+    "customers": "हाल के ग्राहक",
+    "view_all": "सभी देखें"
+  },
+  "charts": {
+    "sales": "बिक्री अवलोकन",
+    "inventory": "इन्वेंटरी स्थिति"
+  }
+}

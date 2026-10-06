@@ -1,0 +1,264 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (lint, typecheck, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true   # TODO: flip to false once existing lint debt is cleared
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  backend:
+    name: Backend (lint, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npx eslint .
+        continue-on-error: true   # TODO: flip to false once existing lint debt is cleared
+      - name: Syntax check all sources
+        run: |
+          set -e
+          find . -path ./node_modules -prune -o -name '*.js' -print | while read -r f; do
+            node --check "$f"
+          done
+      - name: Unit tests (no DB required)
+        run: |
+          npx mocha \
+            tests/costCodeService.test.js \
+            tests/oldGoldService.test.js \
+            tests/jurisdictionService.test.js \
+            tests/taxJurisdiction.test.js \
+            tests/taxIntegrity.test.js \
+            tests/printDefaults.test.js \
+            tests/retailProfile.test.js \
+            tests/deadCodeRemoval.test.js \
+            tests/documentSequence.test.js \
+            tests/demoSalesIntegrity.test.js \
+            tests/permissionConsistency.test.js \
+            tests/legacyInvoiceBlocksSnapshot.test.js \
+            --timeout 10000
+      - name: Security regression tests (route auth guard)
+        # Static assertions in this suite need no DB and no app boot. They are the
+        # tripwire for the cross-tenant auth hole fixed in 2026-08.
+        run: npx mocha tests/routeAuthGuard.test.js --timeout 15000 --exit
+      - name: Migration splitter (catches SQL that would half-apply)
+        run: npx mocha tests/migrationSplitter.test.js --timeout 15000 --exit
+
+  # ---------------------------------------------------------------------------
+  # Proves a database can be built from migrations alone.
+  #
+  # Before 0000_baseline_schema.sql existed, core tables lived only in backup
+  # dumps, so this job was impossible — which is why DB-backed test coverage was
+  # effectively blocked. Keep this green: if it fails, someone has added a
+  # migration that depends on state not present in a clean database.
+  # ---------------------------------------------------------------------------
+  schema:
+    name: Database (clean build from migrations)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_pw
+          MYSQL_DATABASE: zettaz_ci
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_root_pw"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -pci_root_pw --silent; then
+              echo "MySQL ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "MySQL did not become ready"; exit 1
+
+      - name: Install backend deps
+        working-directory: backend
+        run: npm ci
+
+      - name: Restore migrations from applied/ for clean-build replay
+        # The migration runner (scripts/migrate.js) resolves
+        # <repo_root>/database/migrations/ via __dirname. Files that have
+        # been applied locally sit in database/migrations/applied/ and
+        # aren't in the pending directory. Copy them back so a clean CI
+        # database can be built from scratch.
+        run: |
+          cp -n database/migrations/applied/*.sql database/migrations/ 2>/dev/null || true
+          echo "Restored $(ls database/migrations/*.sql 2>/dev/null | wc -l) migration file(s) for CI replay"
+
+      - name: Run migrations against an empty database
+        working-directory: backend
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: '3306'
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ci_root_pw
+          MYSQL_DATABASE: zettaz_ci
+          NODE_ENV: test
+        # --yes skips the confirmation prompt (no TTY in CI).
+        # --no-move keeps files in database/migrations/ so the idempotency
+        # step below can re-run them (migrations are idempotent by convention).
+        run: node scripts/migrate.js --yes --no-move
+
+      - name: Assert schema is complete and correctly collated
+        env:
+          MYSQL_PWD: ci_root_pw
+        run: |
+          set -e
+          Q() { mysql -h 127.0.0.1 -P 3306 -uroot -N -B -e "$1" zettaz_ci; }
+
+          TABLES=$(Q "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+                      WHERE TABLE_SCHEMA='zettaz_ci' AND TABLE_TYPE='BASE TABLE';")
+          VIEWS=$(Q "SELECT COUNT(*) FROM INFORMATION_SCHEMA.VIEWS
+                     WHERE TABLE_SCHEMA='zettaz_ci';")
+          echo "Base tables: $TABLES | Views: $VIEWS"
+
+          if [ "$TABLES" -lt 50 ]; then
+            echo "::error::Expected >= 50 base tables from a clean migration run, got $TABLES"
+            exit 1
+          fi
+
+          # CLAUDE.md mandates utf8mb4_0900_ai_ci everywhere; mismatches cause
+          # "Illegal mix of collations" at JOIN time.
+          BAD=$(Q "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+                   WHERE TABLE_SCHEMA='zettaz_ci' AND TABLE_TYPE='BASE TABLE'
+                     AND TABLE_COLLATION <> 'utf8mb4_0900_ai_ci';")
+          if [ "$BAD" -ne 0 ]; then
+            echo "::error::$BAD table(s) are not utf8mb4_0900_ai_ci:"
+            Q "SELECT TABLE_NAME, TABLE_COLLATION FROM INFORMATION_SCHEMA.TABLES
+               WHERE TABLE_SCHEMA='zettaz_ci' AND TABLE_TYPE='BASE TABLE'
+                 AND TABLE_COLLATION <> 'utf8mb4_0900_ai_ci';"
+            exit 1
+          fi
+
+          # COLUMN collation is tracked separately from TABLE collation, and a
+          # column carrying an explicit COLLATE keeps it even after the table
+          # default changes. Checking only the table default let 47 columns
+          # across 8 tables sit on utf8mb4_unicode_ci while this job was green —
+          # including six foreign keys whose parents are utf8mb4_0900_ai_ci, so
+          # any JOIN across them would have raised "Illegal mix of collations".
+          # Fixed by 2026-08-25_normalize_column_collation.sql. Do not delete
+          # this check: the table-level one above cannot see the problem.
+          BADCOL=$(Q "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                      WHERE TABLE_SCHEMA='zettaz_ci'
+                        AND COLLATION_NAME IS NOT NULL
+                        AND COLLATION_NAME <> 'utf8mb4_0900_ai_ci';")
+          if [ "$BADCOL" -ne 0 ]; then
+            echo "::error::$BADCOL column(s) are not utf8mb4_0900_ai_ci:"
+            Q "SELECT TABLE_NAME, COLUMN_NAME, COLLATION_NAME
+               FROM INFORMATION_SCHEMA.COLUMNS
+               WHERE TABLE_SCHEMA='zettaz_ci'
+                 AND COLLATION_NAME IS NOT NULL
+                 AND COLLATION_NAME <> 'utf8mb4_0900_ai_ci';"
+            exit 1
+          fi
+
+          # The duty_free_* subsystem was removed 2026-08-25. If these tables
+          # come back, someone has re-added a second home for duty-free config
+          # alongside store_jurisdiction_settings.
+          GHOST=$(Q "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+                     WHERE TABLE_SCHEMA='zettaz_ci'
+                       AND TABLE_NAME LIKE 'duty_free_%';")
+          if [ "$GHOST" -ne 0 ]; then
+            echo "::error::duty_free_* table(s) are back. Duty-free config belongs in store_jurisdiction_settings + jurisdiction_profiles + print_templates."
+            Q "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+               WHERE TABLE_SCHEMA='zettaz_ci' AND TABLE_NAME LIKE 'duty_free_%';"
+            exit 1
+          fi
+
+          # The document-numbering columns. A sale cannot be numbered without
+          # document_sequences + sales.document_number, and the unique key is
+          # what stops the same number reaching two customers.
+          for col in "sales:document_number" \
+                     "store_jurisdiction_settings:sequential_numbering_optin" \
+                     "store_jurisdiction_settings:show_number_on_receipt" \
+                     "store_jurisdiction_settings:show_number_on_invoice"; do
+            TBL="${col%%:*}"; COL="${col##*:}"
+            N=$(Q "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA='zettaz_ci' AND TABLE_NAME='$TBL' AND COLUMN_NAME='$COL';")
+            if [ "$N" -eq 0 ]; then
+              echo "::error::$TBL.$COL is missing — document numbering will not work"
+              exit 1
+            fi
+          done
+
+          # The template-printing opt-in. Its absence would make every store
+          # fall back to the legacy receipt with no way to switch over.
+          N=$(Q "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA='zettaz_ci' AND TABLE_NAME='printer_settings'
+                   AND COLUMN_NAME='use_print_templates';")
+          if [ "$N" -eq 0 ]; then
+            echo "::error::printer_settings.use_print_templates is missing"
+            exit 1
+          fi
+
+          UK=$(Q "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+                  WHERE TABLE_SCHEMA='zettaz_ci' AND TABLE_NAME='sales'
+                    AND INDEX_NAME='uk_sales_document_number';")
+          if [ "$UK" -eq 0 ]; then
+            echo "::error::sales.uk_sales_document_number is missing — two sales could be issued the same invoice number"
+            exit 1
+          fi
+
+          echo "Schema built cleanly; every table AND column correctly collated."
+
+      - name: Migrations are idempotent (second run must be a no-op)
+        working-directory: backend
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: '3306'
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ci_root_pw
+          MYSQL_DATABASE: zettaz_ci
+          NODE_ENV: test
+        run: node scripts/migrate.js --yes --no-move

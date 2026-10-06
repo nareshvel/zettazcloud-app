@@ -1,0 +1,67 @@
+{
+  "language": "மொழி",
+  "app": {
+    "name": "Zettaz Cloud Enterprise",
+    "loading": "ஏற்றுகிறது...",
+    "error": "பிழை ஏற்பட்டது",
+    "confirm": "நீங்கள் உறுதியாக இருக்கிறீர்களா?"
+  },
+  "nav": {
+    "dashboard": "டாஷ்போர்டு",
+    "pos": "விற்பனை முனையம்",
+    "inventory": "சரக்கிருப்பு",
+    "products": "பொருட்கள்",
+    "suppliers": "சப்ளையர்கள்",
+    "purchase_orders": "கொள்முதல் ஆர்டர்கள்",
+    "goods_receiving": "பொருட்கள் பெறுதல்",
+    "customers": "வாடிக்கையாளர்கள்",
+    "orders": "விற்பனை ஆர்டர்கள்",
+    "sales_return": "விற்பனை திரும்பல்",
+    "reports": "அறிக்கைகள்",
+    "settings": "அமைப்புகள்",
+    "user_management": "பயனர் மேலாண்மை",
+    "employees": "Employees",
+    "repairs": "Repairs",
+    "old_gold": "Old Gold",
+    "serialized_stock": "Serialized Stock",
+    "memos": "Memo & Consignment",
+    "layaways": "Layaway",
+    "savings_schemes": "Savings Schemes",
+    "metal_rates": "Metal Rates",
+    "catalog_channels": "Sales Channels",
+    "jewelry_valuation": "Purity Valuation",
+    "cycle_count": "சுழற்சி எண்ணிக்கை",
+    "users_roles": "பயனர்கள் & பாத்திரங்கள்"
+  },
+  "sections": {
+    "sales_operations": "விற்பனை செயல்பாடுகள்",
+    "sales_return": "விற்பனை திரும்பல்",
+    "inventory": "சரக்கிருப்பு",
+    "customers": "வாடிக்கையாளர்கள்",
+    "reports": "அறிக்கைகள்",
+    "system": "அமைப்பு",
+    "administration": "Administration"
+  },
+  "actions": {
+    "add": "சேர்க்க",
+    "edit": "திருத்த",
+    "delete": "நீக்க",
+    "save": "சேமிக்க",
+    "cancel": "ரத்து செய்ய",
+    "close": "மூட",
+    "search": "தேட",
+    "filter": "வடிகட்ட",
+    "view": "பார்க்க",
+    "print": "அச்சிட",
+    "export": "ஏற்றுமதி செய்ய",
+    "import": "இறக்குமதி செய்ய",
+    "retry": "மீண்டும் முயற்சிக்க"
+  },
+  "messages": {
+    "success": "வெற்றிகரமாக முடிந்தது",
+    "error": "ஏதோ தவறு நடந்துவிட்டது",
+    "confirm_delete": "இந்த உருப்படியை நிச்சயமாக நீக்க விரும்புகிறீர்களா?",
+    "no_results": "முடிவுகள் எதுவும் இல்லை",
+    "required_field": "இந்த புலம் தேவை"
+  }
+}
