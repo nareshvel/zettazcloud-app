@@ -766,7 +766,8 @@ const auditFeed = async ({ tenantId, limit = 100, offset = 0 } = {}) => {
   if (tenantId) params.push(tenantId);
   const [rows] = await pool.query(
     `SELECT al.id, al.tenant_id, t.name AS tenant_name, al.user_id, al.action,
-            al.entity_type, al.entity_id, al.severity, al.status, al.details,
+            al.resource_type AS entity_type, al.resource_id AS entity_id,
+            al.severity, al.status, al.details,
             al.ip_address, al.created_at, u.email AS user_email
        FROM audit_logs al
        LEFT JOIN tenants t ON t.id = al.tenant_id
