@@ -282,10 +282,9 @@ export const fetchApi = async <T>(
     if (!finalHeaders.has('x-store-id')) finalHeaders.set('x-store-id', storedStoreId);
   }
 
-  if (!token) {
-    console.warn('No authentication token available for API request');
-    // Do not fabricate a store-id here either; backend should enforce presence/validity.
-  }
+  // No-token requests are expected (login page, public endpoints) — the
+  // backend's 401 is the real signal, so don't warn here.
+  // Do not fabricate a store-id here either; backend should enforce presence/validity.
   
   // Log final headers for debugging
   if (process.env.NODE_ENV === 'development' && localStorage.getItem('debug-api') === 'true') {

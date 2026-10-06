@@ -89,19 +89,14 @@ const Login = () => {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoginError('');
-    
-    console.log('[LOGIN FORM] Form submitted, attempting login with email:', email);
-    
+
     try {
       // Attempt to login through the AuthContext
-      console.log('[LOGIN FORM] Calling login function from AuthContext...');
       const userData = await login({ email, password });
-      console.log('[LOGIN FORM] Login function returned:', userData ? 'SUCCESS' : 'FAILED');
-      
+
       if (userData) {
         // If we have user data, determine the redirect path based on role
         const redirectPath = await getRedirectPath(userData);
-        console.log('[LOGIN FORM] Login successful, redirecting to:', redirectPath);
         navigate(redirectPath);
       } else {
         // If login failed but didn't throw an error, the AuthContext has

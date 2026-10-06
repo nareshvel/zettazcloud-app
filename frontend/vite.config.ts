@@ -19,6 +19,12 @@ export default defineConfig(({ mode }) => {
       'src': resolve(__dirname, './src') // Alias for src directory itself
     }
   },
+  // Mark debug logging as side-effect-free so the production minifier drops
+  // it — keeps dev consoles useful while shipping a quiet production console.
+  // console.warn/error are kept for real diagnostics.
+  esbuild: {
+    pure: ['console.log', 'console.debug', 'console.info'],
+  },
   build: {
     chunkSizeWarningLimit: 1500, // Increase warning limit to 1500kb
     rollupOptions: {
