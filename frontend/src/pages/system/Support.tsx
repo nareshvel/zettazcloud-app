@@ -14,7 +14,9 @@ const Support = () => {
   const [focusId, setFocusId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  const load = () => platformApi.tickets(status || undefined).then(setRows).catch((e) => setError(e.message));
+  const load = () => {
+    platformApi.tickets(status || undefined).then(setRows).catch((e) => setError(e.message));
+  };
   useEffect(load, [status]);
 
   if (error) return <Empty icon={AlertTriangle} title="Could not load tickets" text={error} />;
