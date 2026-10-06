@@ -62,17 +62,12 @@ const Tenants = () => {
       <PageHeader
         eyebrow="System" title="Tenants" icon={Building2}
         subtitle={`${rows?.length ?? '…'} workspaces on the platform`}
-        actions={can('tenants.create') && (
-          <button className={btn.primary} onClick={() => setShowCreate(true)}>
-            <Plus className="h-4 w-4" />New tenant
-          </button>
-        )}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative">
+        <div className="relative flex-1 min-w-[180px]">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input className={`${inputCls} pl-9 w-64`} placeholder="Search tenants…"
+          <input className={`${inputCls} pl-9`} placeholder="Search tenants…"
                  value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <select className={`${inputCls} w-44`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
@@ -81,6 +76,11 @@ const Tenants = () => {
           <option value="suspended">Suspended</option>
           <option value="pending_deletion">Pending deletion</option>
         </select>
+        {can('tenants.create') && (
+          <button className={btn.primary} onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" /><span className="hidden sm:inline">New tenant</span>
+          </button>
+        )}
       </div>
 
       {!rows ? <Spinner /> : filtered.length === 0 ? (

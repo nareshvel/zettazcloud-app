@@ -209,14 +209,6 @@ const EmployeesPage: React.FC = () => {
         icon={Contact}
         title="Team Management"
         subtitle={`Manage people, employment profiles, login access, and performance${paytimeReady ? ' · Paytime connected' : ''}`}
-        actions={
-          <>
-            <Button variant="outline" onClick={() => navigate('/team/roles')}>
-              <ShieldCheck className="h-4 w-4 mr-1.5" /> Roles & Permissions
-            </Button>
-            <Button onClick={handleAdd}><UserPlus className="h-4 w-4 mr-1.5" /> Add Team Member</Button>
-          </>
-        }
       />
 
       {/* KPI strip */}
@@ -240,9 +232,9 @@ const EmployeesPage: React.FC = () => {
         })}
       </div>
 
-      {/* Toolbar: search + filters */}
+      {/* Toolbar: search + filters + actions */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by name, code, title, email..."
@@ -272,6 +264,14 @@ const EmployeesPage: React.FC = () => {
             </SelectContent>
           </Select>
         )}
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate('/team/roles')}>
+            <ShieldCheck className="h-4 w-4 sm:mr-1.5" /><span className="hidden sm:inline">Roles &amp; Permissions</span>
+          </Button>
+          <Button onClick={handleAdd}>
+            <UserPlus className="h-4 w-4 sm:mr-1.5" /><span className="hidden sm:inline">Add Team Member</span>
+          </Button>
+        </div>
       </div>
 
       {/* Table */}

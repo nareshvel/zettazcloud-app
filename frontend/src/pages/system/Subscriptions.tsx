@@ -37,14 +37,9 @@ const Subscriptions = () => {
 
   return (
     <div>
-      <PageHeader eyebrow="System" title="Subscriptions" icon={Wallet} subtitle="Tenant billing state across the platform"
-        actions={canEdit && (
-          <button className={btn.secondary} disabled={dunningBusy} onClick={runDunning}>
-            <RefreshCw className={`h-4 w-4 ${dunningBusy ? 'animate-spin' : ''}`} />Run dunning
-          </button>
-        )} />
+      <PageHeader eyebrow="System" title="Subscriptions" icon={Wallet} subtitle="Tenant billing state across the platform" />
 
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 text-sm">
           {(['subs', 'issues'] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)}
@@ -58,6 +53,11 @@ const Subscriptions = () => {
             <option value="">All statuses</option>
             {['active', 'trial', 'past_due', 'expired', 'cancelled'].map((s) => <option key={s}>{s}</option>)}
           </select>
+        )}
+        {canEdit && (
+          <button className={`${btn.secondary} ml-auto`} disabled={dunningBusy} onClick={runDunning}>
+            <RefreshCw className={`h-4 w-4 ${dunningBusy ? 'animate-spin' : ''}`} /><span className="hidden sm:inline">Run dunning</span>
+          </button>
         )}
       </div>
 

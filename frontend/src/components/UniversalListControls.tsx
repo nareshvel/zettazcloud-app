@@ -156,8 +156,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
           fixed-size, non-wrapping cluster on the right — this is what keeps mobile
           from stacking into two rows. */}
       <div className="flex flex-row justify-between items-center gap-2 sm:gap-4 px-3">
-        {/* Left: Search Bar */}
-        <div className="relative flex-1 min-w-0 sm:max-w-md">
+        {/* Left: Search Bar — takes all remaining width */}
+        <div className="relative flex-1 min-w-0">
           <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-placeholder" />
           <input
             type="text"
@@ -174,14 +174,15 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
             <div className="relative" ref={filterDropdownRef}>
               <button
                 onClick={() => setIsFilterDropdownOpen(prev => !prev)}
-                className={`border text-text-secondary font-medium h-9 w-9 px-0 rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75 ${currentFilterValue !== undefined && currentFilterValue !== null && filterOptions.find(opt => opt.value === currentFilterValue) ? 'bg-primary-extralight border-primary text-primary' : 'bg-background-card hover:bg-secondary-light border-border'}`}
+                className={`border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75 ${currentFilterValue !== undefined && currentFilterValue !== null && filterOptions.find(opt => opt.value === currentFilterValue) ? 'bg-primary-extralight border-primary text-primary' : 'bg-background-card hover:bg-secondary-light border-border'}`}
                 title={filterOptions.find(opt => opt.value === currentFilterValue)?.label || defaultFilterButtonText}
                 aria-label={filterOptions.find(opt => opt.value === currentFilterValue)?.label || defaultFilterButtonText}
                 aria-haspopup="true"
                 aria-expanded={isFilterDropdownOpen}
               >
                 <FilterIcon size={18} />
-                <ChevronDown size={16} className={`ml-1 transition-transform duration-200 ${isFilterDropdownOpen ? 'rotate-180' : ''}`} />
+                <span className="hidden sm:inline max-w-[10rem] truncate">{filterOptions.find(opt => opt.value === currentFilterValue)?.label || defaultFilterButtonText}</span>
+                <ChevronDown size={16} className={`transition-transform duration-200 ${isFilterDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
               {isFilterDropdownOpen && (
                 <div className="absolute left-0 mt-2 w-56 bg-popover text-popover-foreground border border-border rounded-md shadow-lg z-20 py-1">
@@ -206,11 +207,12 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
           {showBulkApplyButton && onBulkApplyClick && (
             <button
               onClick={onBulkApplyClick}
-              className="bg-green-600 hover:bg-green-700 text-white font-medium h-9 w-9 px-0 rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75"
+              className="bg-green-600 hover:bg-green-700 text-white font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75"
               title={bulkApplyButtonText}
               aria-label={bulkApplyButtonText}
             >
               <Tag size={18} />
+              <span className="hidden sm:inline">{bulkApplyButtonText}</span>
             </button>
           )}
 
@@ -219,13 +221,14 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
             <div className="relative" ref={actionsDropdownRef}>
               <button
                 onClick={() => { setIsActionsDropdownOpen(prev => !prev); setExpandedAction(null); }}
-                className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
+                className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
                 title="More actions"
                 aria-label="More actions"
                 aria-haspopup="true"
                 aria-expanded={isActionsDropdownOpen}
               >
                 <MoreHorizontal size={18} />
+                <span className="hidden sm:inline">Actions</span>
               </button>
               {isActionsDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-popover text-popover-foreground border border-border rounded-md shadow-lg z-20 py-1">
@@ -287,22 +290,24 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
           {showImportButton && onImportClick && entityType === 'product' && !showActionsMenu && (
             <button
               onClick={onImportClick}
-              className="bg-primary-extralight hover:bg-primary-light text-primary font-medium h-9 w-9 px-0 rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-75"
+              className="bg-primary-extralight hover:bg-primary-light text-primary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-75"
               title={importButtonText}
               aria-label={importButtonText}
             >
               {importButtonIcon || <UploadCloud size={18} />}
+              <span className="hidden sm:inline">{importButtonText}</span>
             </button>
           )}
 
           {showFilterPanelButton && onFilterPanelButtonClick && (
             <button
               onClick={onFilterPanelButtonClick}
-              className={`border font-medium h-9 w-9 px-0 rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75 ${filterPanelActive ? 'bg-primary-extralight border-primary text-primary' : 'bg-background-card hover:bg-secondary-light border-border text-text-secondary'}`}
+              className={`border font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75 ${filterPanelActive ? 'bg-primary-extralight border-primary text-primary' : 'bg-background-card hover:bg-secondary-light border-border text-text-secondary'}`}
               title={filterPanelButtonText}
               aria-label={filterPanelButtonText}
             >
               <SlidersHorizontal size={18} />
+              <span className="hidden sm:inline">{filterPanelButtonText}</span>
             </button>
           )}
 
@@ -310,12 +315,13 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
             <div className="relative" ref={exportDropdownRef}>
               <button 
                 onClick={() => setIsExportDropdownOpen(prev => !prev)}
-                className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
+                className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
                 title="Export"
                 aria-label="Export"
               >
                 <Download size={18} />
-                <ChevronDown size={16} className={`ml-1 transition-transform duration-200 ${isExportDropdownOpen ? 'rotate-180' : ''}`} />
+                <span className="hidden sm:inline">Export</span>
+                <ChevronDown size={16} className={`transition-transform duration-200 ${isExportDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
               {isExportDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-40 bg-popover text-popover-foreground border border-border rounded-md shadow-lg z-20 py-1">
@@ -344,22 +350,24 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
           {showPrintButton && onPrint && (
             <button 
               onClick={onPrint}
-              className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
+              className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
               title="Print"
               aria-label="Print"
             >
               <Printer size={18} />
+              <span className="hidden sm:inline">Print</span>
             </button>
           )}
 
           {showStockAdjustButton && onStockAdjustClick && (
             <button 
               onClick={onStockAdjustClick}
-              className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
+              className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
               title={stockAdjustButtonText}
               aria-label={stockAdjustButtonText}
             >
               {stockAdjustButtonIcon || <SlidersHorizontal size={18} />}
+              <span className="hidden sm:inline">{stockAdjustButtonText}</span>
             </button>
           )}
           
@@ -367,11 +375,12 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
           {showTaxClassButton && currentPage === 'products' && !showActionsMenu && (
             <button
               onClick={() => navigate('/products/tax-classes')}
-              className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
+              className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
               title="Manage Tax Classes"
               aria-label="Manage Tax Classes"
             >
               <Percent size={18} />
+              <span className="hidden sm:inline">Tax Classes</span>
             </button>
           )}
 
@@ -379,11 +388,12 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
           {showManageRolesButton && onManageRolesClick && (
             <button
               onClick={onManageRolesClick}
-              className="flex items-center justify-center h-9 w-9 px-0 text-text-secondary bg-background-card border border-border rounded-lg shadow-sm hover:bg-secondary-light hover:text-primary focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary-light transition-colors duration-150 ease-in-out"
+              className="flex items-center justify-center gap-1.5 h-9 w-9 px-0 sm:w-auto sm:px-3 text-text-secondary bg-background-card border border-border rounded-lg shadow-sm hover:bg-secondary-light hover:text-primary focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary-light transition-colors duration-150 ease-in-out"
               title={manageRolesButtonText}
               aria-label={manageRolesButtonText}
             >
               {manageRolesButtonIcon || <Settings2 size={18} />}
+              <span className="hidden sm:inline">{manageRolesButtonText}</span>
             </button>
           )}
 
@@ -392,9 +402,10 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
               onClick={onNewButtonClick}
               title={newButtonText}
               aria-label={newButtonText}
-              className="bg-primary hover:bg-primary-dark text-white font-medium h-9 w-9 px-0 rounded-lg flex items-center justify-center shadow-md hover:shadow-lg transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-dark focus:ring-opacity-75"
+              className="bg-primary hover:bg-primary-dark text-white font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-md hover:shadow-lg transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-dark focus:ring-opacity-75"
             >
               {newButtonIcon || <Plus size={18} />}
+              <span className="hidden sm:inline">{newButtonText}</span>
             </button>
           )}
         </div>
