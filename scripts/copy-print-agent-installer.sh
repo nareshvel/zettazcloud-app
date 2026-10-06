@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Find the most recent build directory
 PRINT_AGENT_BUILD_DIR="$PROJECT_DIR/print-agent/installer/macos"
-PRINT_AGENT_BUILD=$(find "$PRINT_AGENT_BUILD_DIR" -type d -name "build-*" -maxdepth 1 | sort -r | head -n 1)
+PRINT_AGENT_BUILD=$(find "$PRINT_AGENT_BUILD_DIR" -maxdepth 1 -type d -name "build-*" | sort -r | head -n 1)
 
 if [ -z "$PRINT_AGENT_BUILD" ]; then
   PRINT_AGENT_BUILD="$PRINT_AGENT_BUILD_DIR/build"
@@ -22,15 +22,16 @@ if [ ! -f "$PKG_PATH" ]; then
   exit 0
 fi
 
-# Extract version from the built app bundle (not package.sh default)
+# Extract version from the built app bundle, VERSION file, or fallback
 VERSION=$(defaults read "$PRINT_AGENT_BUILD/Zettaz Print Agent.app/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || \
           defaults read "$PRINT_AGENT_BUILD/payload/Zettaz Print Agent.app/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || \
+          tr -d '[:space:]' < "$PRINT_AGENT_BUILD_DIR/VERSION" 2>/dev/null || \
           echo "2.0.0")
 
 # Create versioned filename for the current build
 VERSIONED_PKG="zettaz-print-agent-macos-$VERSION.pkg"
 DEST_PATH="$FRONTEND_DOWNLOADS/$VERSIONED_PKG"
-CHECKSUM=$(shasum -a 256 "$PKG_PATH" | awk '{print $1}')
+CHECKSUM=$(sha256sum "$PKG_PATH" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$PKG_PATH" | awk '{print $1}')
 
 # Clean up all old installers and the old "latest" copy; keep only the current versioned file
 echo "Cleaning up old Print Agent installers..."
