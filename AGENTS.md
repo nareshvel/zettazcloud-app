@@ -14,7 +14,7 @@
 
 ## Print Agent macOS build
 
-- Current version: 2.3.9
+- Current version: 2.3.10
 - Build script: `print-agent/installer/macos/package.sh`
 - Creates a universal (arm64 + x86_64) signed and notarized `.pkg` installer with app icon
 - Requires Developer ID Application and Developer ID Installer certificates in Keychain
@@ -38,7 +38,8 @@
 - Production backend repository: `/var/www/zettazcloud-app`
 - PM2 application name: `zettaz-api`
 - Backend port: `5172`
-- Deployment command: `bash /var/www/zettazcloud-app/deploy-backend.sh`
+- Full deployment: `bash /var/www/zettazcloud-app/deploy.sh`
+- Quick deployment for minor frontend/backend changes: `bash /var/www/zettazcloud-app/deploy-quick.sh`
 - The MySQL database is hosted on a separate server at `mysql.us.cloudlogin.co:3306`.
 - The production backend server public IP is `185.75.21.46`.
 - MySQL access depends on the backend server IP being allowed by the database host. An `ER_ACCESS_DENIED_ERROR` for `digitpulse_zcloud@185.75.21.46` can mean the IP allowlist/grant is missing even when credentials are correct.
@@ -117,10 +118,10 @@ For local agent printing:
 
 ### Deployment Notes
 
-- Production backend deployment may require clean restart to clear Node.js module cache
-- Use `bash /var/www/zettazcloud-app/deploy-backend-clean.sh` to force clean deployment
-- This script deletes PM2 app, hard resets git, clears caches, reinstalls dependencies, and starts fresh
-- Frontend build automatically copies Print Agent installer to downloads and updates manifest
+- Production backend deployment may require a clean restart to clear Node.js module cache
+- Use `bash /var/www/zettazcloud-app/deploy.sh` to pull the latest code, reinstall dependencies, restart PM2, and rebuild the frontend
+- Use `bash /var/www/zettazcloud-app/deploy-quick.sh` for minor changes (pull, reload, build)
+- Frontend build automatically copies the current Print Agent installer to `frontend/public/downloads/` and updates `manifest.json`
 
 ## NPM Security Vulnerabilities (2026-08-27)
 
