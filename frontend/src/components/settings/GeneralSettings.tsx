@@ -247,25 +247,54 @@ const GeneralSettings: React.FC = () => {
           {/* Store Logo */}
           <div>
             <label className={labelCls}>{tSettings('general.store_logo', 'Store Logo')}</label>
-            <div className="flex gap-4 items-start flex-wrap">
-              {/* Drop zone / upload button */}
+            <div className="relative inline-block">
+              {/* Single tile: shows the logo (click to replace) or the upload
+                  prompt when empty. Drag & drop works in both states. */}
               <div
                 onDragOver={e => { if (!canEdit) return; e.preventDefault(); setLogoDragOver(true); }}
                 onDragLeave={() => setLogoDragOver(false)}
                 onDrop={e => { if (!canEdit) return; e.preventDefault(); setLogoDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleLogoUpload(f); }}
                 onClick={() => { if (canEdit) logoInputRef.current?.click(); }}
-                className={`flex flex-col items-center justify-center gap-2 w-40 h-28 rounded-xl border-2 border-dashed transition-colors
-                  ${!canEdit ? 'border-gray-100 dark:border-border opacity-60 cursor-not-allowed'
-                    : `cursor-pointer ${logoDragOver ? 'border-primary bg-primary/5' : 'border-gray-200 dark:border-border hover:border-primary/50 hover:bg-gray-50'}`}`}
-                title={!canEdit ? 'You have view-only access to store settings' : undefined}
+                className={`group relative w-40 h-28 rounded-xl border-2 overflow-hidden transition-colors
+                  ${!canEdit ? 'border-gray-200 dark:border-border opacity-80'
+                    : `cursor-pointer ${logoDragOver ? 'border-primary bg-primary/5' : 'border-gray-200 dark:border-border hover:border-primary/50 hover:bg-gray-50'}`}
+                  ${!generalSettings.logoUrl ? 'border-dashed' : 'border-solid'}`}
+                title={!canEdit ? 'You have view-only access to store settings'
+                  : generalSettings.logoUrl ? 'Click or drop a file to replace the logo' : undefined}
               >
-                {logoUploading
-                  ? <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
-                  : <UploadCloud className="h-6 w-6 text-gray-400 dark:text-muted-foreground" />}
-                <span className="text-xs text-gray-500 dark:text-muted-foreground text-center px-2">
-                  {logoUploading ? 'Uploading…' : 'Click or drag & drop'}
-                </span>
-                <span className="text-xs text-gray-400 dark:text-muted-foreground">PNG, JPG, WebP · max 2 MB</span>
+                {generalSettings.logoUrl ? (
+                  <>
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-muted/50 p-2">
+                      <img
+                        src={normalizeImageUrl(generalSettings.logoUrl) || undefined}
+                        alt="Store logo"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                    {/* Replace hint — visible on hover for editors */}
+                    {canEdit && !logoUploading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-xs font-medium text-white">Click to replace</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-2">
+                    {logoUploading
+                      ? <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
+                      : <UploadCloud className="h-6 w-6 text-gray-400 dark:text-muted-foreground" />}
+                    <span className="text-xs text-gray-500 dark:text-muted-foreground text-center">
+                      {logoUploading ? 'Uploading…' : canEdit ? 'Click or drag & drop' : 'No logo yet'}
+                    </span>
+                    {canEdit && <span className="text-xs text-gray-400 dark:text-muted-foreground">PNG, JPG, WebP · max 2 MB</span>}
+                  </div>
+                )}
+                {/* Uploading overlay over the logo state too */}
+                {logoUploading && generalSettings.logoUrl && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-card/70">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
+                  </div>
+                )}
                 <input
                   ref={logoInputRef}
                   type="file"
@@ -275,33 +304,15 @@ const GeneralSettings: React.FC = () => {
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ''; }}
                 />
               </div>
-
-              {/* Current logo preview */}
-              {generalSettings.logoUrl ? (
-                <div className="relative group">
-                  <div className="w-40 h-28 rounded-xl border border-gray-200 dark:border-border bg-gray-50 dark:bg-muted/50 flex items-center justify-center overflow-hidden">
-                    <img
-                      src={normalizeImageUrl(generalSettings.logoUrl) || undefined}
-                      alt="Store logo"
-                      className="max-h-full max-w-full object-contain p-2"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { if (canEdit) setGeneralSettings(prev => ({ ...prev, logoUrl: '' })); }}
-                    disabled={!canEdit}
-                    className="absolute -top-2 -right-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-full p-0.5 shadow-sm hover:bg-red-50 hover:border-red-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={canEdit ? 'Remove logo' : 'You have view-only access to store settings'}
-                  >
-                    <X className="h-3.5 w-3.5 text-gray-500 dark:text-muted-foreground hover:text-red-500" />
-                  </button>
-                  <p className="text-xs text-gray-400 dark:text-muted-foreground mt-1.5 text-center">Current logo</p>
-                </div>
-              ) : (
-                <div className="w-40 h-28 rounded-xl border border-dashed border-gray-100 dark:border-border bg-gray-50 dark:bg-muted/50 flex flex-col items-center justify-center gap-1">
-                  <Image className="h-8 w-8 text-gray-200" />
-                  <span className="text-xs text-gray-300">No logo yet</span>
-                </div>
+              {generalSettings.logoUrl && canEdit && (
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); setGeneralSettings(prev => ({ ...prev, logoUrl: '' })); }}
+                  className="absolute -top-2 -right-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-full p-0.5 shadow-sm hover:bg-red-50 hover:border-red-300 transition-colors z-10"
+                  title="Remove logo"
+                >
+                  <X className="h-3.5 w-3.5 text-gray-500 dark:text-muted-foreground hover:text-red-500" />
+                </button>
               )}
             </div>
             <p className="text-xs text-gray-400 dark:text-muted-foreground mt-2">Logo used across the app: receipts, reports, and more. Recommended: transparent PNG, min 300px wide.</p>
