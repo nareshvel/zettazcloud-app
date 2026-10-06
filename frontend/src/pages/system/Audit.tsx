@@ -30,14 +30,16 @@ const Audit = () => {
       <PageHeader eyebrow="System" title="Audit log" icon={FileText} subtitle="Platform and tenant activity trail" />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative">
+        <div className="relative w-64">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input className={`${inputCls} w-64 pl-9`} placeholder="Filter results…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className={`${inputCls} pl-9`} placeholder="Filter results…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <select className={`${inputCls} w-56`} value={tenantId} onChange={(e) => { setTenantId(e.target.value); setOffset(0); }}>
-          <option value="">All tenants + platform</option>
-          {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        <div className="w-56 shrink-0">
+          <select className={inputCls} value={tenantId} onChange={(e) => { setTenantId(e.target.value); setOffset(0); }}>
+            <option value="">All tenants + platform</option>
+            {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
       </div>
 
       {!rows ? <Spinner /> : filtered.length === 0 ? <Empty icon={FileText} title="No audit entries" /> : (

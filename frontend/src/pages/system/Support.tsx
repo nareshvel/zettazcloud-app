@@ -26,10 +26,12 @@ const Support = () => {
       <PageHeader eyebrow="System" title="Support tickets" icon={LifeBuoy} subtitle="Tenant helpdesk" />
 
       <div className="mb-4">
-        <select className={`${inputCls} w-44`} value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          {['open', 'in_progress', 'resolved', 'closed'].map((s) => <option key={s}>{s}</option>)}
-        </select>
+        <div className="w-44">
+          <select className={inputCls} value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="">All statuses</option>
+            {['open', 'in_progress', 'resolved', 'closed'].map((s) => <option key={s}>{s}</option>)}
+          </select>
+        </div>
       </div>
 
       {!rows ? <Spinner /> : rows.length === 0 ? <Empty icon={LifeBuoy} title="No tickets" /> : (

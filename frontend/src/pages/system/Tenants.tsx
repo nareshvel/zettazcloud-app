@@ -70,12 +70,14 @@ const Tenants = () => {
           <input className={`${inputCls} pl-9`} placeholder="Search tenants…"
                  value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <select className={`${inputCls} w-44`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="suspended">Suspended</option>
-          <option value="pending_deletion">Pending deletion</option>
-        </select>
+        <div className="w-44 shrink-0">
+          <select className={inputCls} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+            <option value="pending_deletion">Pending deletion</option>
+          </select>
+        </div>
         {can('tenants.create') && (
           <button className={btn.primary} onClick={() => setShowCreate(true)}>
             <Plus className="h-4 w-4" /><span className="hidden sm:inline">New tenant</span>

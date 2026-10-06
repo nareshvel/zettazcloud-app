@@ -49,10 +49,12 @@ const Subscriptions = () => {
           ))}
         </div>
         {tab === 'subs' && (
-          <select className={`${inputCls} w-44`} value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">All statuses</option>
-            {['active', 'trial', 'past_due', 'expired', 'cancelled'].map((s) => <option key={s}>{s}</option>)}
-          </select>
+          <div className="w-44 shrink-0">
+            <select className={inputCls} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">All statuses</option>
+              {['active', 'trial', 'past_due', 'expired', 'cancelled'].map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </div>
         )}
         {canEdit && (
           <button className={`${btn.secondary} ml-auto`} disabled={dunningBusy} onClick={runDunning}>
