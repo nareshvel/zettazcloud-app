@@ -28,8 +28,8 @@ async function computePromotions({ items, tenantId, storeId, pool }) {
        priority, store_id AS storeId
      FROM promotional_offers
      WHERE tenant_id = ? AND (store_id = ? OR store_id IS NULL) AND is_active = 1
-       AND (start_date IS NULL OR start_date = '0000-00-00 00:00:00' OR start_date <= NOW())
-       AND (end_date IS NULL OR end_date = '0000-00-00 00:00:00' OR end_date >= NOW())`,
+       AND (start_date IS NULL OR YEAR(start_date) = 0 OR start_date <= NOW())
+       AND (end_date IS NULL OR YEAR(end_date) = 0 OR end_date >= NOW())`,
     [tenantId, storeId]
   );
 
