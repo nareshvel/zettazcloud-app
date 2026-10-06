@@ -105,20 +105,17 @@ export const hasAllPermissions = (
  * Mirrors Login.tsx's `getRedirectPath` `isAdminUser` check EXACTLY — that
  * function is what decides whether a user lands on the admin dashboard or
  * on Sales Hub/POS at login, so it's the codebase's real, load-bearing
- * definition of "admin" for this purpose.
+ * definition of "admin" for login routing.
  *
- * IMPORTANT: this is NOT the same question as "does this user hold the
- * `dashboard.view` permission." Both the baseline RBAC seed and the demo
- * tenant seeds deliberately grant `dashboard.view` to the Cashier role
- * (database/seeds/applied/2025-06-18_rbac_seed_data.sql and
- * 2026-08-15_diamond_republic_antigua_seed.sql) — presumably for some
- * narrower read-only widget, not as permission to navigate to the full
- * admin dashboard route. A cashier legitimately holding `dashboard.view`
- * means gating a "back to Dashboard" shortcut on that permission does
- * nothing: every cashier has it by design. Any UI element offering
- * navigation OUT of a sales-floor screen (Sales Hub, POS) and INTO the
- * admin dashboard must use `isAdminUser`, not `hasPermission(user,
- * 'dashboard.view')`.
+ * NOTE on `dashboard.view`: it used to be granted to every Cashier by the
+ * baseline and demo seeds, which made it useless as a navigation gate —
+ * `isAdminUser` existed to work around that. Migration
+ * 2026-09-03_remove_dashboard_view_from_cashier_roles.sql stripped the
+ * grant from all Cashier/Sales Associate roles (and the seeds were
+ * updated), so `dashboard.view` is now a meaningful permission: UI
+ * elements that navigate INTO the dashboard (Sales Hub icon, breadcrumbs,
+ * Sidebar) gate on `dashboard.view`, while `isAdminUser` remains only for
+ * "is this fundamentally an office user" decisions like login routing.
  */
 export const isAdminUser = (user: User | null | undefined): boolean => {
   if (!user) return false;

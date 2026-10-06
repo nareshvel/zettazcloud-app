@@ -15,6 +15,7 @@ import ReusableTable, { ColumnDefinition } from '@/components/ReusableTable';
 import StatusBadge from '@/components/common/StatusBadge';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 import { useInventory } from '../contexts/InventoryContext';
 import { useCurrency, useDateFormatting } from '../contexts/LocalizationContext';
 import { getSalesSummary, getSalesChartData } from '../services/salesService';
@@ -36,6 +37,15 @@ import {
 // Simple skeleton helper for the dashboard widgets
 const Skeleton = ({ className }: { className?: string }) => (
   <div className={`animate-pulse rounded-md bg-muted ${className || ''}`} />
+);
+
+// Rendered inside a widget when the user lacks the permission its data
+// comes from — a clean state instead of a 403 console error and an
+// infinite skeleton/empty chart.
+const WidgetNoAccess = () => (
+  <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
+    You don't have permission to view this.
+  </div>
 );
 
 // Shared Recharts tooltip config for all four Dashboard charts. `allowEscapeViewBox` keeps the
@@ -84,6 +94,19 @@ const Dashboard = () => {
   } = useInventory();
   const { formatCurrency, currencySymbol } = useCurrency();
   const { formatDate, formatDateTime, timezone } = useDateFormatting();
+
+  // Per-widget permission gates — the dashboard page itself only requires
+  // dashboard.view (which lets a user reach this route), while each widget's
+  // data is sourced from endpoints with their own permission requirements:
+  //   sales summary        → /sales/summary            → sales.view
+  //   revenue/category     → /reports/sales/*          → reports.view
+  //   transactions/payment → /reports/sales/*          → reports.view
+  //   inventory widgets    → /products                 → products.view
+  //   delete-sale action   → /sale-deletion/*          → sales.delete
+  const canViewSales = hasPermission(user, 'sales.view');
+  const canViewReports = hasPermission(user, 'reports.view');
+  const canViewProducts = hasPermission(user, 'products.view');
+  const canDeleteSales = hasPermission(user, 'sales.delete');
 
   const displayName = user?.name || 'User';
 
@@ -378,10 +401,20 @@ const Dashboard = () => {
     const loadSalesData = async () => {
       setIsLoading(prev => ({ ...prev, sales: true }));
       try {
-        // Fetch sales summary data with proper tenant isolation
-        const summary = await getSalesSummary();
-        if (summary) {
-          setSalesSummary(summary);
+        // Summary KPIs come from /sales/summary (sales.view)
+        if (canViewSales) {
+          const summary = await getSalesSummary();
+          if (summary) {
+            setSalesSummary(summary);
+          }
+        }
+
+        // Revenue chart + category breakdown come from /reports/sales/*
+        // (reports.view) — skip entirely for users without it.
+        if (!canViewReports) {
+          setSalesData([]);
+          setCategorySalesActual([]);
+          return;
         }
 
         // Fetch sales chart data for the selected date range
@@ -439,8 +472,10 @@ const Dashboard = () => {
 
     const loadInventoryData = async () => {
       setIsLoading(prev => ({ ...prev, inventory: true }));
-      if (!user || !user.tenantId || !user.storeId) {
-        console.warn("Tenant ID or Store ID not found, cannot load inventory data for dashboard metrics.");
+      if (!canViewProducts || !user || !user.tenantId || !user.storeId) {
+        if (canViewProducts) {
+          console.warn("Tenant ID or Store ID not found, cannot load inventory data for dashboard metrics.");
+        }
         setProducts([]);
         setInventoryStatusData([
           { name: tDashboard('inventoryStatus.lowStock'), value: 0, color: '#ff6b6b' },
@@ -498,6 +533,14 @@ const Dashboard = () => {
     };
 
     const loadTransactionsData = async () => {
+      // Transactions table, payment-methods pie and top performers all
+      // derive from /reports/sales/transactions (reports.view).
+      if (!canViewReports) {
+        setRecentTransactions([]);
+        setPaymentMethodsData([]);
+        setIsLoading(prev => ({ ...prev, transactions: false }));
+        return;
+      }
       setIsLoading(prev => ({ ...prev, transactions: true }));
       try {
         const filters = {
@@ -615,7 +658,7 @@ const Dashboard = () => {
     loadSalesData();
     loadInventoryData();
     loadTransactionsData();
-  }, [timezone, dateRangeMeta]); // Re-load when timezone or date range changes
+  }, [timezone, dateRangeMeta, canViewSales, canViewReports, canViewProducts]); // Re-load when timezone or date range changes
 
   // Stats - use real data from salesSummary with accurate fallback values
   const revenueThisYear = salesSummary?.totalRevenue || 0; // Use totalRevenue from API (yearly)
@@ -654,11 +697,12 @@ const Dashboard = () => {
   const monthlyGrowth = monthlyRevenue && lastMonthRevenue ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(1) : '0.0';
 
   useEffect(() => {
-    if (isAuthenticated && !isInventoryLoaded && !isInventoryLoading) {
-      // Removed debug logging
+    // Skip the shared inventory fetch entirely when the user lacks
+    // products.view — it would 403 and poison the inventoryError gate below.
+    if (isAuthenticated && canViewProducts && !isInventoryLoaded && !isInventoryLoading) {
       fetchInventoryData();
     }
-  }, [isAuthenticated, isInventoryLoaded, isInventoryLoading, fetchInventoryData]);
+  }, [isAuthenticated, canViewProducts, isInventoryLoaded, isInventoryLoading, fetchInventoryData]);
 
   const topPerformers = useMemo(() => {
     const map = new Map<string, { name: string; sales: number; transactions: number }>();
@@ -681,6 +725,20 @@ const Dashboard = () => {
 
   const transactionTotalPages = Math.ceil(recentTransactions.length / TRANSACTIONS_PER_PAGE) || 1;
 
+  // dashboard.view gates the page itself — a user without it gets a clean
+  // access-denied screen rather than a dashboard of empty widgets. Only
+  // evaluated once `user` is loaded so an auth re-validation's transient
+  // null doesn't flash the denial.
+  if (user && !hasPermission(user, 'dashboard.view')) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))]">
+        <LayoutDashboard className="h-10 w-10 text-muted-foreground mb-3" />
+        <p className="text-lg font-semibold">You don't have access to the dashboard.</p>
+        <p className="text-sm text-muted-foreground mt-1">Ask your administrator to grant the dashboard.view permission.</p>
+      </div>
+    );
+  }
+
   // Wait for timezone to load before rendering
   if (!timezone) {
     return (
@@ -690,7 +748,11 @@ const Dashboard = () => {
     );
   }
 
-  if (isInventoryLoading && !isInventoryLoaded) {
+  // isInventoryLoaded never becomes true for a user without products.view
+  // (we skip the fetch) — don't block the whole page on it.
+  const inventoryReady = !canViewProducts || isInventoryLoaded;
+
+  if (isInventoryLoading && !inventoryReady) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <p className="text-lg font-semibold">Loading...</p>
@@ -714,7 +776,7 @@ const Dashboard = () => {
     );
   }
 
-  if (!isInventoryLoaded) {
+  if (!inventoryReady) {
     // This state might be brief or not shown if loading is quick
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))]">
@@ -768,13 +830,15 @@ const Dashboard = () => {
           >
             <Printer className="h-4 w-4" />
           </button>
-          <button
-            className="p-2 -m-1 rounded-md text-red-600 hover:text-red-700 hover:bg-muted"
-            onClick={() => handleDeleteSale(tx)}
-            title="Delete Sale"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          {canDeleteSales && (
+            <button
+              className="p-2 -m-1 rounded-md text-red-600 hover:text-red-700 hover:bg-muted"
+              onClick={() => handleDeleteSale(tx)}
+              title="Delete Sale"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -875,6 +939,8 @@ const Dashboard = () => {
           <div className="h-80">
             {isLoading.sales ? (
               <div className="h-full w-full rounded-lg bg-muted/50 animate-pulse" />
+            ) : !canViewReports ? (
+              <WidgetNoAccess />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={salesData}>
@@ -917,6 +983,8 @@ const Dashboard = () => {
             <div className="h-36">
               {isLoading.sales ? (
                 <div className="h-full w-full rounded-lg bg-muted/50 animate-pulse" />
+              ) : !canViewReports ? (
+                <WidgetNoAccess />
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={categorySalesData}>
@@ -949,6 +1017,8 @@ const Dashboard = () => {
             </div>
             {isLoading.inventory ? (
               <div className="h-36 w-full rounded-lg bg-muted/50 animate-pulse" />
+            ) : !canViewProducts ? (
+              <div className="h-36"><WidgetNoAccess /></div>
             ) : (
             <div className="flex">
               <div className="h-36 w-1/2">
@@ -1025,6 +1095,8 @@ const Dashboard = () => {
             <div className="relative h-48 w-full lg:h-full lg:w-1/2">
               {isLoading.transactions ? (
                 <div className="h-full w-full rounded-full bg-muted/50 animate-pulse mx-auto max-w-[12rem]" />
+              ) : !canViewReports ? (
+                <WidgetNoAccess />
               ) : paymentMethodsData.length === 0 ? (
                 <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
                   No payment data
@@ -1095,6 +1167,8 @@ const Dashboard = () => {
                 </div>
               ))}
             </div>
+          ) : !canViewReports ? (
+            <div className="py-8"><WidgetNoAccess /></div>
           ) : topPerformers.length === 0 ? (
             <div className="text-center py-8 text-sm text-muted-foreground">
               No sales data for the selected period.
@@ -1146,7 +1220,7 @@ const Dashboard = () => {
             columns={transactionColumns}
             data={paginatedTransactions}
             isLoading={isLoading.transactions}
-            noDataMessage="No recent transactions found."
+            noDataMessage={canViewReports ? 'No recent transactions found.' : "You don't have permission to view this."}
             currentPage={transactionPage}
             totalPages={transactionTotalPages}
             onPageChange={setTransactionPage}

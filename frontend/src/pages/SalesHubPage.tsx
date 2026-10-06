@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/contexts/StoreContext';
 import { normalizeImageUrl } from '@/utils/imageUtils';
-import { hasAnyPermission, isAdminUser } from '@/utils/permissionUtils';
+import { hasAnyPermission } from '@/utils/permissionUtils';
 import NotificationsBell from '@/components/common/NotificationsBell';
 import DutyFreeIntakeModal from './DutyFreeIntakeModal';
 import ReceiptModal from '@/components/Receipt/ReceiptModal';
@@ -263,20 +263,15 @@ const SalesHubPage: React.FC = () => {
   const effectiveUser = user || cachedUser;
 
   const displayName = effectiveUser?.first_name || effectiveUser?.name || effectiveUser?.username || 'there';
-  // Two iterations to get right:
-  //   1st attempt: `effectiveUser?.role === 'cashier'` — broke because
-  //      `role` is the legacy singular-role field, often empty for a user
-  //      assigned a role through the modern RBAC system.
-  //   2nd attempt: `hasAnyPermission(effectiveUser, ['dashboard.view'])` —
-  //      broke for a DIFFERENT reason: both the baseline RBAC seed and the
-  //      demo tenant seeds deliberately grant `dashboard.view` to the
-  //      Cashier role (see isAdminUser's doc comment in permissionUtils.ts)
-  //      — every cashier has this permission by design, so it gates
-  //      nothing here.
-  // `isAdminUser` mirrors Login.tsx's getRedirectPath exactly — the
-  // codebase's real, load-bearing definition of "should this user see admin
-  // navigation at all," independent of the dashboard.view permission grant.
-  const canViewDashboard = isAdminUser(effectiveUser);
+  // Gated on dashboard.view — the same gate the Sidebar's Dashboard nav
+  // item uses. This permission became meaningful once migration
+  // 2026-09-03_remove_dashboard_view_from_cashier_roles.sql stripped it
+  // from Cashier/Sales Associate roles; before that, every cashier held
+  // it and it could gate nothing (isAdminUser was the workaround). A user
+  // granted dashboard.view now sees the icon; the widgets on the page
+  // itself still require their own data permissions (reports.view etc.)
+  // and degrade gracefully without them — see Dashboard.tsx.
+  const canViewDashboard = hasAnyPermission(effectiveUser, ['dashboard.view']);
   const canSell = hasAnyPermission(effectiveUser, ['sales.create']);
 
   const goToRecord = (record: SalesHubRecord, presetQuery: string) => {

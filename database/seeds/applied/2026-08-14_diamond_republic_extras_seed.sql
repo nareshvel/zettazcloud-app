@@ -29,7 +29,8 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
 SELECT 'r1000000-0000-0000-0000-000000000004', `id`
 FROM `permissions`
 WHERE `name` IN (
-  'dashboard.view',
+  -- 'dashboard.view' intentionally absent — see migration
+  -- 2026-09-03_remove_dashboard_view_from_cashier_roles.sql
   'products.view', 'categories.view', 'inventory.view',
   'sales.view', 'sales.create',
   'customers.view', 'customers.create', 'customers.edit',

@@ -151,10 +151,12 @@ SELECT 'r1000000-0000-0000-0000-000000000002', `id` FROM `permissions`
 WHERE `name` NOT IN ('users.delete','roles.manage','settings.delete','subscriptions.manage');
 
 -- Cashier → sales + inventory view
+-- ('dashboard.view' intentionally absent — see migration
+-- 2026-09-03_remove_dashboard_view_from_cashier_roles.sql)
 INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
 SELECT 'r1000000-0000-0000-0000-000000000003', `id` FROM `permissions`
 WHERE `name` IN (
-  'dashboard.view','products.view','categories.view','inventory.view',
+  'products.view','categories.view','inventory.view',
   'sales.view','sales.create','customers.view','customers.create','customers.edit',
   'repairs.view','repairs.create','layaway.view','layaway.create'
 );
@@ -163,7 +165,7 @@ WHERE `name` IN (
 INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
 SELECT 'r1000000-0000-0000-0000-000000000004', `id` FROM `permissions`
 WHERE `name` IN (
-  'dashboard.view','products.view','categories.view','inventory.view',
+  'products.view','categories.view','inventory.view',
   'sales.view','sales.create','customers.view','customers.create','customers.edit',
   'repairs.view','repairs.create','layaway.view','layaway.create'
 );

@@ -197,10 +197,13 @@ SELECT @store_manager_role_id, id FROM permissions
 WHERE name NOT LIKE 'tenant.%' AND name NOT LIKE 'stores.create' AND name NOT LIKE 'stores.delete';
 
 -- Cashier: Basic operations
+-- NOTE: 'dashboard.view' intentionally omitted — it was removed from
+-- Cashier/Sales Associate roles by migration
+-- 2026-09-03_remove_dashboard_view_from_cashier_roles.sql so that the
+-- permission meaningfully gates dashboard navigation.
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT @cashier_role_id, id FROM permissions 
 WHERE name IN (
-  'dashboard.view', 
   'products.view', 
   'categories.view',
   'inventory.view',

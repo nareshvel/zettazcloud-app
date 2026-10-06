@@ -4,6 +4,8 @@ import {
   ShoppingCart, ArrowRight, Trophy, Zap, Clock,
 } from 'lucide-react';
 import { fetchApi } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 
 interface QuickStartStep {
   id: string;
@@ -20,6 +22,7 @@ interface QuickStartGuideProps {
 }
 
 const QuickStartGuide: React.FC<QuickStartGuideProps> = ({ isOpen, onClose }) => {
+  const { user } = useAuth();
   const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>({
     step1: false, step2: false, step3: false,
     step4: false, step5: false, step6: false,
@@ -28,6 +31,14 @@ const QuickStartGuide: React.FC<QuickStartGuideProps> = ({ isOpen, onClose }) =>
   const [isLoading, setIsLoading] = useState(false);
 
   const getCurrentStore = async () => {
+    // /stores/current requires stores.view — a user without it (e.g. a
+    // cashier-role user on the Dashboard) would get a 403 here; fall back
+    // to the JWT's store_id instead of firing a request that can't succeed.
+    if (!hasPermission(user, 'stores.view')) {
+      const id = user?.storeId || null;
+      if (id) setCurrentStoreId(id);
+      return id;
+    }
     try {
       const response = await fetchApi('/stores/current') as any;
       if (response?.id) { setCurrentStoreId(response.id); return response.id; }

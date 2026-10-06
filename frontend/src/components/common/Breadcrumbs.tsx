@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { isAdminUser } from '@/utils/permissionUtils';
+import { hasPermission } from '@/utils/permissionUtils';
 
 /**
  * Shared breadcrumb logic, extracted from TopBar.tsx (2026-08-31). TopBar renders the
@@ -31,15 +31,11 @@ export function useBreadcrumbs(): React.ReactNode[] {
   const pathnames = location.pathname.split('/').filter((x) => x);
 
   // This breadcrumb link pointed straight at /admin for every logged-in
-  // user regardless of role, so a sales-floor cashier landing on
-  // /sales-hub (per Login.tsx's getRedirectPath) still had a live way back
-  // into the admin dashboard the rest of the app deliberately keeps them
-  // out of. Gated on isAdminUser — NOT dashboard.view, which both the
-  // baseline and demo RBAC seeds deliberately grant to Cashier by design
-  // (see isAdminUser's doc comment in permissionUtils.ts); a permission
-  // check would have gated nothing here.
+  // user regardless of role. Gated on dashboard.view — meaningful since
+  // migration 2026-09-03 stripped it from Cashier/Sales Associate roles,
+  // and the same gate the Sidebar's Dashboard nav item already uses.
   const { user } = useAuth();
-  const canViewDashboard = isAdminUser(user);
+  const canViewDashboard = hasPermission(user, 'dashboard.view');
 
   if (
     pathnames.length === 0 ||

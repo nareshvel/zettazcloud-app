@@ -63,6 +63,9 @@ vi.mock('@/services/api', () => ({
 const searchSalesHubMock = vi.fn(async () => ({ customers: [], standaloneRecords: [] }));
 vi.mock('@/services/salesHubService', () => ({
   searchSalesHub: (q: string) => searchSalesHubMock(q),
+  // Glance badges (repairs ready / memos overdue) — stubbed to empty so the
+  // page mounts without a network call.
+  getSalesHubGlance: () => Promise.resolve({ repairsReady: 0, memosOverdue: 0 }),
 }));
 
 // The store's retail profile (business type + duty-free flag) drives the
@@ -449,16 +452,14 @@ describe('SalesHubPage', () => {
     expect(screen.getByText('D')).toBeInTheDocument();
   });
 
-  // Gating went through two iterations to land on the right signal
-  // (isAdminUser, mirroring Login.tsx's getRedirectPath — see the
-  // canViewDashboard comment in SalesHubPage.tsx):
-  //   1st: `effectiveUser?.role === 'cashier'` — broke because `role` is
-  //      often empty for an RBAC-assigned role.
-  //   2nd: `hasAnyPermission(effectiveUser, ['dashboard.view'])` — ALSO
-  //      broke, because both the baseline and demo RBAC seeds deliberately
-  //      grant `dashboard.view` to Cashier by design — it gated nothing.
-  it('hides the Dashboard link in the user menu for a cashier (even though Cashier legitimately holds dashboard.view)', () => {
-    mockUser = { id: 'u1', first_name: 'Priya', email: 'priya@store.example', role: 'cashier', permissions: ['dashboard.view', 'sales.create'] };
+  // The Dashboard link is gated on `dashboard.view` — the same gate the
+  // Sidebar's Dashboard nav item uses. It became meaningful after
+  // migration 2026-09-03_remove_dashboard_view_from_cashier_roles.sql
+  // stripped the grant from Cashier/Sales Associate; earlier iterations
+  // used isAdminUser because back then every cashier held the permission
+  // and it could gate nothing.
+  it('hides the Dashboard link in the user menu for a cashier without dashboard.view', () => {
+    mockUser = { id: 'u1', first_name: 'Priya', email: 'priya@store.example', role: 'cashier', permissions: ['sales.create'] };
     renderHub();
     fireEvent.click(screen.getByLabelText('User menu'));
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
@@ -466,10 +467,17 @@ describe('SalesHubPage', () => {
   });
 
   it('hides the Dashboard link even with no role string at all (RBAC-assigned role, legacy `role` field empty)', () => {
-    mockUser = { id: 'u3', first_name: 'Jordan', email: 'jordan@store.example', permissions: ['sales.create', 'dashboard.view'] };
+    mockUser = { id: 'u3', first_name: 'Jordan', email: 'jordan@store.example', permissions: ['sales.create'] };
     renderHub();
     fireEvent.click(screen.getByLabelText('User menu'));
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
+  });
+
+  it('shows the Dashboard link for a non-admin user holding dashboard.view (e.g. Senior Cashier)', () => {
+    mockUser = { id: 'u4', first_name: 'Nadia', email: 'nadia@store.example', role: 'senior_cashier', permissions: ['sales.create', 'dashboard.view'] };
+    renderHub();
+    fireEvent.click(screen.getByLabelText('User menu'));
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
   it('shows the Dashboard link in the user menu for a tenant admin', () => {
