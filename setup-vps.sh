@@ -8,10 +8,31 @@ BACKUP_DIR=$(ls -d /var/www/app-zettaz-cloud-repo-backup-* 2>/dev/null | tail -1
 
 log() { echo "==> $*"; }
 
-# Check for backup
-if [[ -z "${BACKUP_DIR:-}" || ! -d "$BACKUP_DIR" ]]; then
-  echo "ERROR: No backup found at /var/www/app-zettaz-cloud-repo-backup-*"
-  echo "Please scp backend/.env and backend/uploads/ from the Mac first."
+# If no backup, prepare staging files from Mac first:
+#   scp /Users/nareshvelusamy/Herd/app-zettaz-cloud/backend/.env root@185.75.21.46:/var/www/zettazcloud-app.env
+#   (optional) scp -r backend/uploads root@185.75.21.46:/var/www/zettazcloud-app-uploads/
+
+RESTORE_SOURCE=""
+
+if [[ -n "${BACKUP_DIR:-}" && -d "$BACKUP_DIR" ]]; then
+  log "Using backup at $BACKUP_DIR"
+  RESTORE_SOURCE="$BACKUP_DIR"
+elif [[ -f "/var/www/zettazcloud-app.env" ]]; then
+  log "No backup; using staging .env from /var/www/zettazcloud-app.env"
+  RESTORE_SOURCE="/var/www/zettazcloud-app-staging"
+  rm -rf "$RESTORE_SOURCE"
+  mkdir -p "$RESTORE_SOURCE/backend"
+  cp -a "/var/www/zettazcloud-app.env" "$RESTORE_SOURCE/backend/.env"
+  if [[ -d "/var/www/zettazcloud-app-uploads" ]]; then
+    cp -a "/var/www/zettazcloud-app-uploads" "$RESTORE_SOURCE/backend/uploads"
+  fi
+  if [[ -d "/var/www/zettazcloud-app-downloads" ]]; then
+    cp -a "/var/www/zettazcloud-app-downloads" "$RESTORE_SOURCE/frontend/public/downloads"
+  fi
+else
+  echo "ERROR: No backup found and no staging .env at /var/www/zettazcloud-app.env"
+  echo "Run on the Mac:"
+  echo "  scp /Users/nareshvelusamy/Herd/app-zettaz-cloud/backend/.env root@185.75.21.46:/var/www/zettazcloud-app.env"
   exit 1
 fi
 
@@ -33,12 +54,16 @@ cd "$NEW_ROOT/backend"
 npm ci --omit=dev
 
 # Restore runtime data
-log "Restoring .env and uploads from backup"
-cp -a "$BACKUP_DIR/backend/.env" "$NEW_ROOT/backend/.env"
-cp -a "$BACKUP_DIR/backend/.env.production" "$NEW_ROOT/backend/.env.production" 2>/dev/null || true
-cp -a "$BACKUP_DIR/backend/uploads" "$NEW_ROOT/backend/uploads" 2>/dev/null || true
+log "Restoring .env and uploads"
+cp -a "$RESTORE_SOURCE/backend/.env" "$NEW_ROOT/backend/.env"
+cp -a "$RESTORE_SOURCE/backend/.env.production" "$NEW_ROOT/backend/.env.production" 2>/dev/null || true
+cp -a "$RESTORE_SOURCE/backend/uploads" "$NEW_ROOT/backend/uploads" 2>/dev/null || true
 mkdir -p "$NEW_ROOT/frontend/public/downloads"
-cp -a "$BACKUP_DIR/frontend/public/downloads/"* "$NEW_ROOT/frontend/public/downloads/" 2>/dev/null || true
+cp -a "$RESTORE_SOURCE/frontend/public/downloads/"* "$NEW_ROOT/frontend/public/downloads/" 2>/dev/null || true
+if [[ ! -d "$NEW_ROOT/backend/uploads" ]]; then
+  mkdir -p "$NEW_ROOT/backend/uploads"
+  echo "WARNING: backend/uploads/ was empty. You can re-upload logos later."
+fi
 
 # Build frontend
 log "Building frontend"
