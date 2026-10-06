@@ -22,6 +22,40 @@ const RBAC_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const roleService = require('./roleService');
 
 /*************************************
+ * CACHE INVALIDATION
+ * getUserRolesAndPermissions results are cached under keys shaped
+ * `rbac:${userId}:${tenantId}:${storeId}`. Every write to user_roles or
+ * role_permissions must flush the affected users' keys or revocations and
+ * grants take up to 5 minutes to take effect.
+ *************************************/
+const invalidateUserCache = (userId) => {
+  if (!userId) return;
+  try {
+    cacheService.deleteByPrefix(`rbac:${userId}:`);
+  } catch (e) {
+    console.error('Error invalidating RBAC cache for user:', e.message);
+  }
+};
+
+/**
+ * Flush the cached permission sets of every user assigned a given role.
+ * Called after role_permissions changes for that role.
+ * @param {string} roleId
+ */
+const invalidateRoleUsersCache = async (roleId) => {
+  if (!roleId) return;
+  try {
+    const [rows] = await pool.query(
+      'SELECT DISTINCT user_id FROM user_roles WHERE role_id = ?',
+      [roleId]
+    );
+    for (const row of rows) invalidateUserCache(row.user_id);
+  } catch (e) {
+    console.error('Error invalidating RBAC cache for role users:', e.message);
+  }
+};
+
+/*************************************
  * ROLE ASSIGNMENT FUNCTIONS
  *************************************/
 
@@ -76,6 +110,7 @@ const assignSystemRole = async (userId, roleId, assignedBy) => {
     );
     
     await connection.commit();
+    invalidateUserCache(userId);
     return { id: assignmentId, success: true };
   } catch (error) {
     await connection.rollback();
@@ -103,6 +138,7 @@ const removeSystemRole = async (userId, roleId) => {
       [userId, roleId]
     );
     
+    if (result.affectedRows > 0) invalidateUserCache(userId);
     return result.affectedRows > 0;
   } catch (error) {
     console.error('Error removing system role:', error);
@@ -177,6 +213,7 @@ const assignTenantRole = async (userId, roleId, tenantId, scope = 'tenant', stor
     );
     
     await connection.commit();
+    invalidateUserCache(userId);
     return { id: assignmentId, success: true };
   } catch (error) {
     await connection.rollback();
@@ -208,6 +245,7 @@ const removeTenantRole = async (assignmentId, userId, tenantId) => {
       [assignmentId, userId, tenantId]
     );
     
+    if (result.affectedRows > 0) invalidateUserCache(userId);
     return result.affectedRows > 0;
   } catch (error) {
     console.error('Error removing tenant role:', error);
@@ -332,18 +370,28 @@ const getUserRolesAndPermissions = async (userId, tenantId = null, storeId = nul
     let constraints = [];
     let params = [userId];
 
-    // We should find all roles for this user regardless of tenant ID,
-    // as the database query showed a mismatch between user.tenant_id and role.tenant_id
-    // This modification removes tenant filtering to ensure we get all the user's roles
-    // System roles (where tenant_id IS NULL) will still be included
+    // Tenant containment: only roles owned by the request tenant (or the user's
+    // own tenant — some early-seeded data mismatched user.tenant_id vs
+    // role.tenant_id) may grant permissions. Without this, a caller could pass
+    // another tenant's ID in ?tenantId and have their home-tenant roles
+    // evaluated against it — a cross-tenant privilege leak. Rows with
+    // r.tenant_id IS NULL are pre-normalization system rows.
+    constraints.push(`(r.tenant_id IS NULL
+      OR r.tenant_id = ?
+      OR r.tenant_id = (SELECT u.tenant_id FROM users u WHERE u.id = ?))`);
+    params.push(tenantId, userId);
 
-    // Add store filter if provided - prioritize store-specific roles
+    // Add store filter - prioritize store-specific roles
     // When storeId is provided, we get both:
     // 1. Store-specific roles for this specific store
     // 2. Tenant-level roles (where store_id is NULL)
+    // When NO storeId is provided, only tenant-scoped roles apply — otherwise
+    // a store-scoped role would leak into requests outside that store.
     if (storeId) {
       constraints.push('(ur.store_id = ? OR ur.scope = "tenant")');
       params.push(storeId);
+    } else {
+      constraints.push('ur.scope = "tenant"');
     }
 
     // Build the constraint part of the SQL query
@@ -386,7 +434,7 @@ const getUserRolesAndPermissions = async (userId, tenantId = null, storeId = nul
 
       // Process roles into a cleaner format and extract role IDs
       const roles = [];
-      const roleIds = [];
+      const roleIds = new Set();
       const roleMap = {};
 
       // Process user roles with store context prioritization
@@ -404,12 +452,17 @@ const getUserRolesAndPermissions = async (userId, tenantId = null, storeId = nul
           storeId: role.store_id,
           tenant_id: role.tenant_id // Keep track of tenant_id for system role detection
         };
-        
+
+        // Every assigned role contributes its permissions — grants are additive.
+        // The name-based dedup below only affects the display list (roles/roleNames);
+        // it must NOT drop roleIds or a same-named role's permissions vanish silently.
+        roleIds.add(role.role_id);
+
         // Store-scoped roles take precedence over tenant-scoped roles with the same name
         // If a role with this name exists but the new one is store-scoped and we have the right store context, replace it
         const existingRole = roleMap[role.role_name];
         const isStoreSpecificRole = role.scope === 'store' && role.store_id === storeId;
-        
+
         // Either add the role if it doesn't exist or replace tenant-scoped with store-scoped
         if (!existingRole || (isStoreSpecificRole && existingRole.scope === 'tenant')) {
           // If replacing, remove the old role from the roles array
@@ -419,10 +472,9 @@ const getUserRolesAndPermissions = async (userId, tenantId = null, storeId = nul
               roles.splice(index, 1);
             }
           }
-          
+
           roles.push(roleData);
-          roleIds.push(role.role_id);
-          
+
           // Map role name to role data for easier access
           roleMap[role.role_name] = roleData;
         }
@@ -432,10 +484,11 @@ const getUserRolesAndPermissions = async (userId, tenantId = null, storeId = nul
       const permissions = [];
       const permissionSet = new Set(); // For deduplication
 
-      if (roleIds.length > 0) {
+      if (roleIds.size > 0) {
         try {
-          const placeholders = roleIds.map(() => '?').join(',');
-          
+          const roleIdList = [...roleIds];
+          const placeholders = roleIdList.map(() => '?').join(',');
+
           const permissionsQuery = `
             SELECT 
               p.name as permission_name,
@@ -448,8 +501,8 @@ const getUserRolesAndPermissions = async (userId, tenantId = null, storeId = nul
               rp.role_id IN (${placeholders})
           `;
 
-          logger.debug(`[RBAC] Permission query for roleIds ${roleIds.join(',')}: ${permissionsQuery}`);
-          const [rolePermissions] = await pool.query(permissionsQuery, roleIds);
+          logger.debug(`[RBAC] Permission query for roleIds ${roleIdList.join(',')}: ${permissionsQuery}`);
+          const [rolePermissions] = await pool.query(permissionsQuery, roleIdList);
 
           if (!rolePermissions || !Array.isArray(rolePermissions)) {
             logger.error(`[RBAC] Invalid response from permissions query for user ${userId}`);
@@ -495,8 +548,10 @@ const getUserRolesAndPermissions = async (userId, tenantId = null, storeId = nul
         permissions: permissionNames // Just permission names
       };
       
-      // Cache the result for 5 minutes
-      cacheService.set(cacheKey, result, 5 * 60);
+      // Cache the result — RBAC_CACHE_TTL (the previous `5 * 60` passed 300ms,
+      // not 5 minutes). Invalidation on role/permission writes makes a real
+      // TTL safe now.
+      cacheService.set(cacheKey, result, RBAC_CACHE_TTL);
       
       return result;
     } catch (queryError) {
@@ -565,13 +620,17 @@ const hasPermission = async (userId, permission, tenantId, storeId = null) => {
  */
 const isTenantAdmin = async (userId, tenantId) => {
   try {
+    // `is_system_role = 1` is load-bearing: without it, any user with role-create
+    // rights could make a role literally named "Tenant Admin", self-assign it,
+    // and bypass every permission check. Only the seeded system role counts.
     const query = `
-      SELECT COUNT(*) as count 
+      SELECT COUNT(*) as count
       FROM user_roles ur
       JOIN roles r ON ur.role_id = r.id
       WHERE ur.user_id = ?
         AND r.tenant_id = ?
         AND LOWER(REPLACE(r.name, ' ', '_')) = 'tenant_admin'
+        AND r.is_system_role = 1
     `;
     
     const [result] = await pool.query(query, [userId, tenantId]);
@@ -615,5 +674,9 @@ module.exports = {
   getUserRolesAndPermissions,
   getUserPermissions,
   hasPermission,
-  isTenantAdmin
+  isTenantAdmin,
+
+  // Cache invalidation (call after any user_roles / role_permissions write)
+  invalidateUserCache,
+  invalidateRoleUsersCache
 };

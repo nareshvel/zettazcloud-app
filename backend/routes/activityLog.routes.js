@@ -10,7 +10,7 @@ const { authenticate, requireTenantId, requireStoreId } = require('../middleware
  * @desc    Fetch user activity logs with filtering and pagination
  * @access  Private (requires activity.read permission)
  */
-router.get('/', requirePermission('activity.read'), async (req, res) => {
+router.get('/', requirePermission('system.audit'), async (req, res) => {
     const tenant_id = req.user?.tenant_id || req.query?.tenant_id || req.headers["x-tenant-id"];
     const { userId, actionType, startDate, endDate, page = 1, limit = 20 } = req.query;
 

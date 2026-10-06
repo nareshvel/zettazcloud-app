@@ -10,6 +10,7 @@ import { getTaxClasses, getTaxClassRates, getStoreTaxConfig } from '@/services/a
 import { getJurisdictionContext } from '@/services/jurisdictionService';
 import { useAuth } from './AuthContext';
 import { useTaxConfig } from './TaxConfigContext';
+import { hasAnyPermission } from '@/utils/permissionUtils';
 import { v4 as uuidv4 } from 'uuid';
 
 export type { TravellerContext };
@@ -217,6 +218,16 @@ export const CartProvider = ({ children }: CartProviderProps): JSX.Element => {
       if (!user || isAuthLoading) {
         setTaxClasses([]);
         setAllTaxRates([]);
+        return;
+      }
+      // Permission guard: the tax endpoints require tax.view or settings.view.
+      // Users without either (e.g. a bare cashier role) would otherwise generate
+      // guaranteed 403s on every mount — the cart simply proceeds without a
+      // tax breakdown, matching the existing fallback behaviour.
+      if (!hasAnyPermission(user, ['tax.view', 'settings.view'])) {
+        setTaxClasses([]);
+        setAllTaxRates([]);
+        setActiveTaxConfig(null);
         return;
       }
       try {

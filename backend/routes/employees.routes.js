@@ -259,6 +259,10 @@ router.put('/:id', requirePermission('employees.edit'), async (req, res) => {
     }
 
     await conn.commit();
+    // Role assignment changed inside the transaction — flush cached permissions.
+    if (userId && b.account_role_id !== undefined) {
+      await require('../services/rbacService').invalidateUserCache(userId);
+    }
     res.json({ status: 'success' });
   } catch (e) {
     await conn.rollback().catch(() => {});

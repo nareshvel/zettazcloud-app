@@ -1207,7 +1207,7 @@ router.get('/:id', authenticate, async (req, res) => {
  * @desc    Update a store by ID
  * @access  Private (requires stores.update permission)
  */
-router.patch('/:id', requirePermission('stores.update'), async (req, res) => {
+router.patch('/:id', requirePermission('stores.edit'), async (req, res) => {
   // Debug logging removed for cleaner console output
   // Debug logging removed for cleaner console output
   // Debug logging removed for cleaner console output

@@ -9,7 +9,10 @@ const router = express.Router();
 const authRoutes = require('./authRoutes');
 const permissionRoutes = require('./permissionRoutes');
 const roleRoutes = require('./roleRoutes');
-const userRoleRoutes = require('./userRoleRoutes');
+// userRoleRoutes removed — the file was dead code: it referenced an unimported
+// userRoleService, called methods that don't exist, and its self-check
+// (`userId === req.user?.id || "system"`) evaluated truthy for every caller.
+// Real assignment endpoints live in userRoutes (/users/:id/roles).
 const subscriptionRoutes = require('./subscriptionRoutes');
 const userRoutes = require('./userRoutes');
 const testRoutes = require('./testRoutes');
@@ -52,7 +55,7 @@ const printAgentConnectRoutes = require('./printAgentConnect.routes');
 router.use('/auth', authRoutes);
 router.use('/permissions', permissionRoutes);
 router.use('/roles', roleRoutes);
-router.use('/user-roles', userRoleRoutes);
+
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/users', userRoutes);
 router.use('/admin', adminRoutes);

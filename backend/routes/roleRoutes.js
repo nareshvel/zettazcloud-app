@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const roleService = require('../services/roleService');
 const permissionService = require('../services/permissionService');
+const { pool } = require('../config/db');
 const { authenticate, authorize, requireTenantId, requireStoreId } = require('../middleware/unifiedAuthMiddleware');
 // Import the new RBAC permission middleware
 const { requirePermission } = require('../middleware/rbacPermissionMiddleware');
@@ -46,7 +47,7 @@ router.get('/',
  */
 router.get('/system',
   authenticate,
-  requirePermission('system.roles.read'),
+  requirePermission('system.roles.manage'),
   async (req, res) => {
     try {
       const { includePermissions } = req.query;
@@ -68,7 +69,7 @@ router.get('/system',
  */
 router.get('/system/:id',
   authenticate,
-  requirePermission('system.roles.read'),
+  requirePermission('system.roles.manage'),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -97,7 +98,7 @@ router.get('/system/:id',
  */
 router.post('/system',
   authenticate,
-  requirePermission('system.roles.create'),
+  requirePermission('system.roles.manage'),
   async (req, res) => {
     try {
       const { name, description, permissions } = req.body;
@@ -130,7 +131,7 @@ router.post('/system',
  */
 router.put('/system/:id',
   authenticate,
-  requirePermission('system.roles.update'),
+  requirePermission('system.roles.manage'),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -172,7 +173,7 @@ router.put('/system/:id',
  */
 router.delete('/system/:id',
   authenticate,
-  requirePermission('system.roles.delete'),
+  requirePermission('system.roles.manage'),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -214,7 +215,7 @@ router.delete('/system/:id',
  */
 router.get('/tenant/:tenantId',
   authenticate,
-  requirePermission('tenant.roles.read'),
+  requirePermission('roles.view'),
   async (req, res) => {
     try {
       const { tenantId } = req.params;
@@ -302,8 +303,13 @@ router.get('/permissions/:roleId',
         
         // Debug logging removed for cleaner console output
       } else {
-        // For tenant roles, keep all permissions initially
-        filteredPermissions = [...allPermissions];
+        // For tenant roles, hide system/platform permissions — the write path
+        // (roleService + PUT /permissions/:roleId) rejects them, so offering
+        // them in the UI would only produce 400s and dead grants.
+        filteredPermissions = allPermissions.filter(permission => {
+          const permName = permission.name;
+          return !/^(platform|system|tenants|subscriptions|plans|support)\./.test(permName);
+        });
       }
       
       // Second, apply role-specific filtering
@@ -376,7 +382,7 @@ router.get('/permissions/:roleId',
  */
 router.get('/tenant/:id',
   authenticate,
-  requirePermission('tenant.roles.read'),
+  requirePermission('roles.view'),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -406,7 +412,7 @@ router.get('/tenant/:id',
  */
 router.post('/tenant',
   authenticate,
-  requirePermission('tenant.roles.create'),
+  requirePermission('roles.create'),
   async (req, res) => {
     try {
       const { name, description } = req.body || {};
@@ -466,7 +472,7 @@ router.post('/tenant',
  */
 router.put('/tenant/:id',
   authenticate,
-  requirePermission('tenant.roles.update'),
+  requirePermission('roles.edit'),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -521,7 +527,7 @@ router.put('/tenant/:id',
  */
 router.delete('/tenant/:id',
   authenticate,
-  requirePermission('tenant.roles.delete'),
+  requirePermission('roles.delete'),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -564,25 +570,59 @@ router.delete('/tenant/:id',
  */
 router.put('/permissions/:roleId',
   authenticate,
-  requirePermission('roles.manage'),
+  requirePermission('roles.edit'),
   async (req, res) => {
     try {
       const { roleId } = req.params;
       const { permissions, isSystemRole = false } = req.body;
-      
+      const tenantId = req.tenantId || req.user?.tenant_id;
+
       if (!Array.isArray(permissions)) {
         return res.status(400).json({ message: 'Permissions must be an array of permission IDs' });
       }
-      
-      // For system roles, need additional authorization
-      if (isSystemRole && !req.user.isSystemAdmin) {
-        return res.status(403).json({ message: 'Not authorized to modify system role permissions' });
+
+      if (isSystemRole) {
+        // System roles are platform objects — only a platform admin may touch them
+        if (!req.user.isSystemAdmin) {
+          return res.status(403).json({ message: 'Not authorized to modify system role permissions' });
+        }
+      } else {
+        // Tenant scoping: the role must belong to the caller's tenant.
+        // Without this check anyone with roles.edit could rewrite
+        // role_permissions for ANY tenant's role (or a system-seeded role in
+        // this tenant) by guessing its ID.
+        const role = await roleService.getTenantRoleById(roleId, tenantId);
+        if (!role) {
+          return res.status(404).json({ message: 'Role not found' });
+        }
+        if (role.is_system_role) {
+          return res.status(403).json({ message: 'Cannot modify permissions of a system role' });
+        }
+
+        // Tenant roles must never carry system/platform permissions — those
+        // resolve through user_system_roles, not role_permissions, so granting
+        // them here would be a dead grant at best and a future escalation
+        // surface at worst.
+        const [rows] = await pool.query(
+          `SELECT name FROM permissions WHERE id IN (${permissions.map(() => '?').join(',') || "''"})`,
+          permissions.length ? permissions : []
+        );
+        const blocked = (rows || [])
+          .map(r => r.name)
+          .filter(n => /^(platform|system|tenants|subscriptions|plans|support)\./.test(n));
+        if (blocked.length) {
+          return res.status(400).json({
+            message: `System permissions cannot be granted to tenant roles: ${blocked.join(', ')}`
+          });
+        }
       }
-      
-      // Update permissions for this role
-      // This would need to be implemented in your permission service
+
       await permissionService.updateRolePermissions(roleId, permissions, isSystemRole);
-      
+
+      // Flush cached permission sets for every user holding this role
+      const rbacService = require('../services/rbacService');
+      await rbacService.invalidateRoleUsersCache(roleId);
+
       res.json({ success: true, message: 'Role permissions updated successfully' });
     } catch (error) {
       console.error('Error updating role permissions:', error);
@@ -604,9 +644,13 @@ router.get('/user/:userId/permissions',
       const tenantId = req.user.tenant_id;
       const storeId = req.headers['store-id'] || null;
       
-      // Can only fetch permissions for yourself or if you have management permission
+      // Can only fetch permissions for yourself or if you have management permission.
+      // Use the service-level check — invoking requirePermission() as a function
+      // sends its own 403 response before this handler can decide.
       const isSelf = userId === req.user.id;
-      const hasManagePermission = await requirePermission('users.manage')(req, res, () => true).catch(() => false);
+      const rbacService = require('../services/rbacService');
+      const hasManagePermission = await rbacService.isTenantAdmin(req.user.id, tenantId) ||
+        await rbacService.hasPermission(req.user.id, 'users.view', tenantId, storeId);
       
       if (!isSelf && !hasManagePermission) {
         return res.status(403).json({ message: 'Not authorized to view other users permissions' });

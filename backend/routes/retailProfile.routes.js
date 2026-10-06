@@ -122,7 +122,7 @@ router.get('/templates/missing', handle(async (req, res) => {
  * may have customised them. `replace` is not exposed here at all — it exists
  * only for demo seeding.
  */
-router.post('/templates/provision', requirePermission('settings.create'), handle(async (req, res) => {
+router.post('/templates/provision', requirePermission('settings.printer'), handle(async (req, res) => {
   const data = await templateProvisioningService.provisionStoreTemplates(
     tenantOf(req), storeOf(req),
     { publish: req.body?.publish !== false, createdBy: req.user?.id },

@@ -914,19 +914,45 @@ const hasPermission = (requiredPermissions) => {
       console.error('[auth] Tenant admin check failed, falling back to explicit permissions:', error.message);
     }
 
-    // Check if user has any of the required permissions
-    const hasRequiredPermission = requiredPermissions.some(permission =>
-      req.user.permissions && req.user.permissions.includes(permission)
-    );
+    /*
+     * Resolve permissions from the DATABASE, not the JWT snapshot.
+     *
+     * The JWT `permissions` claim is a snapshot taken at login — a role grant or
+     * revocation mid-session never reflects in it until re-login. requirePermission()
+     * (rbacPermissionMiddleware) already resolves live via rbacService; doing the
+     * same here unifies the two enforcement paths and makes grants/revocations
+     * effective immediately (the rbac cache is flushed on every role write).
+     */
+    try {
+      const tenantId = req.params?.tenantId || req.query?.tenantId || req.body?.tenantId ||
+        req.user.tenant_id || req.user.tenantId;
+      // Same store-context precedence as rbacPermissionMiddleware.requirePermission:
+      // request params/query/body → x-store-id header → JWT store claim.
+      const storeId = req.params?.storeId || req.query?.storeId || req.body?.storeId ||
+        req.headers['x-store-id'] || req.headers['store-id'] ||
+        req.user.store_id || req.user.storeId;
+      const rbacData = await rbacService.getUserRolesAndPermissions(req.user.id, tenantId, storeId);
+      const livePermissions = rbacData.permissions || [];
 
-    if (hasRequiredPermission) {
-      return next();
-    } else {
-      return res.status(403).json({
-        msg: 'Permission denied',
-        required: requiredPermissions,
-        user_permissions: req.user.permissions || []
-      });
+      const hasRequiredPermission = requiredPermissions.some(permission =>
+        livePermissions.includes(permission)
+      );
+
+      if (hasRequiredPermission) {
+        // Keep req.user.permissions fresh for downstream handlers
+        req.user.permissions = livePermissions;
+        return next();
+      } else {
+        return res.status(403).json({
+          msg: 'Permission denied',
+          required: requiredPermissions,
+          user_permissions: livePermissions
+        });
+      }
+    } catch (error) {
+      // Fail CLOSED on lookup errors — do not fall back to the stale JWT claim.
+      console.error('[auth] Live permission lookup failed:', error.message);
+      return res.status(500).json({ msg: 'Permission check failed' });
     }
   };
 };

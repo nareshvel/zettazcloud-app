@@ -142,7 +142,7 @@ router.post('/', async (req, res) => {
  * POST /api/print-jobs/:id/retry
  * Retry a failed print job
  */
-router.post('/:id/retry', requirePermission('settings.update'), async (req, res) => {
+router.post('/:id/retry', requirePermission('printer.settings'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const userId = req.user?.id;
@@ -167,7 +167,7 @@ router.post('/:id/retry', requirePermission('settings.update'), async (req, res)
  * POST /api/print-jobs/:id/cancel
  * Cancel a print job
  */
-router.post('/:id/cancel', requirePermission('settings.update'), async (req, res) => {
+router.post('/:id/cancel', requirePermission('printer.settings'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const userId = req.user?.id;
@@ -192,7 +192,7 @@ router.post('/:id/cancel', requirePermission('settings.update'), async (req, res
  * DELETE /api/print-jobs/cleanup
  * Clean up old completed jobs (admin only)
  */
-router.delete('/cleanup', requirePermission('admin'), async (req, res) => {
+router.delete('/cleanup', requirePermission('system.maintenance'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const daysToKeep = parseInt(req.query.days) || 30;

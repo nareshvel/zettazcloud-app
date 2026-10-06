@@ -298,6 +298,6 @@ router.get('/settings', requirePermission('payments.view'), paymentController.ge
  * @desc    Update payment settings
  * @access  Private (requires payments.update permission)
  */
-router.put('/settings', requirePermission('payments.update'), validatePaymentSettings, paymentController.updatePaymentSettings);
+router.put('/settings', requirePermission('payments.edit'), validatePaymentSettings, paymentController.updatePaymentSettings);
 
 module.exports = router;

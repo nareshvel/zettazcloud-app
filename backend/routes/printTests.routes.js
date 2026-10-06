@@ -65,7 +65,7 @@ router.get('/fixtures/:type/:name', async (req, res) => {
  * GET /api/print-tests/suite
  * Get full certification suite
  */
-router.get('/suite', requirePermission('admin'), async (req, res) => {
+router.get('/suite', requirePermission('system.maintenance'), async (req, res) => {
   try {
     const fixtures = require('../services/printFixtures');
 

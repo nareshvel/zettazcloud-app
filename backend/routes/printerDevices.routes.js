@@ -78,7 +78,7 @@ router.get('/:id', async (req, res) => {
  * POST /api/printer-devices
  * Create a new printer device
  */
-router.post('/', requirePermission('settings.create'), async (req, res) => {
+router.post('/', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const storeId = req.body.store_id || req.user?.store_id;
@@ -109,7 +109,7 @@ router.post('/', requirePermission('settings.create'), async (req, res) => {
  * PUT /api/printer-devices/:id
  * Update a printer device
  */
-router.put('/:id', requirePermission('settings.update'), async (req, res) => {
+router.put('/:id', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const userId = req.user?.id;
@@ -138,7 +138,7 @@ router.put('/:id', requirePermission('settings.update'), async (req, res) => {
  * DELETE /api/printer-devices/:id
  * Delete a printer device
  */
-router.delete('/:id', requirePermission('settings.delete'), async (req, res) => {
+router.delete('/:id', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
 
@@ -185,7 +185,7 @@ router.get('/stations/list', async (req, res) => {
  * POST /api/printer-devices/stations
  * Create a print station
  */
-router.post('/stations', requirePermission('settings.create'), async (req, res) => {
+router.post('/stations', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const storeId = req.body.store_id || req.user?.store_id;
@@ -216,7 +216,7 @@ router.post('/stations', requirePermission('settings.create'), async (req, res) 
  * POST /api/printer-devices/:id/test
  * Test printer connectivity
  */
-router.post('/:id/test', requirePermission('settings.update'), async (req, res) => {
+router.post('/:id/test', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
 

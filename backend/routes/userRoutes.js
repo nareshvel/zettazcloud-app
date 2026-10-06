@@ -971,6 +971,10 @@ router.put('/:userId', requirePermission('users.edit'), async (req, res) => {
       return rows[0];
     });
 
+    // Roles may have been rewritten inside the transaction — flush the cached
+    // permission set so the change is effective on the next request.
+    await rbacService.invalidateUserCache(userId);
+
     res.json({ status: 'success', data: updatedUser });
   } catch (error) {
     console.error(`Error updating user ${userId}:`, error);
@@ -1000,9 +1004,10 @@ router.delete('/:userId', requirePermission('users.delete'), async (req, res) =>
 
     // Delete user roles first (foreign key constraints)
     await db.query('DELETE FROM user_roles WHERE user_id = ?', [userId]);
-    
+
     // Then delete the user
     await db.query('DELETE FROM users WHERE id = ? AND tenant_id = ?', [userId, tenant_id]);
+    await rbacService.invalidateUserCache(userId);
 
     res.json({ msg: 'User deleted successfully' });
 

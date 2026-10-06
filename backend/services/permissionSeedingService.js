@@ -134,6 +134,8 @@ class PermissionSeedingService {
       { name: 'sales.void', description: 'Void sales', module: 'sales' },
       { name: 'sales.refund', description: 'Process refunds', module: 'sales' },
       { name: 'sales.discount', description: 'Apply discounts', module: 'sales' },
+      { name: 'sales.delete', description: 'Delete sales', module: 'sales' },
+      { name: 'sales.override_tax_mode', description: 'Override store tax mode at checkout', module: 'sales' },
       
       // Sales Return (4)
       { name: 'sales-return.view', description: 'View sales returns', module: 'sales-return' },
@@ -181,6 +183,7 @@ class PermissionSeedingService {
       { name: 'grn.create', description: 'Create goods receiving notes', module: 'grn' },
       { name: 'grn.edit', description: 'Edit goods receiving notes', module: 'grn' },
       { name: 'grn.complete', description: 'Complete goods receiving', module: 'grn' },
+      { name: 'grn.delete', description: 'Delete goods receiving notes', module: 'grn' },
       
       // Promotions (5)
       { name: 'promotions.view', description: 'View promotional offers', module: 'promotions' },
@@ -193,9 +196,12 @@ class PermissionSeedingService {
       { name: 'tax.view', description: 'View tax classes and rates', module: 'tax' },
       { name: 'tax.create', description: 'Create tax classes and rates', module: 'tax' },
       { name: 'tax.edit', description: 'Edit tax classes and rates', module: 'tax' },
+      { name: 'tax.delete', description: 'Delete tax classes and rates', module: 'tax' },
       { name: 'payments.view', description: 'View payment methods', module: 'payments' },
       { name: 'payments.create', description: 'Create payment methods', module: 'payments' },
       { name: 'payments.edit', description: 'Edit payment methods', module: 'payments' },
+      { name: 'payments.delete', description: 'Delete payment methods', module: 'payments' },
+      { name: 'payments.refund', description: 'Refund payment transactions', module: 'payments' },
       
       // Printer (2)
       { name: 'printer.view', description: 'View printer settings', module: 'printer' },
@@ -214,9 +220,14 @@ class PermissionSeedingService {
       { name: 'system.backup', description: 'Create system backups', module: 'system' },
       { name: 'system.settings', description: 'Manage system settings', module: 'system' },
       { name: 'system.maintenance', description: 'Perform system maintenance', module: 'system' },
+      { name: 'system.roles.manage', description: 'Manage platform-level system roles', module: 'system' },
+      { name: 'system.plans.manage', description: 'Manage subscription plans', module: 'system' },
+      { name: 'system.platform.manage', description: 'Platform administration', module: 'system' },
       
-      // Orders (3) - Complete set to maintain exactly 81 total
+      // Orders (5)
       { name: 'orders.view', description: 'View orders', module: 'orders' },
+      { name: 'orders.create', description: 'Create orders', module: 'orders' },
+      { name: 'orders.edit', description: 'Edit orders', module: 'orders' },
       { name: 'orders.delete', description: 'Delete orders', module: 'orders' },
       { name: 'orders.fulfill', description: 'Fulfill orders', module: 'orders' },
 
@@ -224,7 +235,11 @@ class PermissionSeedingService {
       { name: 'employees.view', description: 'View employees', module: 'employees' },
       { name: 'employees.create', description: 'Create employees', module: 'employees' },
       { name: 'employees.edit', description: 'Edit employees', module: 'employees' },
-      { name: 'employees.delete', description: 'Delete employees', module: 'employees' }
+      { name: 'employees.delete', description: 'Delete employees', module: 'employees' },
+
+      // Tenant & Subscription (2) — system-prefixed names are platform-level by design
+      { name: 'tenants.edit', description: 'Edit tenant details', module: 'tenants' },
+      { name: 'tenant.subscription.view', description: 'View and manage own tenant subscription', module: 'subscription' }
     ];
 
     // Insert permissions if they don't exist (system-wide, not tenant-specific)
@@ -253,17 +268,12 @@ class PermissionSeedingService {
       return;
     }
 
-    // 1. Remove any permissions on this role that are not in the expected set.
-    //    This keeps standard roles consistent even if extra permissions were added
-    //    manually or by older seed data.
+    // Seeding is additive-only: we never DELETE permissions a tenant granted
+    // themselves — backfilling a default role must not silently strip tenant
+    // customizations.
     const placeholders = permissionNames.map(() => '?').join(',');
-    await connection.execute(`
-      DELETE rp FROM role_permissions rp
-      JOIN permissions p ON p.id = rp.permission_id
-      WHERE rp.role_id = ? AND p.name NOT IN (${placeholders})
-    `, [roleId, ...permissionNames]);
 
-    // 2. Insert the expected permission mappings that are missing.
+    // Insert the expected permission mappings that are missing.
     const [permissions] = await connection.execute(`
       SELECT id, name FROM permissions
       WHERE name IN (${placeholders})

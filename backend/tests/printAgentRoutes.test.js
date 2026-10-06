@@ -35,10 +35,12 @@ describe('printAgent route wiring', function () {
   });
 
   it('applies RBAC permissions matching the contract', function () {
-    assert.ok(printAgentRoutes.includes("requirePermission('settings.create')"), 'POST enrollment-codes uses settings.create');
+    // Canonical names after the 2026-10 catalog alignment: printer-fleet
+    // management mutations are settings.printer; reads are settings.view.
+    assert.ok(printAgentRoutes.includes("requirePermission('settings.printer')"), 'POST enrollment-codes uses settings.printer');
     assert.ok(printAgentRoutes.includes("requirePermission('settings.view')"), 'GET uses settings.view');
-    assert.ok(printAgentRoutes.includes("requirePermission('settings.update')"), 'PUT uses settings.update');
-    assert.ok(printAgentRoutes.includes("requirePermission('settings.delete')"), 'POST revoke uses settings.delete');
+    assert.ok(printAgentRoutes.includes("requirePermission('settings.printer')"), 'PUT uses settings.printer');
+    assert.ok(printAgentRoutes.includes("requirePermission('settings.printer')"), 'POST revoke uses settings.printer');
   });
 
   it('applies targeted rate limits to enrollment routes', function () {

@@ -21,11 +21,11 @@ const enrollmentRateLimit = rateLimit({
 });
 
 // Literal routes before /:id
-router.post('/enrollment-codes', enrollmentRateLimit, requirePermission('settings.create'), printAgentController.createEnrollmentCode);
+router.post('/enrollment-codes', enrollmentRateLimit, requirePermission('settings.printer'), printAgentController.createEnrollmentCode);
 router.get('/', requirePermission('settings.view'), printAgentController.listAgents);
 router.get('/:id', requirePermission('settings.view'), printAgentController.getAgent);
-router.put('/:id', requirePermission('settings.update'), printAgentController.updateAgent);
-router.put('/:id/printer-mappings', requirePermission('settings.update'), printAgentController.updatePrinterMappings);
-router.post('/:id/revoke', requirePermission('settings.delete'), printAgentController.revokeAgent);
+router.put('/:id', requirePermission('settings.printer'), printAgentController.updateAgent);
+router.put('/:id/printer-mappings', requirePermission('settings.printer'), printAgentController.updatePrinterMappings);
+router.post('/:id/revoke', requirePermission('settings.printer'), printAgentController.revokeAgent);
 
 module.exports = router;

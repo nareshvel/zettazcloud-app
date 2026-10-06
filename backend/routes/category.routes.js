@@ -132,7 +132,7 @@ router.post('/', requirePermission('categories.create'), uploadCategoryImage.sin
  * @desc    Update an existing category
  * @access  Private (requires categories.update permission)
  */
-router.put('/:id', requirePermission('categories.update'), uploadCategoryImage.single('image'), enforceStorageLimitAfterUpload((req) => req.file?.path), async (req, res) => {
+router.put('/:id', requirePermission('categories.edit'), uploadCategoryImage.single('image'), enforceStorageLimitAfterUpload((req) => req.file?.path), async (req, res) => {
     const { id: categoryId } = req.params;
     const { name, description, is_active } = req.body;
     const tenant_id = req.user?.tenant_id || req.query?.tenant_id || req.headers["x-tenant-id"];

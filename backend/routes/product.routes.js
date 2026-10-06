@@ -125,7 +125,7 @@ router.get('/search', requirePermission('products.view'), async (req, res) => {
  * @access  Private (requires products.update permission — same gate as the
  *          per-store listing PATCH endpoint, since this mutates that table too)
  */
-router.post('/share-existing', requirePermission('products.update'), async (req, res) => {
+router.post('/share-existing', requirePermission('products.edit'), async (req, res) => {
     const tenant_id = req.user?.tenant_id || req.headers['x-tenant-id'];
     if (!tenant_id) {
         return res.status(400).json({ message: 'Tenant ID is required.' });
@@ -765,7 +765,7 @@ router.post('/', requirePermission('products.create'), withinUsageLimits('produc
  * @desc    Update an existing product
  * @access  Private (requires products.update permission)
  */
-router.put('/:id', requirePermission('products.update'), uploadProductImage.single('image'), enforceStorageLimitAfterUpload((req) => req.file?.path), async (req, res) => {
+router.put('/:id', requirePermission('products.edit'), uploadProductImage.single('image'), enforceStorageLimitAfterUpload((req) => req.file?.path), async (req, res) => {
     const { id: productId } = req.params;
     const tenant_id = req.user?.tenant_id || req.query?.tenant_id || req.headers["x-tenant-id"];
     const store_id = req.user?.store_id || req.query?.store_id || req.headers['x-store-id'];
@@ -1461,7 +1461,7 @@ router.get('/:id/store-listings', requirePermission('products.view'), async (req
  *          stock change gets its stock_adjustments audit row.
  * @access  Private (requires products.update permission)
  */
-router.patch('/:id/store-listings/:storeId', requirePermission('products.update'), async (req, res) => {
+router.patch('/:id/store-listings/:storeId', requirePermission('products.edit'), async (req, res) => {
     const { id: productId, storeId } = req.params;
     const tenant_id = req.user?.tenant_id || req.query?.tenant_id || req.headers['x-tenant-id'];
     const { price, costPriceOverride, isActive } = req.body || {};

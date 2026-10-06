@@ -59,7 +59,7 @@ router.get('/plans/:id', authenticate, async (req, res) => {
  * @route POST /api/subscriptions/plans
  * @access Private - system.plans.create
  */
-router.post('/plans', authenticate, requirePermission('system.plans.create'), async (req, res) => {
+router.post('/plans', authenticate, requirePermission('system.plans.manage'), async (req, res) => {
   try {
     const plan = await subscriptionService.createPlan(req.body);
     res.status(201).json({ status: 'success', data: plan });
@@ -73,7 +73,7 @@ router.post('/plans', authenticate, requirePermission('system.plans.create'), as
  * @route PUT /api/subscriptions/plans/:id
  * @access Private - system.plans.edit
  */
-router.put('/plans/:id', authenticate, requirePermission('system.plans.edit'), async (req, res) => {
+router.put('/plans/:id', authenticate, requirePermission('system.plans.manage'), async (req, res) => {
   try {
     const plan = await subscriptionService.updatePlan(req.params.id, req.body);
     res.json({ status: 'success', data: plan });

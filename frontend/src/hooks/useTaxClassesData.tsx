@@ -1,5 +1,7 @@
 import { useCachedDataFetcher } from './useCachedDataFetcher';
 import { getTaxClasses, getStoreTaxConfig } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import { hasAnyPermission } from '../utils/permissionUtils';
 import type { TaxClass } from '../types';
 
 
@@ -26,8 +28,14 @@ interface TaxRatesData {
  * @returns Object containing tax class data, loading state, error state, and refresh function
  */
 export function useTaxClassesData() {
+  const { user } = useAuth();
   const fetchTaxClassData = async (): Promise<TaxRatesData> => {
     try {
+      // Both endpoints require tax.view or settings.view — skip the calls for
+      // users without them rather than producing guaranteed 403s.
+      if (!hasAnyPermission(user, ['tax.view', 'settings.view'])) {
+        return { taxClasses: [], taxRates: [] };
+      }
       // Fetch tax classes
       const taxClassesResponse = await getTaxClasses();
       

@@ -229,7 +229,7 @@ router.post('/', requirePermission('customers.create'), async (req, res) => {
  * @desc    Update customer details
  * @access  Private (requires customers.update permission)
  */
-router.put('/:id', requirePermission('customers.update'), async (req, res) => {
+router.put('/:id', requirePermission('customers.edit'), async (req, res) => {
   const tenant_id = req.user?.tenant_id || req.query?.tenant_id || req.headers["x-tenant-id"] || null;
   const updated_by_user_id = req.user?.id;
   const { id } = req.params;

@@ -99,7 +99,7 @@ router.get('/:id/versions', async (req, res) => {
  * POST /api/print-templates
  * Create a new template
  */
-router.post('/', requirePermission('settings.create'), async (req, res) => {
+router.post('/', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const storeId = req.body.store_id || req.user?.store_id;
@@ -135,7 +135,7 @@ router.post('/', requirePermission('settings.create'), async (req, res) => {
  * PUT /api/print-templates/:id
  * Update a template
  */
-router.put('/:id', requirePermission('settings.update'), async (req, res) => {
+router.put('/:id', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const userId = req.user?.id;
@@ -165,7 +165,7 @@ router.put('/:id', requirePermission('settings.update'), async (req, res) => {
  * POST /api/print-templates/:id/publish
  * Publish a template (creates new version)
  */
-router.post('/:id/publish', requirePermission('settings.update'), async (req, res) => {
+router.post('/:id/publish', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const userId = req.user?.id;
@@ -190,7 +190,7 @@ router.post('/:id/publish', requirePermission('settings.update'), async (req, re
  * POST /api/print-templates/:id/default
  * Set template as default
  */
-router.post('/:id/default', requirePermission('settings.update'), async (req, res) => {
+router.post('/:id/default', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const userId = req.user?.id;
@@ -230,7 +230,7 @@ router.post('/:id/default', requirePermission('settings.update'), async (req, re
  * The previous version is written to template_versions first, so this is
  * reversible via rollback — the user is never one click away from losing work.
  */
-router.post('/:id/reset-defaults', requirePermission('settings.update'), async (req, res) => {
+router.post('/:id/reset-defaults', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.user?.tenantId;
     if (!tenantId) return res.status(401).json({ status: 'error', message: 'No tenant context' });
@@ -275,7 +275,7 @@ router.post('/:id/reset-defaults', requirePermission('settings.update'), async (
   }
 });
 
-router.post('/:id/rollback', requirePermission('settings.update'), async (req, res) => {
+router.post('/:id/rollback', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
     const userId = req.user?.id;
@@ -308,7 +308,7 @@ router.post('/:id/rollback', requirePermission('settings.update'), async (req, r
  * DELETE /api/print-templates/:id
  * Delete a template
  */
-router.delete('/:id', requirePermission('settings.delete'), async (req, res) => {
+router.delete('/:id', requirePermission('settings.printer'), async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
 

@@ -140,7 +140,7 @@ router.post('/', requirePermission('suppliers.create'), async (req, res) => {
  * @desc    Update a supplier by ID
  * @access  Private (requires suppliers.update permission)
  */
-router.put('/:id', requirePermission('suppliers.update'), async (req, res) => {
+router.put('/:id', requirePermission('suppliers.edit'), async (req, res) => {
   const tenant_id = req.user?.tenant_id || req.query?.tenant_id || req.headers["x-tenant-id"];
   const updated_by_user_id = req.user?.id || 'system';
   const { id } = req.params;

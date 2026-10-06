@@ -17,7 +17,7 @@ router.use(jwtMiddleware);
  * GET /api/payment-terminals
  * Get all payment terminals for tenant
  */
-router.get('/', requirePermission('payment_methods.view'), async (req, res) => {
+router.get('/', requirePermission('payments.view'), async (req, res) => {
   try {
     const { tenantId } = req.user;
     
@@ -47,7 +47,7 @@ router.get('/', requirePermission('payment_methods.view'), async (req, res) => {
  * POST /api/payment-terminals
  * Add new payment terminal
  */
-router.post('/', requirePermission('payment_methods.create'), async (req, res) => {
+router.post('/', requirePermission('payments.create'), async (req, res) => {
   try {
     const { tenantId } = req.user;
     const terminalData = req.body;
@@ -88,7 +88,7 @@ router.post('/', requirePermission('payment_methods.create'), async (req, res) =
  * PUT /api/payment-terminals/:id
  * Update payment terminal configuration
  */
-router.put('/:id', requirePermission('payment_methods.edit'), async (req, res) => {
+router.put('/:id', requirePermission('payments.edit'), async (req, res) => {
   try {
     const { tenantId } = req.user;
     const { id: terminalId } = req.params;
@@ -120,7 +120,7 @@ router.put('/:id', requirePermission('payment_methods.edit'), async (req, res) =
  * DELETE /api/payment-terminals/:id
  * Delete payment terminal
  */
-router.delete('/:id', requirePermission('payment_methods.delete'), async (req, res) => {
+router.delete('/:id', requirePermission('payments.delete'), async (req, res) => {
   try {
     const { tenantId } = req.user;
     const { id: terminalId } = req.params;
@@ -151,7 +151,7 @@ router.delete('/:id', requirePermission('payment_methods.delete'), async (req, r
  * POST /api/payment-terminals/:id/test
  * Test terminal connection
  */
-router.post('/:id/test', requirePermission('payment_methods.view'), async (req, res) => {
+router.post('/:id/test', requirePermission('payments.view'), async (req, res) => {
   try {
     const { tenantId } = req.user;
     const { id: terminalId } = req.params;

@@ -7,6 +7,34 @@ const { pool } = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const permissionService = require('./permissionService');
 
+// rbacService is lazily required inside functions — it already requires this
+// module at its top level, so a top-level require here would create a cycle.
+const rbacService = () => require('./rbacService');
+
+// Reserved role names that a tenant must never (re)create or rename to —
+// 'Tenant Admin' is hard-wired to the permission bypass in
+// rbacService.isTenantAdmin, so a user-created role with that name would be an
+// escalation path (isTenantAdmin also requires is_system_role=1 as a second gate).
+const normalizeRoleName = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, '_');
+const isReservedRoleName = (name) => normalizeRoleName(name) === 'tenant_admin';
+
+// Prefixes that resolve through user_system_roles / platform scope, never
+// role_permissions. Granting them to a tenant role is a dead grant at best
+// and an escalation surface if semantics ever change — reject at write time.
+const SYSTEM_PERMISSION_PREFIX = /^(platform|system|tenants|subscriptions|plans|support)\./;
+const assertTenantAssignablePermissions = async (permissionIds, conn) => {
+  if (!permissionIds || !permissionIds.length) return;
+  const placeholders = permissionIds.map(() => '?').join(',');
+  const [rows] = await conn.query(
+    `SELECT name FROM permissions WHERE id IN (${placeholders})`,
+    permissionIds
+  );
+  const blocked = (rows || []).map(r => r.name).filter(n => SYSTEM_PERMISSION_PREFIX.test(n));
+  if (blocked.length) {
+    throw new Error(`System permissions cannot be granted to tenant roles: ${blocked.join(', ')}`);
+  }
+};
+
 /**
  * Get all system roles with optional permissions
  * 
@@ -306,6 +334,10 @@ const getTenantRoleById = async (roleId, tenantId, options = {}) => {
  * @returns {Promise<Object>} Created role
  */
 const createTenantRole = async (tenantId, roleData, createdBy) => {
+  if (isReservedRoleName(roleData.name)) {
+    throw new Error(`The role name "${roleData.name}" is reserved and cannot be used`);
+  }
+
   const connection = await pool.getConnection();
   
   try {
@@ -317,7 +349,8 @@ const createTenantRole = async (tenantId, roleData, createdBy) => {
       tenant_id: tenantId,
       name: roleData.name,
       description: roleData.description,
-      is_system_role: roleData.is_system_role || false,
+      // Never trust the client: only seeding/provisioning may create system roles.
+      is_system_role: false,
       created_by: createdBy
     };
     
@@ -326,9 +359,10 @@ const createTenantRole = async (tenantId, roleData, createdBy) => {
       'INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by) VALUES (?, ?, ?, ?, ?, ?)',
       [roleId, role.tenant_id, role.name, role.description, role.is_system_role, role.created_by]
     );
-    
+
     // Insert permissions
     if (roleData.permissions && roleData.permissions.length) {
+      await assertTenantAssignablePermissions(roleData.permissions, connection);
       const permissionValues = roleData.permissions.map(permissionId => [roleId, permissionId]);
       await connection.query(
         'INSERT INTO role_permissions (role_id, permission_id) VALUES ?',
@@ -410,7 +444,7 @@ const updateTenantRole = async (roleId, tenantId, roleData) => {
       // Debug logging removed for cleaner console output
       
       // Execute all database operations in a transaction
-      return await executeTransaction(connection, async (conn) => {
+      const result = await executeTransaction(connection, async (conn) => {
         // Check if role exists
         const [existingRoles] = await executeQueryWithTimeout(() => 
           conn.query(
@@ -429,6 +463,12 @@ const updateTenantRole = async (roleId, tenantId, roleData) => {
         if (existingRole.is_system_role && (roleData.name !== existingRole.name)) {
           throw new Error('Cannot modify the name of a system role');
         }
+
+        // A non-system role must never be renamed to the reserved admin name
+        // ('Tenant Admin' maps to the permission bypass in rbacService.isTenantAdmin).
+        if (!existingRole.is_system_role && isReservedRoleName(roleData.name)) {
+          throw new Error(`The role name "${roleData.name}" is reserved and cannot be used`);
+        }
         
         // Update role with timeout
         await executeQueryWithTimeout(() => 
@@ -442,6 +482,7 @@ const updateTenantRole = async (roleId, tenantId, roleData) => {
         
         // Update permissions if provided
         if (roleData.permissions) {
+          await assertTenantAssignablePermissions(roleData.permissions, conn);
           // Delete existing permissions with timeout
           await executeQueryWithTimeout(() => 
             conn.query(
@@ -473,12 +514,15 @@ const updateTenantRole = async (roleId, tenantId, roleData) => {
             // Debug logging removed for cleaner console output
           }
         }
-        
-        // Debug logging removed for cleaner console output
-        
+
         // Get updated role with permissions using a separate connection to avoid transaction conflicts
         return await getTenantRoleById(roleId, tenantId, { includePermissions: true });
       });
+
+      // Role grants changed and committed — flush cached permission sets of
+      // every assigned user so the change takes effect immediately.
+      await rbacService().invalidateRoleUsersCache(roleId);
+      return result;
     } catch (error) {
       lastError = error;
       retries--;
@@ -572,9 +616,14 @@ const deleteTenantRole = async (roleId, tenantId) => {
       'DELETE FROM roles WHERE id = ? AND tenant_id = ?',
       [roleId, tenantId]
     );
-    
+
     await connection.commit();
-    
+
+    // Flush cached permission sets — the role is guaranteed unassigned here
+    // (checked above), but invalidate defensively in case of stale assignments.
+    // Must run AFTER commit so repopulation cannot read pre-commit state.
+    await rbacService().invalidateRoleUsersCache(roleId);
+
     return true;
   } catch (error) {
     await connection.rollback();

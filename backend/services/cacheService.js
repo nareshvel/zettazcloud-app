@@ -55,6 +55,22 @@ class CacheService {
   }
 
   /**
+   * Delete all items whose key starts with the given prefix
+   * @param {string} prefix - Key prefix to match
+   * @returns {number} Number of items deleted
+   */
+  deleteByPrefix(prefix) {
+    let deleted = 0;
+    Object.keys(this.cache).forEach(key => {
+      if (key.startsWith(prefix)) {
+        delete this.cache[key];
+        deleted++;
+      }
+    });
+    return deleted;
+  }
+
+  /**
    * Clear the entire cache
    */
   clear() {

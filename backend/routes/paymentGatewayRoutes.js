@@ -16,7 +16,7 @@ router.use(jwtMiddleware);
  * GET /api/payment-gateways
  * Get all payment gateways for tenant
  */
-router.get('/', requirePermission('payment_methods.view'), async (req, res) => {
+router.get('/', requirePermission('payments.view'), async (req, res) => {
   try {
     const { tenantId } = req.user;
     
@@ -46,7 +46,7 @@ router.get('/', requirePermission('payment_methods.view'), async (req, res) => {
  * POST /api/payment-gateways
  * Configure new payment gateway
  */
-router.post('/', requirePermission('payment_methods.create'), async (req, res) => {
+router.post('/', requirePermission('payments.create'), async (req, res) => {
   try {
     const { tenantId } = req.user;
     const gatewayData = req.body;
@@ -88,7 +88,7 @@ router.post('/', requirePermission('payment_methods.create'), async (req, res) =
  * PUT /api/payment-gateways/:id
  * Update payment gateway configuration
  */
-router.put('/:id', requirePermission('payment_methods.edit'), async (req, res) => {
+router.put('/:id', requirePermission('payments.edit'), async (req, res) => {
   try {
     const { tenantId } = req.user;
     const { id: gatewayId } = req.params;
@@ -120,7 +120,7 @@ router.put('/:id', requirePermission('payment_methods.edit'), async (req, res) =
  * DELETE /api/payment-gateways/:id
  * Delete payment gateway
  */
-router.delete('/:id', requirePermission('payment_methods.delete'), async (req, res) => {
+router.delete('/:id', requirePermission('payments.delete'), async (req, res) => {
   try {
     const { tenantId } = req.user;
     const { id: gatewayId } = req.params;
@@ -151,7 +151,7 @@ router.delete('/:id', requirePermission('payment_methods.delete'), async (req, r
  * POST /api/payment-gateways/:id/test
  * Test gateway connection
  */
-router.post('/:id/test', requirePermission('payment_methods.view'), async (req, res) => {
+router.post('/:id/test', requirePermission('payments.view'), async (req, res) => {
   try {
     const { tenantId } = req.user;
     const { id: gatewayId } = req.params;
