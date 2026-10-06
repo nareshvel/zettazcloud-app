@@ -32,6 +32,15 @@ const Login = () => {
   const getRedirectPath = async (user: User | null): Promise<string> => {
     if (!user) return '/login';
 
+    // Platform staff (system-console users holding platform.* perms or a
+    // system role) land on the system console — they have no tenant workspace.
+    const sysRoleNames = (user.systemRoles || []).map((r) => String(r).toLowerCase());
+    const userPerms = user.permissions || [];
+    if (sysRoleNames.some((r) => r.startsWith('system ') || r.startsWith('system_') || r === 'super admin' || r === 'super_admin')
+        || userPerms.some((p) => p.startsWith('platform.'))) {
+      return '/system';
+    }
+
     // Check if onboarding is incomplete - highest priority check.
     // Check both snake_case and camelCase because fetchApi auto-converts
     // keys to camelCase, but cached users may have either form.

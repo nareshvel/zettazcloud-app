@@ -59,6 +59,21 @@ const SalesReturnsReport = React.lazy(() => import('./pages/reports/SalesReturns
 const EmployeePerformanceReport = React.lazy(() => import('./pages/reports/EmployeePerformanceReport'));
 const CategorySalesReport = React.lazy(() => import('./pages/reports/CategorySalesReport'));
 
+// System-admin console (/system/*) — platform staff only, enforced both by
+// SystemRoute here and by platform.* permission checks on every API call.
+const SystemLayout = React.lazy(() => import('./components/system/SystemLayout'));
+const SystemRoute = React.lazy(() => import('./components/system/SystemRoute'));
+const SystemDashboard = React.lazy(() => import('./pages/system/Dashboard'));
+const SystemTenants = React.lazy(() => import('./pages/system/Tenants'));
+const SystemSubscriptions = React.lazy(() => import('./pages/system/Subscriptions'));
+const SystemPlans = React.lazy(() => import('./pages/system/Plans'));
+const SystemUsers = React.lazy(() => import('./pages/system/Users'));
+const SystemRbac = React.lazy(() => import('./pages/system/Rbac'));
+const SystemSupport = React.lazy(() => import('./pages/system/Support'));
+const SystemAnnouncements = React.lazy(() => import('./pages/system/Announcements'));
+const SystemAudit = React.lazy(() => import('./pages/system/Audit'));
+const SystemHealth = React.lazy(() => import('./pages/system/Health'));
+
 const RouteFallback = () => (
   <div className="flex items-center justify-center min-h-[40vh]">
     <span className="loading loading-spinner loading-lg" aria-label="Loading page" />
@@ -165,6 +180,22 @@ const AppRoutes: React.FC = () => {
         <Route path="user-management" element={<Navigate to="/team" replace />} />
         <Route path="roles" element={<Navigate to="/team/roles" replace />} />
         <Route path="roles-debug" element={<RolesDebugPage />} />
+      </Route>
+
+      {/* System-admin console — its own shell (no tenant sidebar). Each page
+          is additionally gated by a permission so staff roles see only what
+          their platform role allows; the backend enforces the same names. */}
+      <Route element={<SystemRoute><SystemLayout /></SystemRoute>}>
+        <Route path="system" element={<SystemDashboard />} />
+        <Route path="system/tenants" element={<SystemRoute perm="tenants.view"><SystemTenants /></SystemRoute>} />
+        <Route path="system/billing" element={<SystemRoute perm="subscriptions.view"><SystemSubscriptions /></SystemRoute>} />
+        <Route path="system/plans" element={<SystemRoute perm="plans.view"><SystemPlans /></SystemRoute>} />
+        <Route path="system/users" element={<SystemRoute perm="platform.manage"><SystemUsers /></SystemRoute>} />
+        <Route path="system/roles" element={<SystemRoute perm="platform.manage"><SystemRbac /></SystemRoute>} />
+        <Route path="system/support" element={<SystemRoute perm="support.view"><SystemSupport /></SystemRoute>} />
+        <Route path="system/announcements" element={<SystemRoute perm="platform.announcements.manage"><SystemAnnouncements /></SystemRoute>} />
+        <Route path="system/audit" element={<SystemRoute perm="platform.audit.view"><SystemAudit /></SystemRoute>} />
+        <Route path="system/health" element={<SystemRoute perm="platform.health.view"><SystemHealth /></SystemRoute>} />
       </Route>
 
       {/* Add other routes, like a 404 page, here */}

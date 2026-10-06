@@ -158,7 +158,52 @@ const authenticate = async (req, res, next) => {
         };
         
         // For backward compatibility
-        req.user.systemRoles = req.user.roles;
+        req.user.systemRoles = Array.isArray(decoded.systemRoles) && decoded.systemRoles.length
+          ? decoded.systemRoles
+          : req.user.roles;
+
+        // Platform markers. Platform staff hold NULL-tenant ("system") roles
+        // — resolved into `systemRoles` at login — and their user row hangs
+        // off the well-known platform tenant. isSystemAdmin additionally
+        // requires the System Admin (or legacy Super Admin) role name.
+        const PLATFORM_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+        req.user.isPlatformUser =
+          tokenTenantId === PLATFORM_TENANT_ID ||
+          (req.user.systemRoles || []).length > 0;
+        req.user.isSystemAdmin = (req.user.systemRoles || [])
+          .some((r) => /^(system|super)[ _-]?admin$/i.test(String(r)));
+
+        // Suspended / pending-deletion tenants are locked out for every
+        // request, not just login. Platform users are exempt (they must be
+        // able to act on suspended tenants), as are impersonation tokens —
+        // a platform admin viewing a suspended tenant's workspace must not
+        // be locked out by that suspension. Status is cached briefly so a
+        // busy request stream doesn't add a tenants query every call.
+        if (tokenTenantId && !req.user.isPlatformUser && !decoded.imp) {
+          try {
+            const cacheService = require('../services/cacheService');
+            const cacheKey = `tenant_status:${tokenTenantId}`;
+            let status = cacheService.get(cacheKey);
+            if (status === undefined || status === null) {
+              const [tRows] = await pool.query('SELECT status FROM tenants WHERE id = ? LIMIT 1', [tokenTenantId]);
+              status = tRows && tRows[0] ? tRows[0].status : 'active';
+              cacheService.set(cacheKey, status, 60 * 1000);
+            }
+            if (status === 'suspended' || status === 'pending_deletion') {
+              return res.status(403).json({
+                status: 'error',
+                code: 'TENANT_SUSPENDED',
+                message: status === 'pending_deletion'
+                  ? 'This workspace is scheduled for deletion.'
+                  : 'This workspace is suspended. Contact support.',
+              });
+            }
+          } catch (suspendErr) {
+            // Fail open on lookup errors — a transient DB hiccup must never
+            // lock every tenant out of the API.
+            console.error('Tenant status check failed:', suspendErr.message);
+          }
+        }
 
         // -------------------------------------------------------------------
         // Session revocation check (sid claim).
@@ -479,6 +524,30 @@ const login = async (req, res) => {
         emailVerified: false,
         email: user.email
       });
+    }
+
+    // Suspended / pending-deletion tenants are refused at login —
+    // authenticate() enforces the same per-request, so a refused login and a
+    // mid-session suspension behave identically. Platform staff (users hung
+    // off the well-known platform tenant) are exempt.
+    const PLATFORM_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+    if (user.tenant_id && user.tenant_id !== PLATFORM_TENANT_ID) {
+      try {
+        const [tRows] = await pool.query('SELECT status FROM tenants WHERE id = ? LIMIT 1', [user.tenant_id]);
+        const tStatus = tRows && tRows[0] ? tRows[0].status : null;
+        if (tStatus === 'suspended' || tStatus === 'pending_deletion') {
+          return res.status(403).json({
+            error: tStatus === 'pending_deletion'
+              ? 'This workspace is scheduled for deletion. Contact support.'
+              : 'This workspace is suspended. Contact support.',
+            code: 'TENANT_SUSPENDED'
+          });
+        }
+      } catch (statusErr) {
+        // Fail open on lookup errors — never lock every tenant out on a
+        // transient DB hiccup.
+        console.error('[LOGIN] Tenant status check failed:', statusErr.message);
+      }
     }
 
     // -------------------------------------------------------------------

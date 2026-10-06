@@ -2,6 +2,7 @@
 import { Outlet } from 'react-router-dom';
 import TopBar from './TopBar';
 import MainLayout from './MainLayout';
+import ImpersonationBanner from '@/components/system/ImpersonationBanner';
 
 interface AppLayoutProps {
 }
@@ -11,6 +12,7 @@ const AppLayout = ({}: AppLayoutProps) => {
     <MainLayout>
       {/* This content will be placed inside MainLayout's <main> tag */}
       <div className="flex flex-col h-full">
+        <ImpersonationBanner />
         <TopBar />
         {/* This div is for the actual page content, with minimal top/left padding.
             The fixed hamburger toggle button (Sidebar.tsx, `fixed top-4 left-4`,

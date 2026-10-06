@@ -240,7 +240,36 @@ class PermissionSeedingService {
 
       // Tenant & Subscription (2) — system-prefixed names are platform-level by design
       { name: 'tenants.edit', description: 'Edit tenant details', module: 'tenants' },
-      { name: 'tenant.subscription.view', description: 'View and manage own tenant subscription', module: 'subscription' }
+      { name: 'tenant.subscription.view', description: 'View and manage own tenant subscription', module: 'subscription' },
+
+      // Platform administration (system console, /api/platform/*) — these are
+      // system-scoped: only NULL-tenant roles may grant them; the tenant-admin
+      // bypass in rbacPermissionMiddleware deliberately does not apply.
+      { name: 'platform.view', description: 'View platform dashboard and statistics', module: 'platform' },
+      { name: 'platform.manage', description: 'Manage platform settings and configuration', module: 'platform' },
+      { name: 'platform.impersonate', description: 'Impersonate a tenant (open workspace)', module: 'platform' },
+      { name: 'platform.features.manage', description: 'Manage per-tenant feature flags', module: 'platform' },
+      { name: 'platform.announcements.manage', description: 'Manage platform announcements', module: 'platform' },
+      { name: 'platform.audit.view', description: 'View platform audit log', module: 'platform' },
+      { name: 'platform.health.view', description: 'View platform health and job runs', module: 'platform' },
+      { name: 'tenants.view', description: 'View all tenants on the platform', module: 'tenants' },
+      { name: 'tenants.create', description: 'Create new tenants', module: 'tenants' },
+      { name: 'tenants.delete', description: 'Delete or schedule deletion of tenants', module: 'tenants' },
+      { name: 'subscriptions.view', description: 'View all subscriptions', module: 'subscriptions' },
+      { name: 'subscriptions.create', description: 'Create subscriptions', module: 'subscriptions' },
+      { name: 'subscriptions.edit', description: 'Edit subscriptions', module: 'subscriptions' },
+      { name: 'subscriptions.delete', description: 'Cancel or delete subscriptions', module: 'subscriptions' },
+      { name: 'plans.view', description: 'View subscription plans', module: 'plans' },
+      { name: 'plans.create', description: 'Create subscription plans', module: 'plans' },
+      { name: 'plans.edit', description: 'Edit subscription plans', module: 'plans' },
+      { name: 'plans.delete', description: 'Delete subscription plans', module: 'plans' },
+      { name: 'support.view', description: 'View support tickets', module: 'support' },
+      { name: 'support.respond', description: 'Respond to support tickets', module: 'support' },
+      { name: 'support.escalate', description: 'Escalate support tickets', module: 'support' },
+      { name: 'support.close', description: 'Close support tickets', module: 'support' },
+      { name: 'system.logs.view', description: 'View system logs', module: 'system' },
+      { name: 'system.settings.view', description: 'View system settings', module: 'system' },
+      { name: 'system.settings.edit', description: 'Edit system settings', module: 'system' }
     ];
 
     // Insert permissions if they don't exist (system-wide, not tenant-specific)

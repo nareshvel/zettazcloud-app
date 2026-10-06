@@ -33,8 +33,71 @@ const debugLog = (...args) => {
  * @param {object} token - JWT token data (optional, for optimization)
  * @returns {Promise<boolean>} True if user has permission
  */
+/**
+ * True when the permission name is platform/system-scoped. Platform
+ * permissions may only come from NULL-tenant roles (system roles) — a
+ * tenant-level grant or tenant-admin bypass must never satisfy them.
+ */
+const isSystemPermissionName = (name) => !!name && (
+  name.startsWith('platform.') ||
+  name.startsWith('tenants.') ||
+  name.startsWith('subscriptions.') ||
+  name.startsWith('plans.') ||
+  name.startsWith('support.')
+  // NB: 'system.*' is deliberately NOT platform-scoped here — in this
+  // codebase system.roles.manage / system.audit / system.maintenance are
+  // tenant-admin-level permissions on tenant-facing routes (role management
+  // inside a workspace, activity log, print cleanup). Treating them as
+  // platform-only would lock tenant admins out of their own settings.
+);
+
+/**
+ * Check whether a user holds a platform/system permission through a real
+ * system role: either the live path (user_roles → roles.tenant_id IS NULL →
+ * role_permissions → permissions) or the legacy path (user_system_roles →
+ * system_role_permissions → system_permissions). No tenant-admin bypass —
+ * tenant admin rights are deliberately scoped to their own tenant.
+ */
+const checkSystemPermission = async (userId, requiredPermission) => {
+  try {
+    // db.query() returns the rows array directly (config/db.js unwraps
+    // mysql2's [rows, fields] tuple).
+    const rows = await db.query(
+      `SELECT 1 FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id AND r.tenant_id IS NULL
+         JOIN role_permissions rp ON rp.role_id = r.id
+         JOIN permissions p ON p.id = rp.permission_id
+        WHERE ur.user_id = ? AND p.name = ?
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+        LIMIT 1`,
+      [userId, requiredPermission]
+    );
+    if (rows.length) return true;
+
+    const legacy = await db.query(
+      `SELECT 1 FROM user_system_roles usr
+         JOIN system_role_permissions srp ON srp.role_id = usr.role_id
+         JOIN system_permissions sp ON sp.id = srp.permission_id
+        WHERE usr.user_id = ? AND sp.name = ?
+        LIMIT 1`,
+      [userId, requiredPermission]
+    );
+    return legacy.length > 0;
+  } catch (error) {
+    console.error('Error checking system permission:', error.message);
+    return false;
+  }
+};
+
 const checkUserPermission = async (userId, requiredPermission, tenantId, storeId = null, token = null) => {
   try {
+    // Platform/system permissions have no tenant-admin bypass — those rights
+    // stop at the tenant boundary by design.
+    if (isSystemPermissionName(requiredPermission)) {
+      debugLog(`  System permission check: ${requiredPermission}`);
+      return await checkSystemPermission(userId, requiredPermission);
+    }
+
     // Check if user is a tenant admin (tenant admins bypass permission checks)
     if (tenantId && await rbacService.isTenantAdmin(userId, tenantId)) {
       debugLog(`User ${userId} is tenant admin, bypassing permission check`);
@@ -132,13 +195,7 @@ const requirePermission = (requiredPermission, options = {}) => {
                    decoded.tenantId;
       
       // For system-level permissions, we don't need a specific tenant
-      const isSystemPermission = requiredPermission && (
-        requiredPermission.startsWith('platform.') || 
-        requiredPermission.startsWith('tenants.') ||
-        requiredPermission.startsWith('subscriptions.') ||
-        requiredPermission.startsWith('plans.') ||
-        requiredPermission.startsWith('system.')
-      );
+      const isSystemPermission = isSystemPermissionName(requiredPermission);
       
       // For tenant-level permissions, tenant ID is required
       if (!isSystemPermission && !tenantId) {
@@ -271,6 +328,8 @@ const bypassPermissions = () => {
 module.exports = {
   requirePermission,
   bypassPermissions,
-  checkUserPermission
+  checkUserPermission,
+  checkSystemPermission,
+  isSystemPermissionName
   // isTenantAdmin function moved to rbacService.js
 };

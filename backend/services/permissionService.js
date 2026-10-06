@@ -126,7 +126,7 @@ const getUserPermissions = async (userId, tenantId, storeId = null) => {
       JOIN roles r ON ur.role_id = r.id
       WHERE ur.user_id = ?
         AND (
-          (ur.scope = 'tenant' AND r.tenant_id = ?)
+          (ur.scope = 'tenant' AND (r.tenant_id = ? OR r.tenant_id IS NULL))
           OR (ur.scope = 'store' AND ${storeId ? 'ur.store_id = ?' : 'ur.store_id IS NOT NULL'})
         )
     `;

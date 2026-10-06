@@ -2030,6 +2030,14 @@ const start = async () => {
     // 2. Start listening for requests
     listenWithRetry();
 
+    // 3. Platform maintenance jobs (trial expiry, dunning, scheduled
+    //    deletions). Internally disabled when PLATFORM_JOBS_DISABLED=true.
+    try {
+      require('./services/platformJobs').start();
+    } catch (jobErr) {
+      console.warn('[platformJobs] scheduler failed to start:', jobErr.message);
+    }
+
   } catch (error) {
     console.error('Failed to initialize server:', error);
     await safeExit(1, 'startCatch');

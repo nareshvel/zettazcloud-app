@@ -118,6 +118,14 @@ router.use('/industry', industryRoutes);
 const tenantsRoutes = require('./tenants.routes');
 router.use('/tenants', tenantsRoutes);
 
+// Platform admin console (system roles only — see platformService)
+const platformRoutes = require('./platform.routes');
+router.use('/platform', platformRoutes);
+
+// Tenant-facing support tickets + announcements
+const supportRoutes = require('./support.routes');
+router.use('/support', supportRoutes);
+
 // Employee module (performance, targets, incentives, Paytime integration)
 const employeesRoutes = require('./employees.routes');
 router.use('/employees', employeesRoutes);

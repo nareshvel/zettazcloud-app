@@ -45,6 +45,7 @@ const EXCLUDED_PATH_PREFIXES = [
   '/api/auth',
   '/api/public',
   '/api/onboarding',
+  '/api/platform',        // system-admin console — platform tenant has no subscription row
   '/api/users/me',        // profile fetch, needed by most authenticated shells
 ];
 
@@ -73,8 +74,24 @@ const isTrialExpired = (subscription) => {
 const requireActiveSubscription = () => {
   return async (req, res, next) => {
     try {
-      if (isExcludedPath(req.path)) {
+      // Mounted via app.use('/api', ...) so req.path is the path AFTER the
+      // mount (e.g. '/subscriptions/status') — the /api-prefixed exclusions
+      // only match on the originalUrl. Check both.
+      const reqPath = req.originalUrl || req.path;
+      if (isExcludedPath(reqPath) || isExcludedPath(req.path)) {
         return next();
+      }
+
+      // Impersonation tokens (platform staff acting inside a tenant
+      // workspace) bypass subscription gating — a support session into a
+      // lapsed tenant must not hit 402s. The `imp` claim is only minted by
+      // /api/platform/tenants/:id/impersonate behind `platform.impersonate`.
+      const authHeader = req.headers.authorization || '';
+      if (authHeader.startsWith('Bearer ')) {
+        try {
+          const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
+          if (decoded && decoded.imp) return next();
+        } catch { /* invalid/expired token — authenticate() handles it */ }
       }
 
       const tenantId = extractTenantId(req);

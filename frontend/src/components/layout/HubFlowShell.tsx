@@ -3,6 +3,7 @@ import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { Gem } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationsBell from '@/components/common/NotificationsBell';
+import ImpersonationBanner from '@/components/system/ImpersonationBanner';
 
 /**
  * Chromeless top bar + content outlet for pages launched from Sales Hub —
@@ -43,6 +44,7 @@ const HubFlowShell = () => {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
+      <ImpersonationBanner />
       <header className="bg-card/75 backdrop-blur-sm shadow-sm p-4 flex items-center justify-between sticky top-0 z-20 border-b border-border">
         <div className="flex items-center space-x-4">
           <Link to="/sales-hub" className="flex items-center gap-2 shrink-0" aria-label="Back to Sales Hub" title="Back to Sales Hub">
