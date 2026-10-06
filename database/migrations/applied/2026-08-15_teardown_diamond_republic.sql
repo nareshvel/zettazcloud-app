@@ -6,6 +6,11 @@
 -- in safe dependency order.
 -- =============================================================================
 
+-- Pin the connection collation: @T inherits collation_connection, and mysql2
+-- connects with utf8mb4_unicode_ci by default, which cannot compare against
+-- utf8mb4_0900_ai_ci columns (Illegal mix of collations on = @T).
+SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
 SET @T = 'e1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c';
 
 SET FOREIGN_KEY_CHECKS = 0;
