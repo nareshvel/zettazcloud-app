@@ -2,12 +2,11 @@
 
 ## MySQL Connection Pool — Critical Constraints
 
-- The MySQL user `digitpulse_zcloud` has `max_user_connections=20` on the shared hosting server (`mysql.us.cloudlogin.co`).
-- This budget is shared between: production backend (185.75.21.46), local dev backends, migration scripts, and ad-hoc check scripts.
-- MySQL's `wait_timeout=28800` (8 hours) — leaked connections from crashed processes count against the 20 for 8 hours.
-- **Dev `.env`**: `DB_CONNECTION_LIMIT=3`, `DB_MAX_IDLE=1`, `DB_IDLE_TIMEOUT=60000`
-- **Production `.env`**: `DB_CONNECTION_LIMIT=5`, `DB_MAX_IDLE=2`, `DB_IDLE_TIMEOUT=120000`
-- Dev (3) + prod (5) = 8, leaving 12 for scripts/migrations. Do NOT raise either without raising `max_user_connections` on the MySQL server.
+- The production MySQL database runs on the same VPS at `localhost:3306` using `zettazcloud_systemadmin` / `zettazcloud_prod`.
+- These pool limits are used by default:
+  - **Dev `.env`**: `DB_CONNECTION_LIMIT=3`, `DB_MAX_IDLE=1`, `DB_IDLE_TIMEOUT=60000`
+  - **Production `.env`**: `DB_CONNECTION_LIMIT=5`, `DB_MAX_IDLE=2`, `DB_IDLE_TIMEOUT=120000`
+- You can raise the production pool on a local MySQL server, but `DB_CONNECTION_LIMIT` should still not exceed the MySQL `max_connections` setting.
 - `server.js`'s `safeExit()` helper closes the pool before any `process.exit()` — always use it, never bare `process.exit()`, or connections leak for 8 hours.
 - `config/db.js`'s `query()` and `getConnection()` retry on `ER_CON_COUNT_ERROR` and `PROTOCOL_CONNECTION_LOST` with backoff.
 - Never use `mysql.createConnection()` in server code — always use the shared pool via `require('./config/db')` or `require('./db')`.
@@ -40,13 +39,12 @@
 - Backend port: `5172`
 - Full deployment: `bash /var/www/zettazcloud-app/deploy.sh`
 - Quick deployment for minor frontend/backend changes: `bash /var/www/zettazcloud-app/deploy-quick.sh`
-- The MySQL database is hosted on a separate server at `mysql.us.cloudlogin.co:3306`.
+- The MySQL database is `zettazcloud_prod` on the same VPS at `localhost:3306`.
 - The production backend server public IP is `185.75.21.46`.
-- MySQL access depends on the backend server IP being allowed by the database host. An `ER_ACCESS_DENIED_ERROR` for `digitpulse_zcloud@185.75.21.46` can mean the IP allowlist/grant is missing even when credentials are correct.
+- If you see `ER_ACCESS_DENIED_ERROR`, check that `zettazcloud_systemadmin` exists with `GRANT` on `zettazcloud_prod.*` and that MySQL is listening on `127.0.0.1`.
 - Verify database connectivity on the production server with `cd /var/www/zettazcloud-app/backend && node scripts/check_db_connection.js` before restarting PM2.
 - Historical errors can remain in PM2 log files after a successful restart. Confirm current startup from the newest output lines and verify the API responds instead of treating old error-log lines as a current failure.
 - PM2 `online` status alone is not sufficient proof of application health because a process can briefly appear online while restart-looping.
-- The database may be migrated to the backend server later; until then, preserve the remote database IP allowlist requirement.
 
 ## Network ESC/POS Printing Implementation (2026-08-27)
 
