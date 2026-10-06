@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import {
   getCostCodeSettings, saveCostCodeSettings, previewCostCode, CostCodeSettings as CCSettings,
 } from '@/services/industryService';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 
 const DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 const DEFAULT_MAP: Record<string, string> = {
@@ -11,19 +13,23 @@ const DEFAULT_MAP: Record<string, string> = {
 const inputCls = 'block w-full px-3 py-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-lg text-sm text-gray-900 dark:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors';
 const labelCls = 'block text-xs font-medium text-gray-600 dark:text-muted-foreground mb-1.5';
 
-const Field: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
+const Field: React.FC<{ label: string; value: string; onChange: (v: string) => void; disabled?: boolean }> = ({ label, value, onChange, disabled }) => (
   <div>
     <label className={labelCls}>{label}</label>
     <input
-      className="w-full px-3 py-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-lg text-sm text-center uppercase font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+      className="w-full px-3 py-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-lg text-sm text-center uppercase font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors disabled:opacity-60"
       maxLength={1}
       value={value || ''}
       onChange={(e) => onChange(e.target.value.slice(0, 1))}
+      disabled={disabled}
     />
   </div>
 );
 
 const CostCodeSettings: React.FC = () => {
+  const { user } = useAuth();
+  // Save path is PUT /industry/cost-code → settings.edit.
+  const canEdit = hasPermission(user, 'settings.edit');
   const [cfg, setCfg] = useState<CCSettings>({
     enabled: false, prefix: 'X', suffix: 'Y', decimalChar: '.', repeatChar: '', digitMap: DEFAULT_MAP,
   });
@@ -45,6 +51,7 @@ const CostCodeSettings: React.FC = () => {
     setCfg((c) => ({ ...c, digitMap: { ...c.digitMap, [d]: v.toUpperCase().slice(0, 1) } }));
 
   const handleSave = async () => {
+    if (!canEdit) return;
     setSaving(true); setMessage(null);
     try {
       await saveCostCodeSettings(cfg);
@@ -75,9 +82,9 @@ const CostCodeSettings: React.FC = () => {
           </p>
         </div>
         <div className="px-5 py-4">
-          <label className="flex items-center gap-3 cursor-pointer group">
+          <label className={`flex items-center gap-3 group ${canEdit ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
             <div className={`relative w-10 h-5 rounded-full transition-colors ${cfg.enabled ? 'bg-primary' : 'bg-gray-200'}`}
-              onClick={() => update({ enabled: !cfg.enabled })}>
+              onClick={() => { if (canEdit) update({ enabled: !cfg.enabled }); }}>
               <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-card rounded-full shadow transition-transform ${cfg.enabled ? 'translate-x-5' : ''}`} />
             </div>
             <span className="text-sm font-medium text-gray-700 dark:text-foreground group-hover:text-gray-900 dark:text-foreground">
@@ -94,10 +101,10 @@ const CostCodeSettings: React.FC = () => {
           <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">Surround the cipher with unique characters that are not used as digit substitutes.</p>
         </div>
         <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Field label="Prefix" value={cfg.prefix} onChange={(v) => update({ prefix: v })} />
-          <Field label="Suffix" value={cfg.suffix} onChange={(v) => update({ suffix: v })} />
-          <Field label="Decimal char" value={cfg.decimalChar} onChange={(v) => update({ decimalChar: v })} />
-          <Field label="Repeat char" value={cfg.repeatChar} onChange={(v) => update({ repeatChar: v })} />
+          <Field label="Prefix" value={cfg.prefix} onChange={(v) => update({ prefix: v })} disabled={!canEdit} />
+          <Field label="Suffix" value={cfg.suffix} onChange={(v) => update({ suffix: v })} disabled={!canEdit} />
+          <Field label="Decimal char" value={cfg.decimalChar} onChange={(v) => update({ decimalChar: v })} disabled={!canEdit} />
+          <Field label="Repeat char" value={cfg.repeatChar} onChange={(v) => update({ repeatChar: v })} disabled={!canEdit} />
         </div>
       </div>
 
@@ -113,10 +120,11 @@ const CostCodeSettings: React.FC = () => {
               <div key={d} className="flex flex-col items-center gap-1">
                 <span className="text-xs font-semibold text-gray-400 dark:text-muted-foreground">{d}</span>
                 <input
-                  className="w-10 h-10 border border-gray-200 dark:border-border rounded-lg text-sm text-center uppercase font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                  className="w-10 h-10 border border-gray-200 dark:border-border rounded-lg text-sm text-center uppercase font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors disabled:opacity-60"
                   maxLength={1}
                   value={cfg.digitMap[d] || ''}
                   onChange={(e) => setDigit(d, e.target.value)}
+                  disabled={!canEdit}
                 />
               </div>
             ))}
@@ -151,13 +159,15 @@ const CostCodeSettings: React.FC = () => {
 
       {/* Save */}
       <div className="flex items-center justify-between">
-        {message && (
-          <p className={`text-sm ${message.ok ? 'text-green-600' : 'text-red-600'}`}>{message.text}</p>
-        )}
+        {!canEdit
+          ? <p className="text-xs text-gray-500 dark:text-muted-foreground">View-only access — ask a manager to make changes.</p>
+          : message && (
+            <p className={`text-sm ${message.ok ? 'text-green-600' : 'text-red-600'}`}>{message.text}</p>
+          )}
         <button
           onClick={handleSave}
-          disabled={saving}
-          className="ml-auto px-5 py-2 bg-primary hover:bg-primary/90 disabled:bg-primary/50 text-white text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-colors"
+          disabled={saving || !canEdit}
+          className="ml-auto px-5 py-2 bg-primary hover:bg-primary/90 disabled:bg-primary/50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-colors"
         >
           {saving ? 'Saving…' : 'Save Settings'}
         </button>

@@ -6,6 +6,8 @@ import {
 } from '@/services/jewelryOpsService';
 import { useLocaleFormat } from '@/hooks/useLocaleFormat';
 import { useStore } from '@/contexts/StoreContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 import { useToast } from '@/hooks/use-toast';
 import PageHeader from '@/components/common/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -49,6 +51,9 @@ const QUICK_PURITIES = [
 const MetalRatesPage: React.FC = () => {
   const { formatCurrency, formatDate, formatWeight, weightUnitLabel } = useLocaleFormat();
   const { store } = useStore();
+  const { user } = useAuth();
+  // Rate publishing + pricing settings write via settings.edit.
+  const canEdit = hasPermission(user, 'settings.edit');
   const { toast } = useToast();
   const fmtC = (n: any) => n != null ? formatCurrency(Number(n)) : '—';
   const fmtD = (d: any) => { const s = toIsoDate(d); return s ? formatDate(s) : '—'; };
@@ -125,7 +130,7 @@ const MetalRatesPage: React.FC = () => {
             <Button variant="outline" size="sm" onClick={() => setShowSettings(p => !p)}>
               <Settings className="h-4 w-4 mr-1" /> Settings
             </Button>
-            <Button onClick={() => setShowPublish(true)}>
+            <Button onClick={() => setShowPublish(true)} disabled={!canEdit} title={!canEdit ? 'View-only access' : undefined}>
               <Plus className="h-4 w-4 mr-1" /> Publish Rate
             </Button>
           </div>
@@ -191,7 +196,7 @@ const MetalRatesPage: React.FC = () => {
               <div className="rounded-xl border border-dashed border-border p-10 text-center">
                 <Gem className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">No rates published yet.</p>
-                <Button className="mt-4" size="sm" onClick={() => setShowPublish(true)}>
+                <Button className="mt-4" size="sm" onClick={() => setShowPublish(true)} disabled={!canEdit}>
                   <Plus className="h-4 w-4 mr-1" /> Publish First Rate
                 </Button>
               </div>
@@ -346,8 +351,11 @@ const SettingsPanel: React.FC<{
   const [f, setF]     = useState({ ...settings });
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canEdit = hasPermission(user, 'settings.edit');
 
   const save = async () => {
+    if (!canEdit) return;
     setSaving(true);
     try {
       await savePricingSettings({
@@ -381,6 +389,7 @@ const SettingsPanel: React.FC<{
         <div className="relative mt-0.5">
           <input type="checkbox" className="sr-only peer"
             checked={!!Number(f.weightPricingEnabled)}
+            disabled={!canEdit}
             onChange={e => setF(p => ({ ...p, weightPricingEnabled: e.target.checked ? 1 : 0 }))} />
           <div className="w-10 h-5 bg-muted rounded-full peer-checked:bg-primary transition-colors" />
           <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5" />
@@ -397,7 +406,7 @@ const SettingsPanel: React.FC<{
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className={labelCls}>Making charge type</label>
-            <select className={inputCls} value={f.defaultMakingChargeType}
+            <select className={inputCls} value={f.defaultMakingChargeType} disabled={!canEdit}
               onChange={e => setF(p => ({ ...p, defaultMakingChargeType: e.target.value as any }))}>
               <option value="per_gram">Per gram</option>
               <option value="percentage">Percentage</option>
@@ -407,13 +416,13 @@ const SettingsPanel: React.FC<{
           <div>
             <label className={labelCls}>Making charge value</label>
             <input type="number" min="0" step="0.01" className={inputCls}
-              value={f.defaultMakingChargeValue}
+              value={f.defaultMakingChargeValue} disabled={!canEdit}
               onChange={e => setF(p => ({ ...p, defaultMakingChargeValue: Number(e.target.value) }))} />
           </div>
           <div>
             <label className={labelCls}>Wastage %</label>
             <input type="number" min="0" max="20" step="0.001" className={inputCls}
-              value={f.defaultWastagePct}
+              value={f.defaultWastagePct} disabled={!canEdit}
               onChange={e => setF(p => ({ ...p, defaultWastagePct: Number(e.target.value) }))} />
           </div>
         </div>
@@ -426,7 +435,8 @@ const SettingsPanel: React.FC<{
           {(['g', 'oz', 'tola', 'baht', 'kg'] as const).map(u => (
             <button key={u} type="button"
               onClick={() => setF(p => ({ ...p, weightUnit: u }))}
-              className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
+              disabled={!canEdit}
+              className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
                 f.weightUnit === u
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground'
@@ -450,6 +460,7 @@ const SettingsPanel: React.FC<{
               className={inputCls + ' pr-20'}
               placeholder="goldapi.io API key"
               value={f.marketRateApiKey || ''}
+              disabled={!canEdit}
               onChange={e => setF(p => ({ ...p, marketRateApiKey: e.target.value }))}
             />
             <button type="button" onClick={() => setShowApiKey(p => !p)}
@@ -464,14 +475,14 @@ const SettingsPanel: React.FC<{
           <div>
             <label className={labelCls}>Local premium %</label>
             <input type="number" min="0" max="50" step="0.1" className={inputCls}
-              value={f.marketRateLocalPremiumPct ?? 0}
+              value={f.marketRateLocalPremiumPct ?? 0} disabled={!canEdit}
               onChange={e => setF(p => ({ ...p, marketRateLocalPremiumPct: Number(e.target.value) }))} />
             <p className="text-xs text-muted-foreground mt-1">Added on top of spot (import duty, local margin). India ≈15–18%, USA ≈2–5%.</p>
           </div>
           <div>
             <label className={labelCls}>Auto-fetch time (24h)</label>
             <input type="time" className={inputCls}
-              value={f.marketRateFetchTime || '10:00'}
+              value={f.marketRateFetchTime || '10:00'} disabled={!canEdit}
               onChange={e => setF(p => ({ ...p, marketRateFetchTime: e.target.value }))} />
             <p className="text-xs text-muted-foreground mt-1">Scheduled daily fetch (requires auto-publish on).</p>
           </div>
@@ -481,6 +492,7 @@ const SettingsPanel: React.FC<{
           <div className="relative">
             <input type="checkbox" className="sr-only peer"
               checked={!!Number(f.marketRateAutoPublish)}
+              disabled={!canEdit}
               onChange={e => setF(p => ({ ...p, marketRateAutoPublish: e.target.checked ? 1 : 0 }))} />
             <div className="w-9 h-5 bg-muted rounded-full peer-checked:bg-primary transition-colors" />
             <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
@@ -494,7 +506,7 @@ const SettingsPanel: React.FC<{
 
       <div className="flex gap-2 justify-end">
         <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-        <Button size="sm" onClick={save} disabled={saving}>
+        <Button size="sm" onClick={save} disabled={saving || !canEdit} title={!canEdit ? 'View-only access' : undefined}>
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Check className="h-3.5 w-3.5 mr-1" />Save</>}
         </Button>
       </div>
@@ -644,6 +656,8 @@ const PublishRateModal: React.FC<{
 }> = ({ currentRates, onClose, onSaved }) => {
   const { formatCurrency } = useLocaleFormat();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canEdit = hasPermission(user, 'settings.edit');
 
   const [metal, setMetal]           = useState('Gold');
   const [purityLabel, setPurity]    = useState('22K');
@@ -662,6 +676,7 @@ const PublishRateModal: React.FC<{
   const existing = currentRates.find(r => r.metal === metal && r.purityLabel === purityLabel);
 
   const save = async () => {
+    if (!canEdit) return;
     if (!metal || !purityLabel || !ratePerGram) {
       toast({ title: 'Metal, purity and sell rate are required', variant: 'destructive' }); return;
     }
@@ -766,7 +781,7 @@ const PublishRateModal: React.FC<{
 
         <div className="flex gap-2 px-6 py-4 border-t border-border bg-muted/20 shrink-0 rounded-b-2xl">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1" onClick={save} disabled={saving || !ratePerGram}>
+          <Button className="flex-1" onClick={save} disabled={saving || !ratePerGram || !canEdit}>
             {saving ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Publishing…</> : 'Publish Rate'}
           </Button>
         </div>
@@ -788,6 +803,8 @@ const MarketFetchPanel: React.FC<{
 }> = ({ settings, currencyCode, onClose, onPublished }) => {
   const { formatCurrency, weightUnitLabel } = useLocaleFormat();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canEdit = hasPermission(user, 'settings.edit');
   const fmtC = (n: any) => n != null ? formatCurrency(Number(n)) : '—';
 
   const [selectedMetals, setSelectedMetals] = useState<string[]>(['Gold', 'Silver', 'Platinum']);
@@ -816,6 +833,7 @@ const MarketFetchPanel: React.FC<{
   };
 
   const doPublish = async () => {
+    if (!canEdit) return;
     if (!preview?.length) return;
     setPublishing(true);
     try {
@@ -881,7 +899,7 @@ const MarketFetchPanel: React.FC<{
           {fetching ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Fetching…</> : <><Eye className="h-4 w-4 mr-1.5" />Fetch Preview</>}
         </Button>
         {preview && preview.length > 0 && (
-          <Button variant="outline" onClick={doPublish} disabled={publishing}>
+          <Button variant="outline" onClick={doPublish} disabled={publishing || !canEdit} title={!canEdit ? 'View-only access' : undefined}>
             {publishing ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Publishing…</> : <><Zap className="h-4 w-4 mr-1.5" />Publish All ({preview.length})</>}
           </Button>
         )}

@@ -12,7 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/contexts/StoreContext'; // Added for store-level tax settings
 import { useTaxConfig } from '@/contexts/TaxConfigContext';
 import toast from 'react-hot-toast';
-import { hasAnyPermission } from '@/utils/permissionUtils';
+import { hasAnyPermission, hasPermission } from '@/utils/permissionUtils';
 
 // Interfaces to match fetchApi camelCase conversion
 interface TaxRate {
@@ -38,6 +38,13 @@ const SettingsTaxes: React.FC = () => {
   const { store, updateStore } = useStore(); // Added for store-level tax settings
   const { user, isAuthenticated } = useAuth();
   const { taxConfig, updateTaxConfig, refreshTaxConfig } = useTaxConfig();
+
+  // Write paths: tax class/rate CRUD → tax.create/edit/delete; store tax
+  // basis + default-class flag → PATCH /stores/settings → stores.edit.
+  const canCreateTax = hasPermission(user, 'tax.create');
+  const canEditTax = hasPermission(user, 'tax.edit');
+  const canDeleteTax = hasPermission(user, 'tax.delete');
+  const canEditStoreTax = hasPermission(user, 'stores.edit');
   const [taxClasses, setTaxClasses] = useState<TaxClass[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -193,6 +200,7 @@ const SettingsTaxes: React.FC = () => {
   // --- CRUD Operations ---
   const handleSaveTaxClass = async (e: FormEvent) => {
     e.preventDefault();
+    if (modalMode === 'add' ? !canCreateTax : !canEditTax) return;
     if (!currentTaxClass || !currentTaxClass.name) {
       setError('Tax class name is required.');
       return;
@@ -286,6 +294,7 @@ const SettingsTaxes: React.FC = () => {
   };
 
   const confirmDeleteTaxClass = async () => {
+    if (!canDeleteTax) return;
     if (!taxClassToDelete) return;
     const taxClassId = taxClassToDelete;
     setTaxClassToDelete(null);
@@ -304,6 +313,7 @@ const SettingsTaxes: React.FC = () => {
   };
 
   const handleSaveRate = async () => {
+    if (editingRate?.id ? !canEditTax : !canCreateTax) return;
     if (!editingRate || !editingRate.taxRateName || editingRate.rate === undefined) {
       setError('Rate name and rate value are required.');
       return;
@@ -345,6 +355,7 @@ const SettingsTaxes: React.FC = () => {
   };
 
   const handleDeleteRate = async () => {
+    if (!canDeleteTax) return;
     if (!rateToDelete || !rateToDelete.id) {
       setError('No rate selected for deletion.');
       return;
@@ -371,6 +382,7 @@ const SettingsTaxes: React.FC = () => {
 
   // --- Main Render ---
   const handleSaveTaxBasis = async () => {
+    if (!canEditStoreTax) return;
     if (!store || !updateStore) {
       toast.error('Store context is not available.');
       return;
@@ -408,10 +420,13 @@ const SettingsTaxes: React.FC = () => {
               { value: 'INCLUSIVE', label: 'Tax Inclusive', desc: 'Prices already include tax — tax is itemized but not added to the total.' },
             ].map(opt => (
               <label key={opt.value}
-                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+                  !canEditStoreTax ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'
+                } ${
                   selectedTaxBasis === opt.value ? 'border-primary bg-primary/5' : 'border-gray-200 dark:border-border hover:border-primary/30'
                 }`}>
                 <input type="radio" name="taxBasis" value={opt.value} checked={selectedTaxBasis === opt.value}
+                  disabled={!canEditStoreTax}
                   onChange={() => { setSelectedTaxBasis(opt.value as 'EXCLUSIVE' | 'INCLUSIVE'); setHasUnsavedChangesTaxBasis(true); }}
                   className="mt-0.5 accent-primary" />
                 <div>
@@ -428,8 +443,11 @@ const SettingsTaxes: React.FC = () => {
             </div>
           )}
         </div>
-        <div className="px-5 py-4 bg-gray-50 dark:bg-muted/50 border-t border-gray-100 dark:border-border flex justify-end">
-          <Button onClick={handleSaveTaxBasis} disabled={isSavingTaxBasis || !hasUnsavedChangesTaxBasis} size="sm">
+        <div className="px-5 py-4 bg-gray-50 dark:bg-muted/50 border-t border-gray-100 dark:border-border flex items-center justify-between gap-3">
+          {!canEditStoreTax && (
+            <p className="text-xs text-gray-500 dark:text-muted-foreground">View-only access — ask a manager to make changes.</p>
+          )}
+          <Button onClick={handleSaveTaxBasis} disabled={isSavingTaxBasis || !hasUnsavedChangesTaxBasis || !canEditStoreTax} size="sm" className="ml-auto">
             {isSavingTaxBasis ? 'Saving…' : 'Save Tax Basis'}
           </Button>
         </div>
@@ -442,7 +460,7 @@ const SettingsTaxes: React.FC = () => {
             <h3 className="text-sm font-semibold text-gray-800 dark:text-foreground">Tax Classes</h3>
             <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">Group rates into classes (e.g. Standard, Reduced, Zero).</p>
           </div>
-          <Button size="sm" onClick={() => handleOpenModal('add')}><PlusCircle className="mr-1.5 h-4 w-4" /> Add Tax Class</Button>
+          <Button size="sm" onClick={() => handleOpenModal('add')} disabled={!canCreateTax} title={!canCreateTax ? 'View-only access' : undefined}><PlusCircle className="mr-1.5 h-4 w-4" /> Add Tax Class</Button>
         </div>
         <table className="min-w-full divide-y divide-gray-100">
           <thead className="bg-gray-50/60"><tr>
@@ -461,7 +479,7 @@ const SettingsTaxes: React.FC = () => {
                 </td>
                 <td className="px-5 py-3.5 text-right">
                   <Button variant="ghost" size="sm" onClick={() => handleOpenModal('edit', tc)}><Edit className="h-3.5 w-3.5 mr-1" /> Edit</Button>
-                  <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDeleteTaxClass(tc.id)}><Trash2 className="h-3.5 w-3.5 mr-1" /> Delete</Button>
+                  <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDeleteTaxClass(tc.id)} disabled={!canDeleteTax}><Trash2 className="h-3.5 w-3.5 mr-1" /> Delete</Button>
                 </td>
               </tr>
             ))}
@@ -473,9 +491,9 @@ const SettingsTaxes: React.FC = () => {
         <DialogHeader><DialogTitle>{modalMode === 'edit' ? 'Edit Tax Class' : 'Add New Tax Class'}</DialogTitle><DialogDescription>Details and rates for this tax class.</DialogDescription></DialogHeader>
         <form onSubmit={handleSaveTaxClass} className="mt-4">
           <div className="grid gap-4">
-            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="name" className="text-right">Name</Label><Input id="name" value={currentTaxClass?.name || ''} onChange={(e) => setCurrentTaxClass(p => ({...p!, name: e.target.value}))} className="col-span-3" required /></div>
-            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="description" className="text-right">Description</Label><Input id="description" value={currentTaxClass?.description || ''} onChange={(e) => setCurrentTaxClass(p => ({...p!, description: e.target.value}))} className="col-span-3" /></div>
-            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="is_default" className="text-right">Set as Default</Label><Checkbox id="is_default" checked={isDefaultInModal} onCheckedChange={(checked) => setIsDefaultInModal(!!checked)} className="col-span-3 justify-self-start" /></div>
+            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="name" className="text-right">Name</Label><Input id="name" value={currentTaxClass?.name || ''} onChange={(e) => setCurrentTaxClass(p => ({...p!, name: e.target.value}))} className="col-span-3" required disabled={modalMode === 'add' ? !canCreateTax : !canEditTax} /></div>
+            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="description" className="text-right">Description</Label><Input id="description" value={currentTaxClass?.description || ''} onChange={(e) => setCurrentTaxClass(p => ({...p!, description: e.target.value}))} className="col-span-3" disabled={modalMode === 'add' ? !canCreateTax : !canEditTax} /></div>
+            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="is_default" className="text-right">Set as Default</Label><Checkbox id="is_default" checked={isDefaultInModal} onCheckedChange={(checked) => setIsDefaultInModal(!!checked)} className="col-span-3 justify-self-start" disabled={!canEditStoreTax} /></div>
             {modalMode === 'add' ? (
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="applies_to_all_stores" className="text-right">Applies To</Label>
@@ -484,6 +502,7 @@ const SettingsTaxes: React.FC = () => {
                     id="applies_to_all_stores"
                     checked={appliesToAllStoresInModal}
                     onCheckedChange={(checked) => setAppliesToAllStoresInModal(!!checked)}
+                    disabled={!canCreateTax}
                   />
                   <Label htmlFor="applies_to_all_stores" className="font-normal text-sm text-muted-foreground">
                     All stores (tenant-wide default — a store can still define its own tax classes to override this)
@@ -501,17 +520,17 @@ const SettingsTaxes: React.FC = () => {
           </div>
           {modalMode === 'edit' && currentTaxClass && (
             <div className="mt-6 pt-6 border-t">
-              <div className="flex justify-between items-center mb-3"><h3 className="text-lg font-semibold">Tax Rates</h3><Button type="button" variant="outline" size="sm" onClick={() => setEditingRate({ taxRateName: '', rate: undefined, priority: 0, isCompound: false })}><PlusCircle className="mr-2 h-4 w-4" /> Add Rate</Button></div>
+              <div className="flex justify-between items-center mb-3"><h3 className="text-lg font-semibold">Tax Rates</h3><Button type="button" variant="outline" size="sm" onClick={() => setEditingRate({ taxRateName: '', rate: undefined, priority: 0, isCompound: false })} disabled={!canCreateTax}><PlusCircle className="mr-2 h-4 w-4" /> Add Rate</Button></div>
               {editingRate && (
                 <div className="p-4 border rounded-lg mb-4 bg-gray-50 dark:bg-muted/50">
                   <h4 className="font-semibold mb-2">{editingRate.id ? 'Edit Rate' : 'Add New Rate'}</h4>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><Label htmlFor="taxRateName">Rate Name</Label><Input id="taxRateName" value={editingRate.taxRateName || ''} onChange={(e) => setEditingRate(p => ({...p!, taxRateName: e.target.value}))} required /></div>
-                    <div><Label htmlFor="rate">Rate (%)</Label><Input id="rate" type="number" value={editingRate.rate || ''} onChange={(e) => setEditingRate(p => ({...p!, rate: parseFloat(e.target.value)}))} required /></div>
-                    <div><Label htmlFor="priority">Priority</Label><Input id="priority" type="number" value={editingRate.priority || ''} onChange={(e) => setEditingRate(p => ({...p!, priority: parseInt(e.target.value, 10)}))} required /></div>
+                    <div><Label htmlFor="taxRateName">Rate Name</Label><Input id="taxRateName" value={editingRate.taxRateName || ''} onChange={(e) => setEditingRate(p => ({...p!, taxRateName: e.target.value}))} required disabled={editingRate.id ? !canEditTax : !canCreateTax} /></div>
+                    <div><Label htmlFor="rate">Rate (%)</Label><Input id="rate" type="number" value={editingRate.rate || ''} onChange={(e) => setEditingRate(p => ({...p!, rate: parseFloat(e.target.value)}))} required disabled={editingRate.id ? !canEditTax : !canCreateTax} /></div>
+                    <div><Label htmlFor="priority">Priority</Label><Input id="priority" type="number" value={editingRate.priority || ''} onChange={(e) => setEditingRate(p => ({...p!, priority: parseInt(e.target.value, 10)}))} required disabled={editingRate.id ? !canEditTax : !canCreateTax} /></div>
                   </div>
                   <div className="flex items-center space-x-2 mt-4">
-                    <Checkbox id="isCompound" checked={!!editingRate.isCompound} onCheckedChange={(c) => setEditingRate(p => ({...p!, isCompound: !!c}))} />
+                    <Checkbox id="isCompound" checked={!!editingRate.isCompound} onCheckedChange={(c) => setEditingRate(p => ({...p!, isCompound: !!c}))} disabled={editingRate.id ? !canEditTax : !canCreateTax} />
                     <Label htmlFor="isCompound" className="cursor-pointer">Is Compound?</Label>
                     <TooltipProvider>
                       <Tooltip>
@@ -524,11 +543,11 @@ const SettingsTaxes: React.FC = () => {
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="flex justify-end space-x-2 mt-4"><Button type="button" variant="ghost" onClick={() => setEditingRate(null)}>Cancel</Button><Button type="button" onClick={handleSaveRate} disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Rate'}</Button></div>
+                  <div className="flex justify-end space-x-2 mt-4"><Button type="button" variant="ghost" onClick={() => setEditingRate(null)}>Cancel</Button><Button type="button" onClick={handleSaveRate} disabled={isSaving || (editingRate.id ? !canEditTax : !canCreateTax)}>{isSaving ? 'Saving...' : 'Save Rate'}</Button></div>
                 </div>
               )}
               <table className="min-w-full text-sm"><thead><tr><th className="px-2 py-2 text-left">Name</th><th className="px-2 py-2 text-right">Rate</th><th className="px-2 py-2 text-center">Priority</th><th className="px-2 py-2 text-right">Actions</th></tr></thead>
-                <tbody>{taxRates.map(rate => (<tr key={rate.id}><td className="px-2 py-2 text-left">{rate.taxRateName}</td><td className="px-2 py-2 text-right">{rate.rate !== undefined ? `${rate.rate}%` : ''}</td><td className="px-2 py-2 text-center">{rate.priority}</td><td className="px-2 py-2 text-right"><Button type="button" variant="ghost" size="sm" onClick={() => setEditingRate(rate)}>Edit</Button><Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => { setRateToDelete(rate); setShowDeleteConfirm(true); }}>Delete</Button></td></tr>))}</tbody>
+                <tbody>{taxRates.map(rate => (<tr key={rate.id}><td className="px-2 py-2 text-left">{rate.taxRateName}</td><td className="px-2 py-2 text-right">{rate.rate !== undefined ? `${rate.rate}%` : ''}</td><td className="px-2 py-2 text-center">{rate.priority}</td><td className="px-2 py-2 text-right"><Button type="button" variant="ghost" size="sm" onClick={() => setEditingRate(rate)}>Edit</Button><Button type="button" variant="ghost" size="sm" className="text-red-600" disabled={!canDeleteTax} onClick={() => { setRateToDelete(rate); setShowDeleteConfirm(true); }}>Delete</Button></td></tr>))}</tbody>
               </table>
             </div>
           )}
@@ -537,7 +556,7 @@ const SettingsTaxes: React.FC = () => {
               {error}
             </div>
           )}
-          <DialogFooter className="mt-6"><Button type="button" variant="outline" onClick={handleCloseModal}>Cancel</Button><Button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Changes'}</Button></DialogFooter>
+          <DialogFooter className="mt-6"><Button type="button" variant="outline" onClick={handleCloseModal}>Cancel</Button><Button type="submit" disabled={isSaving || (modalMode === 'add' ? !canCreateTax : !canEditTax)}>{isSaving ? 'Saving...' : 'Save Changes'}</Button></DialogFooter>
         </form>
       </DialogContent></Dialog>
 

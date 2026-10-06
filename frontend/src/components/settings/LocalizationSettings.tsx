@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../../contexts/StoreContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 import { useI18n } from '../../hooks/useI18n';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Store } from '../../types';
@@ -11,7 +13,11 @@ import { COUNTRIES } from '@/data/localization/countries';
 
 const LocalizationSettings: React.FC = () => {
   const { store, updateStore } = useStore();
+  const { user } = useAuth();
   const { t, changeLanguage } = useI18n();
+
+  // Save path is PATCH /stores/settings → stores.edit (same as General).
+  const canEdit = hasPermission(user, 'stores.edit');
   const { setTheme } = useTheme();
 
   const tSettings = (key: string, fallback: string) => t(key, { ns: 'settings', defaultValue: fallback });
@@ -77,6 +83,7 @@ const LocalizationSettings: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (!store) {
       toast.error('Store context not available.');
       return;
@@ -138,31 +145,31 @@ const LocalizationSettings: React.FC = () => {
         <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
             <label htmlFor="languageCode" className={labelCls}>{tSettings('localization.language', 'Language')}</label>
-            <select name="languageCode" id="languageCode" value={settings.languageCode} onChange={handleChange} className={inputCls}>
+            <select name="languageCode" id="languageCode" value={settings.languageCode} onChange={handleChange} className={inputCls} disabled={!canEdit}>
               {languageOptions.map(l => <option key={l.code} value={l.code}>{`${l.name} — ${l.nativeName}`}</option>)}
             </select>
           </div>
           <div>
             <label htmlFor="countryCode" className={labelCls}>{tSettings('localization.country', 'Country')}</label>
-            <select name="countryCode" id="countryCode" value={settings.countryCode} onChange={handleChange} className={inputCls}>
+            <select name="countryCode" id="countryCode" value={settings.countryCode} onChange={handleChange} className={inputCls} disabled={!canEdit}>
               {countryOptions.map(c => <option key={c.code} value={c.code}>{`${c.name} (${c.code})`}</option>)}
             </select>
           </div>
           <div>
             <label htmlFor="currencyCode" className={labelCls}>{tSettings('localization.currency', 'Currency')}</label>
-            <select name="currencyCode" id="currencyCode" value={settings.currencyCode} onChange={handleChange} className={inputCls}>
+            <select name="currencyCode" id="currencyCode" value={settings.currencyCode} onChange={handleChange} className={inputCls} disabled={!canEdit}>
               {currencyOptions.map(c => <option key={c.code} value={c.code}>{`${c.code} — ${c.name} (${c.symbol})`}</option>)}
             </select>
           </div>
           <div>
             <label htmlFor="timezone" className={labelCls}>{tSettings('localization.timezone', 'Timezone')}</label>
-            <select name="timezone" id="timezone" value={settings.timezone} onChange={handleChange} className={inputCls}>
+            <select name="timezone" id="timezone" value={settings.timezone} onChange={handleChange} className={inputCls} disabled={!canEdit}>
               {timezoneOptions.map(z => <option key={z.value} value={z.value}>{z.label}</option>)}
             </select>
           </div>
           <div>
             <label htmlFor="numberFormat" className={labelCls}>{tSettings('localization.number_format', 'Number Format')}</label>
-            <select name="numberFormat" id="numberFormat" value={settings.numberFormat} onChange={handleChange} className={inputCls}>
+            <select name="numberFormat" id="numberFormat" value={settings.numberFormat} onChange={handleChange} className={inputCls} disabled={!canEdit}>
               <option value="point_comma">1,234,567.89 — point decimal</option>
               <option value="comma_point">1.234.567,89 — comma decimal</option>
               <option value="space_comma">1 234 567,89 — space + comma</option>
@@ -170,19 +177,19 @@ const LocalizationSettings: React.FC = () => {
           </div>
           <div>
             <label htmlFor="decimalPrecision" className={labelCls}>{tSettings('localization.decimal_precision', 'Decimal Precision')}</label>
-            <input type="number" min={0} max={6} name="decimalPrecision" id="decimalPrecision" value={settings.decimalPrecision} onChange={handleChange} className={inputCls} />
+            <input type="number" min={0} max={6} name="decimalPrecision" id="decimalPrecision" value={settings.decimalPrecision} onChange={handleChange} className={inputCls} disabled={!canEdit} />
             <p className="mt-1 text-xs text-gray-400 dark:text-muted-foreground">0–6 decimal places shown on prices.</p>
           </div>
           <div>
             <label htmlFor="measurementSystem" className={labelCls}>{tSettings('localization.measurement_system', 'Measurement System')}</label>
-            <select name="measurementSystem" id="measurementSystem" value={settings.measurementSystem} onChange={handleChange} className={inputCls}>
+            <select name="measurementSystem" id="measurementSystem" value={settings.measurementSystem} onChange={handleChange} className={inputCls} disabled={!canEdit}>
               <option value="metric">Metric (kg, m, L)</option>
               <option value="imperial">Imperial (lb, ft, gal)</option>
             </select>
           </div>
           <div>
             <label htmlFor="dateFormat" className={labelCls}>{tSettings('localization.date_format', 'Date Format')}</label>
-            <select name="dateFormat" id="dateFormat" value={settings.dateFormat} onChange={handleChange} className={inputCls}>
+            <select name="dateFormat" id="dateFormat" value={settings.dateFormat} onChange={handleChange} className={inputCls} disabled={!canEdit}>
               <option value="MM/DD/YYYY">MM/DD/YYYY</option>
               <option value="DD/MM/YYYY">DD/MM/YYYY</option>
               <option value="YYYY-MM-DD">YYYY-MM-DD (ISO)</option>
@@ -190,22 +197,27 @@ const LocalizationSettings: React.FC = () => {
           </div>
           <div>
             <label htmlFor="timeFormat" className={labelCls}>{tSettings('localization.time_format', 'Time Format')}</label>
-            <select name="timeFormat" id="timeFormat" value={settings.timeFormat} onChange={handleChange} className={inputCls}>
+            <select name="timeFormat" id="timeFormat" value={settings.timeFormat} onChange={handleChange} className={inputCls} disabled={!canEdit}>
               <option value="hh:mm A">12-hour (hh:mm AM/PM)</option>
               <option value="HH:mm">24-hour (HH:mm)</option>
             </select>
           </div>
           <div>
             <label htmlFor="theme" className={labelCls}>Display Theme</label>
-            <select name="theme" id="theme" value={settings.theme} onChange={handleChange} className={inputCls}>
+            <select name="theme" id="theme" value={settings.theme} onChange={handleChange} className={inputCls} disabled={!canEdit}>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
             </select>
             <p className="mt-1 text-xs text-gray-400 dark:text-muted-foreground">Saved to your account — applies on every login.</p>
           </div>
         </div>
-        <div className="px-5 py-4 bg-gray-50 dark:bg-muted/50 border-t border-gray-100 dark:border-border flex justify-end">
-          <button type="submit" className="px-5 py-2 bg-primary hover:bg-primary/90 text-white text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-colors">
+        <div className="px-5 py-4 bg-gray-50 dark:bg-muted/50 border-t border-gray-100 dark:border-border flex items-center justify-between gap-3">
+          {!canEdit && (
+            <p className="text-xs text-gray-500 dark:text-muted-foreground">
+              {tSettings('general.view_only', 'View-only access — ask a manager to make changes.')}
+            </p>
+          )}
+          <button type="submit" disabled={!canEdit} className="ml-auto px-5 py-2 bg-primary hover:bg-primary/90 text-white text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             {tSettings('buttons.save_changes', 'Save Changes')}
           </button>
         </div>

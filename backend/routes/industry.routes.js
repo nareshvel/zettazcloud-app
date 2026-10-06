@@ -22,6 +22,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../config/db');
 const { authenticate, requireTenantId } = require('../middleware/unifiedAuthMiddleware');
+const { requirePermission } = require('../middleware/rbacPermissionMiddleware');
 const industryFieldService = require('../services/industryFieldService');
 const templateProvisioningService = require('../services/templateProvisioningService');
 const costCode = require('../services/costCodeService');
@@ -176,7 +177,7 @@ router.get('/overrides', requireTenantId, async (req, res) => {
   }
 });
 
-router.put('/overrides', requireTenantId, async (req, res) => {
+router.put('/overrides', requireTenantId, requirePermission('settings.edit'), async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.field_key) return res.status(400).json({ status: 'error', message: 'field_key required' });
@@ -204,7 +205,7 @@ router.put('/overrides', requireTenantId, async (req, res) => {
   }
 });
 
-router.delete('/overrides/:fieldKey', requireTenantId, async (req, res) => {
+router.delete('/overrides/:fieldKey', requireTenantId, requirePermission('settings.edit'), async (req, res) => {
   try {
     const appliesTo = req.query.applies_to || 'product';
     await pool.execute(
@@ -244,7 +245,7 @@ router.get('/cost-code', requireTenantId, async (req, res) => {
   }
 });
 
-router.put('/cost-code', requireTenantId, async (req, res) => {
+router.put('/cost-code', requireTenantId, requirePermission('settings.edit'), async (req, res) => {
   try {
     const b = req.body || {};
     // Accept both snake_case (via the frontend api auto-conversion) and camelCase.

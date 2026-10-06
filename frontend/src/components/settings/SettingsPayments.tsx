@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { paymentService } from '@/services/paymentService';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 
 interface PaymentMethod {
   id: string;
@@ -33,6 +35,9 @@ interface PaymentMethod {
 }
 
 const SettingsPayments = () => {
+  const { user } = useAuth();
+  // Method/terminal toggles map to payments.edit once the backend write is wired.
+  const canEdit = hasPermission(user, 'payments.edit');
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -64,6 +69,7 @@ const SettingsPayments = () => {
   };
 
   const togglePaymentMethod = async (methodId: string, enabled: boolean) => {
+    if (!canEdit) return;
     try {
       setSaving(true);
       // TODO: Implement backend API for updating payment method status
@@ -87,6 +93,7 @@ const SettingsPayments = () => {
   };
 
   const toggleTerminalMode = async (methodId: string, terminalEnabled: boolean) => {
+    if (!canEdit) return;
     try {
       setSaving(true);
       // TODO: Implement backend API for updating terminal mode
@@ -196,7 +203,7 @@ const SettingsPayments = () => {
                         <Switch
                           checked={method.terminalEnabled}
                           onCheckedChange={(checked) => toggleTerminalMode(method.id, checked)}
-                          disabled={saving}
+                          disabled={saving || !canEdit}
                         />
                         <span className="text-xs text-gray-600 dark:text-muted-foreground">
                           {method.terminalEnabled ? 'Terminal' : 'Click to Pay'}
@@ -208,7 +215,7 @@ const SettingsPayments = () => {
                     <Switch
                       checked={method.isActive}
                       onCheckedChange={(checked) => togglePaymentMethod(method.id, checked)}
-                      disabled={method.isSystemDefault || saving}
+                      disabled={method.isSystemDefault || saving || !canEdit}
                     />
                   </div>
                 </div>

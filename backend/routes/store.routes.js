@@ -632,7 +632,7 @@ router.get('/settings', async (req, res) => {
 // (only frontend callers, which always send an authenticated request) — but if
 // a future caller needs to hit this route without a user session, that caller
 // needs its own review, not a reintroduction of the permissive fallback.
-router.patch('/settings', authenticate, requireTenantId, async (req, res) => {
+router.patch('/settings', authenticate, requireTenantId, requirePermission('stores.edit'), async (req, res) => {
   try {
     const storeData = req.body || {};
 

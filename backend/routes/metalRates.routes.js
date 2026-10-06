@@ -19,6 +19,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../config/db');
 const { authenticate, requireTenantId } = require('../middleware/unifiedAuthMiddleware');
+const { requirePermission } = require('../middleware/rbacPermissionMiddleware');
 const requireIndustry = require('../middleware/requireIndustry');
 const metalPricing = require('../services/metalPricingService');
 const marketFetcher = require('../services/marketRateFetcherService');
@@ -49,7 +50,7 @@ router.get('/settings', async (req, res) => {
   } catch (e) { res.status(500).json({ status: 'error', message: e.message }); }
 });
 
-router.put('/settings', async (req, res) => {
+router.put('/settings', requirePermission('settings.edit'), async (req, res) => {
   try {
     const b = req.body || {};
     await pool.execute(
@@ -111,7 +112,7 @@ router.get('/history', async (req, res) => {
 
 // Publishing a new rate closes the previous open one for that metal+purity,
 // so history stays intact and `effective_to IS NULL` always means "current".
-router.post('/', async (req, res) => {
+router.post('/', requirePermission('settings.edit'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -230,7 +231,7 @@ router.post('/fetch-market', async (req, res) => {
 });
 
 /* POST /fetch-market/publish — fetch live rates AND publish them immediately */
-router.post('/fetch-market/publish', async (req, res) => {
+router.post('/fetch-market/publish', requirePermission('settings.edit'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();

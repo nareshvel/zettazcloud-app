@@ -52,6 +52,8 @@ import { Tag, Printer, Wifi, Globe, TestTube } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getLabelSettings, saveLabelSettings, testLabelPrinter, type LabelSettings } from '@/services/labelService';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 
 // ─── Printer type options ────────────────────────────────────────────────────
 const PRINTER_TYPES = [
@@ -163,6 +165,9 @@ function LabelPreview({ widthMm, heightMm }: { widthMm: number; heightMm: number
 // ─── Main component ──────────────────────────────────────────────────────────
 export default function LabelPrinterSettings({ storeId }: { storeId?: string }) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  // Save path is PUT /labels/settings → settings.printer.
+  const canEdit = hasPermission(user, 'settings.printer');
   const [cfg, setCfg] = useState<LabelSettings>({
     label_printer_type: 'none',
     label_printer_address: '',
@@ -206,6 +211,7 @@ export default function LabelPrinterSettings({ storeId }: { storeId?: string }) 
   }, [storeId]);
 
   const handleSave = async () => {
+    if (!canEdit) return;
     setSaving(true);
     try {
       await saveLabelSettings({ ...cfg, store_id: storeId });
@@ -226,6 +232,7 @@ export default function LabelPrinterSettings({ storeId }: { storeId?: string }) 
   };
 
   const pickPreset = (preset: typeof LABEL_PRESETS[number]) => {
+    if (!canEdit) return;
     setSelectedPreset(preset.id as PresetId);
     if (preset.w !== null && preset.h !== null) {
       setCfg(c => ({ ...c, label_paper_width_mm: preset.w!, label_paper_height_mm: preset.h! }));
@@ -272,8 +279,9 @@ export default function LabelPrinterSettings({ storeId }: { storeId?: string }) 
                 <button
                   key={pt.value}
                   type="button"
-                  onClick={() => setCfg(c => ({ ...c, label_printer_type: pt.value as LabelSettings['label_printer_type'] }))}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg border text-sm font-medium transition-colors
+                  onClick={() => { if (canEdit) setCfg(c => ({ ...c, label_printer_type: pt.value as LabelSettings['label_printer_type'] })); }}
+                  disabled={!canEdit}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg border text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed
                     ${selected
                       ? 'border-primary bg-primary/5 text-primary ring-1 ring-primary/20'
                       : 'border-gray-200 dark:border-border text-gray-600 dark:text-muted-foreground hover:border-primary/40 hover:bg-gray-50'}`}
@@ -302,7 +310,8 @@ export default function LabelPrinterSettings({ storeId }: { storeId?: string }) 
                   placeholder="192.168.1.100"
                   value={cfg.label_printer_address || ''}
                   onChange={e => setCfg(c => ({ ...c, label_printer_address: e.target.value }))}
-                  className="w-full px-3 py-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                  disabled={!canEdit}
+                  className="w-full px-3 py-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors disabled:opacity-60"
                 />
                 <p className="mt-1.5 text-xs text-gray-400 dark:text-muted-foreground">IP:port, default 9100</p>
               </div>
@@ -338,7 +347,8 @@ export default function LabelPrinterSettings({ storeId }: { storeId?: string }) 
                       key={preset.id}
                       type="button"
                       onClick={() => pickPreset(preset)}
-                      className={`text-left rounded-lg border px-3 py-2.5 transition-colors
+                      disabled={!canEdit}
+                      className={`text-left rounded-lg border px-3 py-2.5 transition-colors disabled:opacity-60 disabled:cursor-not-allowed
                         ${isSelected
                           ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
                           : 'border-gray-200 dark:border-border hover:border-primary/40 hover:bg-gray-50'}`}
@@ -364,7 +374,8 @@ export default function LabelPrinterSettings({ storeId }: { storeId?: string }) 
                       type="number" min={10} max={200} value={customW}
                       onChange={e => setCustomW(e.target.value)}
                       onBlur={applyCustom}
-                      className="w-20 px-2.5 py-1.5 border border-gray-200 dark:border-border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      disabled={!canEdit}
+                      className="w-20 px-2.5 py-1.5 border border-gray-200 dark:border-border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
                     />
                   </div>
                   <span className="text-gray-400 dark:text-muted-foreground pb-1.5">×</span>
@@ -374,10 +385,11 @@ export default function LabelPrinterSettings({ storeId }: { storeId?: string }) 
                       type="number" min={10} max={200} value={customH}
                       onChange={e => setCustomH(e.target.value)}
                       onBlur={applyCustom}
-                      className="w-20 px-2.5 py-1.5 border border-gray-200 dark:border-border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      disabled={!canEdit}
+                      className="w-20 px-2.5 py-1.5 border border-gray-200 dark:border-border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
                     />
                   </div>
-                  <Button type="button" size="sm" variant="outline" onClick={applyCustom} className="mb-0.5">Apply</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={applyCustom} disabled={!canEdit} className="mb-0.5">Apply</Button>
                 </div>
               )}
 
@@ -399,16 +411,21 @@ export default function LabelPrinterSettings({ storeId }: { storeId?: string }) 
       </div>
 
       {/* Footer */}
-      <div className="px-5 py-4 bg-gray-50 dark:bg-muted/50 border-t border-gray-100 dark:border-border flex items-center gap-2 justify-end">
-        {cfg.label_printer_type !== 'none' && (
-          <Button variant="outline" onClick={handleTest} disabled={testing} className="text-sm">
-            <TestTube className="mr-1.5 h-4 w-4" />
-            {testing ? 'Sending…' : 'Print test label'}
-          </Button>
+      <div className="px-5 py-4 bg-gray-50 dark:bg-muted/50 border-t border-gray-100 dark:border-border flex items-center gap-2">
+        {!canEdit && (
+          <p className="text-xs text-gray-500 dark:text-muted-foreground mr-auto">View-only access — ask a manager to make changes.</p>
         )}
-        <Button onClick={handleSave} disabled={saving} className="text-sm">
-          {saving ? 'Saving…' : 'Save settings'}
-        </Button>
+        <div className="flex items-center gap-2 ml-auto">
+          {cfg.label_printer_type !== 'none' && (
+            <Button variant="outline" onClick={handleTest} disabled={testing} className="text-sm">
+              <TestTube className="mr-1.5 h-4 w-4" />
+              {testing ? 'Sending…' : 'Print test label'}
+            </Button>
+          )}
+          <Button onClick={handleSave} disabled={saving || !canEdit} className="text-sm">
+            {saving ? 'Saving…' : 'Save settings'}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, GripVertical, Eye, EyeOff, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 import {
   getProductFieldSchema,
   getTenantFieldOverrides,
@@ -23,6 +25,9 @@ const inputCls = 'block w-full px-3 py-1.5 bg-white dark:bg-background border bo
 const labelCls = 'block text-xs font-medium text-gray-500 dark:text-muted-foreground mb-1';
 
 const IndustryFieldSettings: React.FC = () => {
+  const { user } = useAuth();
+  // Write paths are PUT/DELETE /industry/overrides → settings.edit.
+  const canEdit = hasPermission(user, 'settings.edit');
   const [fields, setFields] = useState<MergedField[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
@@ -81,10 +86,12 @@ const IndustryFieldSettings: React.FC = () => {
   useEffect(() => { load(); }, []);
 
   const updateField = (fieldKey: string, patch: Partial<MergedField>) => {
+    if (!canEdit) return;
     setFields(prev => prev.map(f => f.fieldKey === fieldKey ? { ...f, ...patch, dirty: true } : f));
   };
 
   const saveField = async (field: MergedField) => {
+    if (!canEdit) return;
     setSaving(s => ({ ...s, [field.fieldKey]: true }));
     try {
       await saveTenantFieldOverride({
@@ -108,6 +115,7 @@ const IndustryFieldSettings: React.FC = () => {
   };
 
   const deleteField = async (field: MergedField) => {
+    if (!canEdit) return;
     if (!field.isCustom) return;
     if (!confirm(`Delete custom field "${field.label}"?`)) return;
     try {
@@ -120,6 +128,7 @@ const IndustryFieldSettings: React.FC = () => {
   };
 
   const addCustomField = async () => {
+    if (!canEdit) return;
     if (!newField.fieldKey?.trim() || !newField.label?.trim()) {
       toast.error('Field key and label are required.');
       return;
@@ -161,7 +170,9 @@ const IndustryFieldSettings: React.FC = () => {
         </div>
         <button
           onClick={() => setShowAddForm(v => !v)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-white text-xs font-medium rounded-lg transition-colors"
+          disabled={!canEdit}
+          title={!canEdit ? 'View-only access' : undefined}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="h-3.5 w-3.5" />
           Add Custom Field
@@ -204,7 +215,7 @@ const IndustryFieldSettings: React.FC = () => {
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={addCustomField} disabled={saving.__new__} className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50">
+            <button onClick={addCustomField} disabled={saving.__new__ || !canEdit} className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               {saving.__new__ ? 'Adding…' : 'Add Field'}
             </button>
             <button onClick={() => setShowAddForm(false)} className="px-4 py-1.5 border border-gray-300 dark:border-border text-gray-600 dark:text-muted-foreground text-xs font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-muted/60 transition-colors">
@@ -227,7 +238,8 @@ const IndustryFieldSettings: React.FC = () => {
                 {/* Toggle enabled */}
                 <button
                   onClick={() => updateField(field.fieldKey, { isEnabled: !field.isEnabled })}
-                  className="mt-1.5 shrink-0 text-gray-400 dark:text-muted-foreground hover:text-primary transition-colors"
+                  disabled={!canEdit}
+                  className="mt-1.5 shrink-0 text-gray-400 dark:text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title={field.isEnabled ? 'Hide field' : 'Show field'}
                 >
                   {field.isEnabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -241,6 +253,7 @@ const IndustryFieldSettings: React.FC = () => {
                       className={inputCls}
                       value={field.label}
                       onChange={e => updateField(field.fieldKey, { label: e.target.value })}
+                      disabled={!canEdit}
                     />
                   </div>
                   {/* Field key (read-only) */}
@@ -254,7 +267,7 @@ const IndustryFieldSettings: React.FC = () => {
                     <select
                       className={inputCls}
                       value={field.dataType}
-                      disabled={!field.isCustom}
+                      disabled={!field.isCustom || !canEdit}
                       onChange={e => updateField(field.fieldKey, { dataType: e.target.value as FieldDataType })}
                     >
                       {DATA_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -265,11 +278,11 @@ const IndustryFieldSettings: React.FC = () => {
                 {/* Toggles */}
                 <div className="flex flex-col gap-1.5 shrink-0 mt-1">
                   <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-muted-foreground cursor-pointer">
-                    <input type="checkbox" className="rounded" checked={field.isRequired} onChange={e => updateField(field.fieldKey, { isRequired: e.target.checked })} />
+                    <input type="checkbox" className="rounded" checked={field.isRequired} disabled={!canEdit} onChange={e => updateField(field.fieldKey, { isRequired: e.target.checked })} />
                     Required
                   </label>
                   <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-muted-foreground cursor-pointer">
-                    <input type="checkbox" className="rounded" checked={field.showOnReceipt ?? false} onChange={e => updateField(field.fieldKey, { showOnReceipt: e.target.checked })} />
+                    <input type="checkbox" className="rounded" checked={field.showOnReceipt ?? false} disabled={!canEdit} onChange={e => updateField(field.fieldKey, { showOnReceipt: e.target.checked })} />
                     Receipt
                   </label>
                 </div>
@@ -279,8 +292,8 @@ const IndustryFieldSettings: React.FC = () => {
                   {field.dirty && (
                     <button
                       onClick={() => saveField(field)}
-                      disabled={saving[field.fieldKey]}
-                      className="p-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-50"
+                      disabled={saving[field.fieldKey] || !canEdit}
+                      className="p-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Save changes"
                     >
                       <Save className="h-3.5 w-3.5" />
@@ -289,7 +302,8 @@ const IndustryFieldSettings: React.FC = () => {
                   {field.isCustom && (
                     <button
                       onClick={() => deleteField(field)}
-                      className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                      disabled={!canEdit}
+                      className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Delete custom field"
                     >
                       <Trash2 className="h-3.5 w-3.5" />

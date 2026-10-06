@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '../../contexts/StoreContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 import { useI18n } from '../../hooks/useI18n';
 import { isLocalAgentAvailable, getLocalAgentPrinters, printReceipt } from '../../services/printerService';
 import { fetchPrintTemplates, fetchFixture, type PrintTemplate } from '../../services/printService';
@@ -49,7 +51,11 @@ const emptySetting = (storeId: string, documentType: PrintDocumentType): PrintDo
 
 const PrinterSettings: React.FC = () => {
   const { store } = useStore();
+  const { user } = useAuth();
   const { t } = useI18n();
+
+  // Save path is PUT /print-document-settings → settings.printer.
+  const canEdit = hasPermission(user, 'settings.printer');
   const tSettings = (key: string, fallback: string) => t(key, { ns: 'settings', defaultValue: fallback });
 
   const [docSettings, setDocSettings] = useState<DocSettingsByType>({
@@ -132,10 +138,12 @@ const PrinterSettings: React.FC = () => {
   const updateField = <K extends keyof PrintDocumentSetting>(
     documentType: PrintDocumentType, field: K, value: PrintDocumentSetting[K],
   ) => {
+    if (!canEdit) return;
     setDocSettings((prev) => ({ ...prev, [documentType]: { ...prev[documentType], [field]: value } }));
   };
 
   const selectSaleFormat = (type: PrintDocumentType) => {
+    if (!canEdit) return;
     setSaleFormat(type);
     setDocSettings((prev) => ({ ...prev, [type]: { ...prev[type], enabled: true } }));
     setFieldErrors((prev) => {
@@ -150,6 +158,7 @@ const PrinterSettings: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (!store?.id) return;
     setIsSaving(true);
     setFieldErrors({});
@@ -269,7 +278,7 @@ const PrinterSettings: React.FC = () => {
                 <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">{documentType === saleFormat ? 'Required because this is the default checkout document.' : 'Allow this alternate document to be generated manually.'}</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
-                <input type="checkbox" checked={s.enabled} onChange={(e) => updateField(documentType, 'enabled', e.target.checked)} disabled={documentType === saleFormat} className="sr-only peer" />
+                <input type="checkbox" checked={s.enabled} onChange={(e) => updateField(documentType, 'enabled', e.target.checked)} disabled={documentType === saleFormat || !canEdit} className="sr-only peer" />
                 <div className={toggleCls}></div>
               </label>
             </div>
@@ -279,7 +288,7 @@ const PrinterSettings: React.FC = () => {
                 <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">{tSettings('printer.auto_print_desc', 'Off opens a preview; on starts the configured delivery automatically.')}</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
-                <input type="checkbox" checked={s.autoPrint} onChange={(e) => updateField(documentType, 'autoPrint', e.target.checked)} disabled={!s.enabled} className="sr-only peer" />
+                <input type="checkbox" checked={s.autoPrint} onChange={(e) => updateField(documentType, 'autoPrint', e.target.checked)} disabled={!s.enabled || !canEdit} className="sr-only peer" />
                 <div className={toggleCls}></div>
               </label>
             </div>
@@ -291,7 +300,7 @@ const PrinterSettings: React.FC = () => {
               <select
                 value={s.deliveryMode}
                 onChange={(e) => updateField(documentType, 'deliveryMode', e.target.value as PrintDeliveryMode)}
-                disabled={!s.enabled}
+                disabled={!s.enabled || !canEdit}
                 className={fieldCls}
               >
                 <option value="browser">{tSettings('printer.mode_browser', 'Browser Print')}</option>
@@ -317,7 +326,7 @@ const PrinterSettings: React.FC = () => {
                   <select
                     value={s.printerName || ''}
                     onChange={(e) => updateField(documentType, 'printerName', e.target.value || null)}
-                    disabled={!s.enabled}
+                    disabled={!s.enabled || !canEdit}
                     className={fieldCls}
                   >
                     <option value="">{tSettings('printer.default_printer', 'Default Printer')}</option>
@@ -330,7 +339,7 @@ const PrinterSettings: React.FC = () => {
                     type="text"
                     value={s.printerName || ''}
                     onChange={(e) => updateField(documentType, 'printerName', e.target.value || null)}
-                    disabled={!s.enabled}
+                    disabled={!s.enabled || !canEdit}
                     placeholder={s.deliveryMode === 'direct' ? '127.0.0.1:9100' : tSettings('printer.printer_name_placeholder', 'Enter system printer name')}
                     className={fieldCls}
                   />
@@ -348,7 +357,7 @@ const PrinterSettings: React.FC = () => {
                     updateField(documentType, 'mediaSize', mediaSize);
                     updateField(documentType, 'paperWidth', Number(mediaSize.replace('mm', '')));
                   }}
-                  disabled={!s.enabled}
+                  disabled={!s.enabled || !canEdit}
                   className={fieldCls}
                 >
                   <option value="58mm">58 mm</option>
@@ -366,7 +375,7 @@ const PrinterSettings: React.FC = () => {
                     updateField(documentType, 'mediaSize', mediaSize);
                     updateField(documentType, 'paperWidth', mediaSize === 'letter' ? 216 : 210);
                   }}
-                  disabled={!s.enabled}
+                  disabled={!s.enabled || !canEdit}
                   className={fieldCls}
                 >
                   <option value="a4">A4 (210 × 297 mm)</option>
@@ -383,7 +392,7 @@ const PrinterSettings: React.FC = () => {
                 max={10}
                 value={s.copies}
                 onChange={(e) => updateField(documentType, 'copies', Math.max(1, Number(e.target.value) || 1))}
-                disabled={!s.enabled || s.deliveryMode === 'browser'}
+                disabled={!s.enabled || s.deliveryMode === 'browser' || !canEdit}
                 className={fieldCls}
               />
               {s.deliveryMode === 'browser' && (
@@ -399,7 +408,7 @@ const PrinterSettings: React.FC = () => {
             <select
               value={s.templateId || ''}
               onChange={(e) => updateField(documentType, 'templateId', e.target.value || null)}
-              disabled={!s.enabled}
+              disabled={!s.enabled || !canEdit}
               className={fieldCls}
             >
               <option value="">{tSettings('printer.select_template', 'Select a published template')}</option>
@@ -471,7 +480,8 @@ const PrinterSettings: React.FC = () => {
                 role="radio"
                 aria-checked={selected}
                 onClick={() => selectSaleFormat(type)}
-                className={`relative flex items-start gap-3 rounded-xl border p-4 text-left transition-colors ${
+                disabled={!canEdit}
+                className={`relative flex items-start gap-3 rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   selected
                     ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
                     : 'border-gray-200 dark:border-border hover:bg-gray-50 dark:hover:bg-muted/50'
@@ -543,14 +553,14 @@ const PrinterSettings: React.FC = () => {
 
       <div className="sticky bottom-3 z-10 bg-white/95 dark:bg-card/95 backdrop-blur rounded-xl border border-gray-200 dark:border-border px-5 py-4 flex justify-between items-center gap-3 flex-wrap shadow-lg">
         <div>
-          <p className="text-sm font-medium">{isDirty ? 'Unsaved printer-setting changes' : 'Printer settings are up to date'}</p>
+          <p className="text-sm font-medium">{!canEdit ? 'View-only access — ask a manager to make changes.' : isDirty ? 'Unsaved printer-setting changes' : 'Printer settings are up to date'}</p>
           <p className="text-xs text-muted-foreground">Route tests use the current form values and send one copy.</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={discardChanges} disabled={!isDirty || isSaving} className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium disabled:opacity-50">
             <RotateCcw className="h-4 w-4" /> Discard
           </button>
-          <button type="submit" disabled={isSaving || !isDirty} className="px-5 py-2 bg-primary hover:bg-primary/90 text-white text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-colors disabled:opacity-60">
+          <button type="submit" disabled={isSaving || !isDirty || !canEdit} title={!canEdit ? 'View-only access' : undefined} className="px-5 py-2 bg-primary hover:bg-primary/90 text-white text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
             {isSaving ? tSettings('buttons.saving', 'Saving…') : tSettings('buttons.save_changes', 'Save Changes')}
           </button>
         </div>

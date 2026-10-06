@@ -4,10 +4,15 @@ import PageHeader from '@/components/common/PageHeader';
 import StatusBadge from '@/components/common/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Share2, Plus, Loader2, Download } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissionUtils';
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:5172/api';
 
 const CatalogSyncPage: React.FC = () => {
+  const { user } = useAuth();
+  // Channel create/update/publish writes are gated by settings.edit.
+  const canEdit = hasPermission(user, 'settings.edit');
   const [channels, setChannels] = useState<SalesChannel[]>([]);
   const [queue, setQueue] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +38,7 @@ const CatalogSyncPage: React.FC = () => {
             <a href={`${API_BASE}/catalog/feed?format=csv`} target="_blank" rel="noreferrer">
               <Button variant="outline"><Download className="h-4 w-4" /> Export feed</Button>
             </a>
-            <Button onClick={() => setShowNew(true)}><Plus className="h-4 w-4" /> Add Channel</Button>
+            <Button onClick={() => setShowNew(true)} disabled={!canEdit} title={!canEdit ? 'View-only access' : undefined}><Plus className="h-4 w-4" /> Add Channel</Button>
           </div>
         }
       />
@@ -63,8 +68,8 @@ const CatalogSyncPage: React.FC = () => {
                       <td className="px-4 py-2">{Number(c.autoSync) ? 'On' : 'Off'}</td>
                       <td className="px-4 py-2">{c.lastSyncAt ? String(c.lastSyncAt).slice(0, 10) : '—'}</td>
                       <td className="px-4 py-2">
-                        <Button size="sm" variant="outline"
-                          onClick={async () => { await updateChannel(c.id, { auto_sync: Number(c.autoSync) ? 0 : 1 }); load(); }}>
+                        <Button size="sm" variant="outline" disabled={!canEdit}
+                          onClick={async () => { if (!canEdit) return; await updateChannel(c.id, { auto_sync: Number(c.autoSync) ? 0 : 1 }); load(); }}>
                           {Number(c.autoSync) ? 'Disable' : 'Enable'} auto
                         </Button>
                       </td>
@@ -109,9 +114,12 @@ const CatalogSyncPage: React.FC = () => {
 };
 
 const NewChannelModal: React.FC<{ onClose: () => void; onSaved: () => void }> = ({ onClose, onSaved }) => {
+  const { user } = useAuth();
+  const canEdit = hasPermission(user, 'settings.edit');
   const [f, setF] = useState<any>({ platform: 'custom' });
   const [saving, setSaving] = useState(false);
   const save = async () => {
+    if (!canEdit) return;
     if (!f.name) return;
     setSaving(true);
     try { await createChannel(f); onSaved(); } finally { setSaving(false); }
@@ -143,7 +151,7 @@ const NewChannelModal: React.FC<{ onClose: () => void; onSaved: () => void }> = 
         </div>
         <div className="flex justify-end gap-2 p-4 border-t">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={saving || !f.name}>{saving ? 'Saving…' : 'Add channel'}</Button>
+          <Button onClick={save} disabled={saving || !f.name || !canEdit}>{saving ? 'Saving…' : 'Add channel'}</Button>
         </div>
       </div>
     </div>

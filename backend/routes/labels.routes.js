@@ -15,6 +15,7 @@ const express  = require('express');
 const router   = express.Router();
 const { pool } = require('../config/db');
 const { authenticate, requireTenantId } = require('../middleware/unifiedAuthMiddleware');
+const { requirePermission } = require('../middleware/rbacPermissionMiddleware');
 const { printRateLimit } = require('../middleware/rateLimitMiddleware');
 const labelSvc = require('../services/labelPrintService');
 const printerDeviceService = require('../services/printerDeviceService');
@@ -62,7 +63,7 @@ router.get('/settings', async (req, res) => {
 // ---------------------------------------------------------------------------
 // PUT /api/labels/settings
 // ---------------------------------------------------------------------------
-router.put('/settings', async (req, res) => {
+router.put('/settings', requirePermission('settings.printer'), async (req, res) => {
   try {
     const { store_id, label_printer_type, label_printer_address, label_paper_width_mm, label_paper_height_mm } = req.body || {};
     const storeId = store_id || sid(req);

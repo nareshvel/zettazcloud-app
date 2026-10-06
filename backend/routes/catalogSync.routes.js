@@ -22,6 +22,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../config/db');
 const { authenticate, requireTenantId } = require('../middleware/unifiedAuthMiddleware');
+const { requirePermission } = require('../middleware/rbacPermissionMiddleware');
 
 const tid = (req) => req.user?.tenant_id || req.query?.tenant_id || req.headers['x-tenant-id'];
 
@@ -37,7 +38,7 @@ router.get('/channels', async (req, res) => {
   } catch (e) { res.status(500).json({ status: 'error', message: e.message }); }
 });
 
-router.post('/channels', async (req, res) => {
+router.post('/channels', requirePermission('settings.edit'), async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ status: 'error', message: 'name required' });
@@ -52,7 +53,7 @@ router.post('/channels', async (req, res) => {
   } catch (e) { res.status(500).json({ status: 'error', message: e.message }); }
 });
 
-router.put('/channels/:id', async (req, res) => {
+router.put('/channels/:id', requirePermission('settings.edit'), async (req, res) => {
   try {
     const b = req.body || {};
     const sets = [], vals = [];
@@ -81,7 +82,7 @@ router.get('/channels/:id/products', async (req, res) => {
   } catch (e) { res.status(500).json({ status: 'error', message: e.message }); }
 });
 
-router.post('/channels/:id/publish', async (req, res) => {
+router.post('/channels/:id/publish', requirePermission('settings.edit'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -163,7 +164,7 @@ router.get('/queue', async (req, res) => {
   } catch (e) { res.status(500).json({ status: 'error', message: e.message }); }
 });
 
-router.post('/queue/:id/complete', async (req, res) => {
+router.post('/queue/:id/complete', requirePermission('settings.edit'), async (req, res) => {
   try {
     const ok = req.body?.success !== false;
     await pool.execute(

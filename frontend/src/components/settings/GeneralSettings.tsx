@@ -135,6 +135,7 @@ const GeneralSettings: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (!store) {
       toast.error('Store context not available.');
       return;
