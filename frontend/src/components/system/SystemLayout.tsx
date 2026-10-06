@@ -16,23 +16,50 @@ import { hasPermission } from '@/utils/permissionUtils';
 import { cn } from '@/lib/utils';
 import ImpersonationBanner from '@/components/system/ImpersonationBanner';
 
-const NAV: Array<{ to: string; label: string; icon: typeof LayoutDashboard; perm: string }> = [
-  { to: '/system',            label: 'Dashboard',     icon: LayoutDashboard, perm: 'platform.view' },
-  { to: '/system/tenants',    label: 'Tenants',       icon: Building2,       perm: 'tenants.view' },
-  { to: '/system/billing',    label: 'Subscriptions', icon: Wallet,          perm: 'subscriptions.view' },
-  { to: '/system/plans',      label: 'Plans',         icon: CreditCard,      perm: 'plans.view' },
-  { to: '/system/users',      label: 'System users',  icon: Users,           perm: 'platform.manage' },
-  { to: '/system/roles',      label: 'Roles & RBAC',  icon: ShieldCheck,     perm: 'platform.manage' },
-  { to: '/system/support',    label: 'Support',       icon: LifeBuoy,        perm: 'support.view' },
-  { to: '/system/announcements', label: 'Announcements', icon: Megaphone,    perm: 'platform.announcements.manage' },
-  { to: '/system/audit',      label: 'Audit log',     icon: FileText,        perm: 'platform.audit.view' },
-  { to: '/system/health',     label: 'Health',        icon: Activity,        perm: 'platform.health.view' },
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; perm: string };
+
+const NAV_GROUPS: Array<{ label: string | null; items: NavItem[] }> = [
+  {
+    label: null,
+    items: [
+      { to: '/system', label: 'Dashboard', icon: LayoutDashboard, perm: 'platform.view' },
+    ],
+  },
+  {
+    label: 'Tenants & billing',
+    items: [
+      { to: '/system/tenants',    label: 'Tenants',       icon: Building2,  perm: 'tenants.view' },
+      { to: '/system/billing',    label: 'Subscriptions', icon: Wallet,     perm: 'subscriptions.view' },
+      { to: '/system/plans',      label: 'Plans',         icon: CreditCard, perm: 'plans.view' },
+    ],
+  },
+  {
+    label: 'Access control',
+    items: [
+      { to: '/system/users', label: 'System users', icon: Users,       perm: 'platform.manage' },
+      { to: '/system/roles', label: 'Roles & RBAC', icon: ShieldCheck, perm: 'platform.manage' },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { to: '/system/support',       label: 'Support',       icon: LifeBuoy,  perm: 'support.view' },
+      { to: '/system/announcements', label: 'Announcements', icon: Megaphone,  perm: 'platform.announcements.manage' },
+      { to: '/system/audit',         label: 'Audit log',     icon: FileText,  perm: 'platform.audit.view' },
+      { to: '/system/health',        label: 'Health',        icon: Activity,  perm: 'platform.health.view' },
+    ],
+  },
 ];
 
 const SystemLayout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const items = NAV.filter((n) => hasPermission(user, n.perm, { allowWildcard: false, checkAdmin: false }));
+  const groups = NAV_GROUPS
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((n) => hasPermission(user, n.perm, { allowWildcard: false, checkAdmin: false })),
+    }))
+    .filter((g) => g.items.length > 0);
 
   const handleLogout = () => {
     logout();
@@ -53,20 +80,31 @@ const SystemLayout = () => {
         </div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
-          {items.map(({ to, label, icon: Icon, perm }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/system'}
-              className={({ isActive }) => cn(
-                'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition',
-                isActive ? 'bg-primary-600 font-medium text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white',
+          {groups.map((group) => (
+            <div key={group.label ?? 'top'} className={group.label ? 'pt-4' : ''}>
+              {group.label && (
+                <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  {group.label}
+                </p>
               )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />{label}
-            </NavLink>
+              <div className="space-y-0.5">
+                {group.items.map(({ to, label, icon: Icon, perm }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={to === '/system'}
+                    className={({ isActive }) => cn(
+                      'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition',
+                      isActive ? 'bg-primary-600 font-medium text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white',
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />{label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
-          {items.length === 0 && (
+          {groups.length === 0 && (
             <p className="px-3 py-4 text-xs text-slate-500">No console sections available for your role.</p>
           )}
         </nav>
