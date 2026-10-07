@@ -229,9 +229,9 @@ const SelectPoItemsModal: React.FC<SelectPoItemsModalProps> = ({
         </div>
       }
     >
-      <div className="p-4 min-h-[60vh] flex space-x-4"> 
+      <div className="p-4 sm:min-h-[60vh] flex flex-col sm:flex-row gap-4 sm:gap-0 sm:space-x-4">
         {/* Left Panel: Purchase Orders List */}
-        <div className="w-1/3 border-r pr-4 custom-scrollbar overflow-y-auto">
+        <div className="w-full sm:w-1/3 sm:border-r sm:pr-4 max-h-48 sm:max-h-none custom-scrollbar overflow-y-auto">
           <h3 className="text-md font-semibold mb-2">Purchase Orders for {supplier.supplierName}</h3>
           {(() => {
             // Ensure unique POs by ID before rendering
@@ -289,15 +289,15 @@ const SelectPoItemsModal: React.FC<SelectPoItemsModalProps> = ({
         </div>
 
         {/* Right Panel: Items from Selected PO */}
-        <div className="w-2/3 pl-4">
+        <div className="w-full sm:w-2/3 sm:pl-4">
           {selectedPo ? (
             <div className="flex flex-col h-full">
               <h3 className="text-md font-semibold mb-2 shrink-0">Items for PO: {selectedPo.purchaseOrderNumber}</h3>
               {currentPoItems.length === 0 ? (
                 <p className="text-sm text-gray-500 dark:text-muted-foreground flex-grow flex items-center justify-center">No items found in this PO.</p>
               ) : (
-                <div className="overflow-y-auto custom-scrollbar flex-grow">
-                  <Table>
+                <div className="overflow-auto custom-scrollbar flex-grow">
+                  <Table className="min-w-[560px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[50px]">

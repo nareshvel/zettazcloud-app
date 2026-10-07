@@ -51,7 +51,7 @@ const ModalBase: React.FC<ModalBaseProps> = ({
       }}
     >
       <div 
-        className={`bg-card rounded-lg shadow-xl w-full ${sizeClasses[size]} ${dialogClassName} mx-auto my-4 sm:my-8 relative flex flex-col max-h-[92vh] sm:max-h-[90vh]`} 
+        className={`bg-card rounded-lg shadow-xl w-full min-w-0 ${sizeClasses[size]} ${dialogClassName} mx-auto my-4 sm:my-8 relative flex flex-col max-h-[92vh] sm:max-h-[90vh]`} 
         onClick={(e) => e.stopPropagation()} // Prevent click inside modal from closing it
       >
         {/* Modal Header */}

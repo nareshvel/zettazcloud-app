@@ -1400,7 +1400,7 @@ const AddGoodsReceivedModal = ({ isOpen, onClose, storeId, tenantId, onGrnAdded,
         </div>
 
         {/* Row 5: Notes & Summary */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-6 p-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 p-3">
           {/* Left column: Notes/Remarks */}
           <div className="space-y-2">
             <Label htmlFor="notes">Notes</Label>
