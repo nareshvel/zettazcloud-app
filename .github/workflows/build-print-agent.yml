@@ -1,10 +1,20 @@
 name: Build Zettaz Print Agent v2
 
+# Manual-only: GitHub-hosted macOS runners bill at 10x and Windows at 2x
+# (Linux = 1x). Tag-push installer builds were burning ~200-350 billed
+# minutes per run against the 2,000 free monthly minutes. Dispatch this
+# workflow on demand instead — the `test` job always runs; check
+# "installers" only when an actual release build is needed. macOS
+# installers can also be built locally at zero cost:
+#   cd print-agent && bash installer/macos/package.sh   (see AGENTS.md)
 on:
-  push:
-    tags:
-      - 'print-agent-v*'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      installers:
+        description: 'Also build macOS + Windows installers (10x/2x billed minutes)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -22,6 +32,7 @@ jobs:
 
   build-macos:
     needs: test
+    if: ${{ inputs.installers }}
     runs-on: macos-latest
     defaults:
       run:
@@ -47,6 +58,7 @@ jobs:
 
   build-windows:
     needs: test
+    if: ${{ inputs.installers }}
     runs-on: windows-latest
     defaults:
       run:
