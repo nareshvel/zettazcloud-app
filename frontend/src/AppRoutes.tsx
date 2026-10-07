@@ -42,6 +42,8 @@ const CatalogSyncPage = React.lazy(() => import('./pages/CatalogSyncPage'));
 const JewelryValuationReport = React.lazy(() => import('./pages/reports/JewelryValuationReport'));
 const CycleCountPage = React.lazy(() => import('./pages/CycleCountPage'));
 const StockCountPage = React.lazy(() => import('./pages/StockCountPage'));
+const ExpensesPage = React.lazy(() => import('./pages/ExpensesPage'));
+const PaymentsPage = React.lazy(() => import('./pages/PaymentsPage'));
 const PrintJobHistory = React.lazy(() => import('./pages/PrintJobHistory'));
 const PrintTemplateDesigner = React.lazy(() => import('./pages/PrintTemplateDesigner'));
 
@@ -139,6 +141,8 @@ const AppRoutes: React.FC = () => {
           <IndustryRoute allow={['jewelry', 'electronics']}><CycleCountPage /></IndustryRoute>
         } />
         <Route path="stock-count" element={<StockCountPage />} />
+        <Route path="expenses" element={<ExpensesPage />} />
+        <Route path="payments" element={<PaymentsPage />} />
         <Route path="catalog-channels" element={<CatalogSyncPage />} />
         <Route path="metal-rates" element={
           <IndustryRoute allow={['jewelry']}><MetalRatesPage /></IndustryRoute>

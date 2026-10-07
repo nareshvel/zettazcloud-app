@@ -11,7 +11,7 @@ class PermissionSeedingService {
    */
   static ROLE_PERMISSIONS = {
     'Tenant Admin': [
-      // All 81 permissions - Full access to all modules
+      // All 83 permissions - Full access to all modules
       'dashboard.view', 'reports.view', 'reports.export',
       'products.view', 'products.create', 'products.edit', 'products.delete', 'products.import', 'products.export',
       'categories.view', 'categories.create', 'categories.edit', 'categories.delete',
@@ -32,11 +32,12 @@ class PermissionSeedingService {
       'settings.view', 'settings.edit', 'settings.tax', 'settings.payment', 'settings.printer', 'settings.store',
       'system.audit', 'system.backup', 'system.settings', 'system.maintenance',
       'orders.view', 'orders.delete', 'orders.fulfill',
-      'employees.view', 'employees.create', 'employees.edit', 'employees.delete'
+      'employees.view', 'employees.create', 'employees.edit', 'employees.delete',
+      'finance.view', 'finance.manage'
     ],
     
     'Store Manager': [
-      // 58 permissions - Store operations excluding 23 advanced permissions
+      // 60 permissions - Store operations excluding 21 advanced permissions
       'dashboard.view', 'reports.view', 'reports.export',
       'products.view', 'products.create', 'products.edit', 'products.import', 'products.export',
       'categories.view', 'categories.create', 'categories.edit',
@@ -53,7 +54,8 @@ class PermissionSeedingService {
       'promotions.view', 'promotions.create', 'promotions.edit', 'promotions.delete', 'promotions.apply',
       'settings.view', 'settings.edit', 'settings.tax', 'settings.payment', 'settings.printer', 'settings.store',
       'orders.view', 'orders.fulfill', 'orders.delete',
-      'employees.view', 'employees.create', 'employees.edit'
+      'employees.view', 'employees.create', 'employees.edit',
+      'finance.view', 'finance.manage'
     ],
     
     'Cashier': [
@@ -128,6 +130,10 @@ class PermissionSeedingService {
       { name: 'inventory.transfer', description: 'Transfer inventory between stores', module: 'inventory' },
       { name: 'inventory.history', description: 'View inventory history', module: 'inventory' },
       { name: 'inventory.count_approve', description: 'Review and approve submitted stock counts', module: 'inventory' },
+      
+      // Finance (2)
+      { name: 'finance.view', description: 'View expenses and outgoing payments', module: 'finance' },
+      { name: 'finance.manage', description: 'Record, edit and void expenses and outgoing payments', module: 'finance' },
       
       // Sales (5)
       { name: 'sales.view', description: 'View sales', module: 'sales' },

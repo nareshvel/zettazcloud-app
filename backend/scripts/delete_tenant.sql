@@ -115,6 +115,8 @@ DELETE FROM `employee_sales_targets` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci 
 
 DELETE FROM `employees` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 
+DELETE FROM `expenses` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
+
 DELETE FROM `goods_received_notes` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 
 DELETE FROM `held_orders` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
@@ -152,6 +154,8 @@ DELETE FROM `offer_usage` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_i
 DELETE FROM `old_gold_purchases` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 
 DELETE FROM `old_gold_voucher_sequences` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
+
+DELETE FROM `outgoing_payments` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 
 DELETE FROM `payment_gateways` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 

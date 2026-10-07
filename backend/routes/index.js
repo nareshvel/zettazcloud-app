@@ -144,6 +144,8 @@ router.use('/product-pieces', productPiecesRoutes);
 
 // Bulk stock count / reconciliation (quantity-based products, all verticals)
 router.use('/stock-counts', require('./stockCount.routes'));
+// Finance — expenses + outgoing payments (finance.view / finance.manage)
+router.use('/finance', require('./finance.routes'));
 
 // Memo / consignment ledgers
 router.use('/memos', require('./memo.routes'));

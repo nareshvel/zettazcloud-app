@@ -34,6 +34,9 @@ import {
   CalendarClock,
   PiggyBank,
   Gem,
+  Wallet,
+  Receipt,
+  HandCoins,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
@@ -106,12 +109,12 @@ const NAV_FALLBACK: Record<string, string> = {
   catalog_channels: 'Sales Channels', reports: 'Reports', settings: 'Settings',
   team: 'Team & Access', print_jobs: 'Print Jobs', print_templates: 'Print Templates',
   sales_management: 'Sales Management', services: 'Services',
-  catalog: 'Catalog', stock_control: 'Stock Control', procurement: 'Procurement',
+  expenses: 'Expenses', payments: 'Payments', procurement: 'Procurement',
 };
 
 const SECTION_FALLBACK: Record<string, string> = {
   dashboard: 'Dashboard', sales_operations: 'Sales Operations', inventory: 'Inventory',
-  reports: 'Reports', administration: 'Administration',
+  finance: 'Finance', reports: 'Reports', administration: 'Administration',
 };
 
 // Static route and gating configuration. Labels are applied at render time so
@@ -162,26 +165,12 @@ const NAV_TREE: NavigationSectionRaw[] = [
     icon: Warehouse,
     permissions: ['products.view', 'inventory.view'],
     items: [
-      {
-        nameKey: 'catalog',
-        icon: Package,
-        path: '/inventory/catalog',
-        permissions: ['products.view'],
-        children: [
-          { nameKey: 'products', icon: Package, path: '/products', permissions: ['products.view'] },
-          { nameKey: 'serialized_stock', icon: Boxes, path: '/serialized-inventory', permissions: ['products.view'], industries: ['jewelry', 'electronics'] },
-        ],
-      },
-      {
-        nameKey: 'stock_control',
-        icon: ScanBarcode,
-        path: '/inventory/stock-control',
-        permissions: ['products.view', 'inventory.adjust'],
-        children: [
-          { nameKey: 'cycle_count', icon: ScanBarcode, path: '/cycle-count', permissions: ['products.view'], industries: ['jewelry', 'electronics'] },
-          { nameKey: 'stock_count', icon: ClipboardList, path: '/stock-count', permissions: ['inventory.adjust'] },
-        ],
-      },
+      // Catalog and Stock Control used to be accordion groups with 1–2
+      // children each — flattened to direct items (2026-10-10).
+      { nameKey: 'products', icon: Package, path: '/products', permissions: ['products.view'] },
+      { nameKey: 'serialized_stock', icon: Boxes, path: '/serialized-inventory', permissions: ['products.view'], industries: ['jewelry', 'electronics'] },
+      { nameKey: 'cycle_count', icon: ScanBarcode, path: '/cycle-count', permissions: ['products.view'], industries: ['jewelry', 'electronics'] },
+      { nameKey: 'stock_count', icon: ClipboardList, path: '/stock-count', permissions: ['inventory.adjust'] },
       {
         nameKey: 'procurement',
         icon: Building,
@@ -193,6 +182,15 @@ const NAV_TREE: NavigationSectionRaw[] = [
           { nameKey: 'goods_receiving', icon: Archive, path: '/goods-receiving', permissions: ['inventory.view'] },
         ],
       },
+    ],
+  },
+  {
+    titleKey: 'finance',
+    icon: Wallet,
+    permissions: ['finance.view'],
+    items: [
+      { nameKey: 'expenses', icon: Receipt, path: '/expenses', permissions: ['finance.view'] },
+      { nameKey: 'payments', icon: HandCoins, path: '/payments', permissions: ['finance.view'] },
     ],
   },
   {
