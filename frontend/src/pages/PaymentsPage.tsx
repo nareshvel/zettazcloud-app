@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import DatePickerInput from '@/components/ui/DatePickerInput';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -30,7 +32,7 @@ const typeBadge = (t: OutgoingPayment['payeeType']) => {
 };
 
 export default function PaymentsPage() {
-  const { formatCurrency } = useCurrency();
+  const { formatCurrency, currencySymbol } = useCurrency();
   const { formatDate } = useDateFormatting();
   const { user } = useAuth();
   const canManage = hasAnyPermission(user, ['finance.manage']);
@@ -127,6 +129,10 @@ export default function PaymentsPage() {
   };
 
   const selectedPo = outstandingPos.find(p => p.id === fPo);
+  const selectedExp = openExpenses.find(e => e.id === fExpense);
+  const selectedBalance = selectedPo ? Number(selectedPo.outstanding)
+    : selectedExp ? Math.max(0, Number(selectedExp.amount) - Number(selectedExp.paidAmount || 0))
+    : null;
 
   const save = async () => {
     const amt = Number(fAmount);
@@ -277,18 +283,19 @@ export default function PaymentsPage() {
 
       {/* Record payment dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Record Payment</DialogTitle>
             <DialogDescription>Log money paid out — to a supplier, against an expense, or anyone else.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="flex gap-2">
+            {/* Payee type — segmented control */}
+            <div className="grid grid-cols-3 rounded-xl border bg-muted/40 p-1 gap-1">
               {([['supplier', 'Supplier', Building2], ['expense', 'Expense', Receipt], ['other', 'Other', CircleDollarSign]] as const).map(([t, lbl, Icon]) => (
                 <button
                   key={t} type="button" onClick={() => setFType(t)}
-                  className={`flex-1 flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
-                    fType === t ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-input hover:bg-muted'
+                  className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    fType === t ? 'bg-background text-foreground shadow-sm border border-border' : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
                   <Icon className="h-4 w-4" /> {lbl}
@@ -360,39 +367,61 @@ export default function PaymentsPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Payment details */}
+            <div className="rounded-lg border bg-muted/30 p-3 sm:p-4 space-y-3">
               <div>
-                <label className="text-sm font-medium">Amount</label>
-                <Input type="number" min="0" step="0.01" value={fAmount} onChange={e => setFAmount(e.target.value)} className="mt-1" placeholder="0.00" />
-                {selectedPo && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Outstanding on this PO: {formatCurrency(selectedPo.outstanding)}
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Amount</label>
+                  {selectedBalance !== null && (
+                    <span className="text-xs text-muted-foreground">
+                      balance {formatCurrency(selectedBalance)}
+                    </span>
+                  )}
+                </div>
+                <div className="relative mt-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                    {currencySymbol}
+                  </span>
+                  <Input
+                    type="number" min="0" step="0.01" autoFocus
+                    value={fAmount} onChange={e => setFAmount(e.target.value)}
+                    className="pl-8 h-12 text-lg font-semibold" placeholder="0.00"
+                  />
+                </div>
+                {selectedBalance !== null && Number(fAmount) > 0 && (
+                  <p className={`text-xs mt-1.5 ${Number(fAmount) > selectedBalance + 0.004 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                    {Number(fAmount) > selectedBalance + 0.004
+                      ? `Exceeds the balance by ${formatCurrency(Number(fAmount) - selectedBalance)}`
+                      : Number(fAmount) < selectedBalance - 0.004
+                        ? `Partial — ${formatCurrency(selectedBalance - Number(fAmount))} will remain open`
+                        : 'Settles the balance in full'}
                   </p>
                 )}
               </div>
-              <div>
-                <label className="text-sm font-medium">Date</label>
-                <Input type="date" value={fDate} onChange={e => setFDate(e.target.value)} className="mt-1" />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Date</label>
+                  <DatePickerInput value={fDate} onChange={setFDate} maxDate="2099-12-31" className="mt-1" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Method</label>
+                  <Select value={fMethod} onValueChange={setFMethod}>
+                    <SelectTrigger className="mt-1 w-full h-11"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Reference</label>
+                  <Input value={fReference} onChange={e => setFReference(e.target.value)} className="mt-1 h-11" placeholder="Cheque / txn no." />
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">Method</label>
-                <Select value={fMethod} onValueChange={setFMethod}>
-                  <SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Reference</label>
-                <Input value={fReference} onChange={e => setFReference(e.target.value)} className="mt-1" placeholder="Cheque / txn no." />
-              </div>
-            </div>
+
             <div>
               <label className="text-sm font-medium">Notes</label>
-              <Input value={fNotes} onChange={e => setFNotes(e.target.value)} className="mt-1" placeholder="Optional" />
+              <Textarea value={fNotes} onChange={e => setFNotes(e.target.value)} className="mt-1 min-h-[64px] resize-y" placeholder="Optional" />
             </div>
             {formError && <p className="text-sm text-destructive">{formError}</p>}
           </div>
