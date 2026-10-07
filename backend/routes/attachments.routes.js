@@ -24,7 +24,7 @@ const { parseSizeToBytes, formatBytes } = require('../utils/storageSize');
 const tid = (req) => req.user?.tenant_id || req.query?.tenant_id || req.headers['x-tenant-id'];
 const uid = (req) => req.user?.id || null;
 
-const ALLOWED_ENTITIES = ['product', 'product_piece', 'repair_order', 'customer', 'memo', 'layaway', 'store'];
+const ALLOWED_ENTITIES = ['product', 'product_piece', 'repair_order', 'customer', 'memo', 'layaway', 'store', 'expense'];
 
 // Uploads/deletes mutate the owning entity, so they require that entity's
 // edit permission — previously any authenticated tenant user could upload.
@@ -37,6 +37,7 @@ const ENTITY_PERMS = {
   memo:          { read: 'inventory.view', write: 'inventory.adjust' },
   layaway:       { read: 'sales.view',     write: 'sales.create' },
   store:         { read: 'stores.view',    write: 'stores.edit' },
+  expense:       { read: 'finance.view',   write: 'finance.manage' },
 };
 
 // Resolve the entity-scoped permission for the :entityType route param,
@@ -62,6 +63,25 @@ const upload = multer({
 
 router.use(authenticate);
 router.use(requireTenantId);
+
+// Query-param variant used by AttachmentUploader's load():
+// GET /attachments?entity_type=expense&entity_id=<uuid>
+router.get('/', async (req, res) => {
+  try {
+    const entityType = String(req.query.entity_type || '');
+    const entityId = String(req.query.entity_id || '');
+    const spec = ENTITY_PERMS[entityType];
+    if (!spec) return res.status(400).json({ status: 'error', message: 'invalid entity type' });
+    if (!entityId) return res.status(400).json({ status: 'error', message: 'entity_id is required' });
+    return requirePermission(spec.read)(req, res, async () => {
+      const [rows] = await pool.execute(
+        'SELECT * FROM attachments WHERE tenant_id = ? AND entity_type = ? AND entity_id = ? ORDER BY created_at DESC',
+        [tid(req), entityType, entityId]
+      );
+      res.json({ status: 'success', data: rows.map((r) => ({ ...r, url: storage.publicUrl(r.file_path) })) });
+    });
+  } catch (e) { res.status(500).json({ status: 'error', message: e.message }); }
+});
 
 router.get('/:entityType/:entityId', permFor('read'), async (req, res) => {
   try {

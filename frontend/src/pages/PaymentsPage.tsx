@@ -38,7 +38,12 @@ export default function PaymentsPage() {
   const [items, setItems] = useState<OutgoingPayment[]>([]);
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
   const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [unpaidExpenses, setUnpaidExpenses] = useState<Expense[]>([]);
+  const [openExpenses, setOpenExpenses] = useState<Expense[]>([]);
+
+  const refreshOpenExpenses = () =>
+    financeService.listExpenses()
+      .then(r => setOpenExpenses(r.items.filter(e => e.status === 'unpaid' || e.status === 'partial')))
+      .catch(() => {});
   const [outstandingPos, setOutstandingPos] = useState<SupplierOutstandingPo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,9 +89,7 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     financeService.searchVendors('').then(r => setVendors(r.items)).catch(() => {});
-    financeService.listExpenses({ status: 'unpaid' })
-      .then(r => setUnpaidExpenses(r.items))
-      .catch(() => {});
+    refreshOpenExpenses();
   }, []);
 
   // Outstanding POs for the chosen supplier
@@ -115,8 +118,12 @@ export default function PaymentsPage() {
 
   const pickExpense = (expenseId: string) => {
     setFExpense(expenseId);
-    const exp = unpaidExpenses.find(e => e.id === expenseId);
-    if (exp) setFAmount(String(exp.amount));
+    const exp = openExpenses.find(e => e.id === expenseId);
+    if (exp) {
+      // Prefill the remaining balance — partial payments are allowed.
+      const remaining = Math.max(0, Number(exp.amount) - Number(exp.paidAmount || 0));
+      setFAmount(String(Math.round(remaining * 100) / 100));
+    }
   };
 
   const selectedPo = outstandingPos.find(p => p.id === fPo);
@@ -125,7 +132,7 @@ export default function PaymentsPage() {
     const amt = Number(fAmount);
     if (!Number.isFinite(amt) || amt <= 0) { setFormError('Enter a positive amount.'); return; }
     if (fType === 'supplier' && !fVendor) { setFormError('Choose a supplier.'); return; }
-    if (fType === 'expense' && fExpense === NONE) { setFormError('Choose an unpaid expense.'); return; }
+    if (fType === 'expense' && fExpense === NONE) { setFormError('Choose an open expense.'); return; }
     if (fType === 'other' && !fPayee.trim()) { setFormError('Enter who the payment is to.'); return; }
 
     setSaving(true);
@@ -142,8 +149,7 @@ export default function PaymentsPage() {
       };
       await financeService.createPayment(payload);
       setModalOpen(false);
-      // expense list may have changed (one marked paid)
-      financeService.listExpenses({ status: 'unpaid' }).then(r => setUnpaidExpenses(r.items)).catch(() => {});
+      refreshOpenExpenses();
       await load();
     } catch (e: any) {
       setFormError(e.message || 'Failed to record payment.');
@@ -157,7 +163,7 @@ export default function PaymentsPage() {
     try {
       await financeService.voidPayment(voidTarget.id);
       setVoidTarget(null);
-      financeService.listExpenses({ status: 'unpaid' }).then(r => setUnpaidExpenses(r.items)).catch(() => {});
+      refreshOpenExpenses();
       await load();
     } catch (e: any) {
       setError(e.message || 'Failed to void payment.');
@@ -326,20 +332,23 @@ export default function PaymentsPage() {
 
             {fType === 'expense' && (
               <div>
-                <label className="text-sm font-medium">Unpaid expense</label>
+                <label className="text-sm font-medium">Open expense</label>
                 <Select value={fExpense} onValueChange={pickExpense}>
                   <SelectTrigger className="mt-1 w-full"><SelectValue placeholder="Select expense…" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>Select expense…</SelectItem>
-                    {unpaidExpenses.map(e => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.description || e.category} — {formatCurrency(Number(e.amount))}
-                      </SelectItem>
-                    ))}
+                    {openExpenses.map(e => {
+                      const remaining = Math.max(0, Number(e.amount) - Number(e.paidAmount || 0));
+                      return (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.description || e.category} — {formatCurrency(remaining)} {e.status === 'partial' ? 'remaining' : 'due'}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
-                {unpaidExpenses.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">No unpaid expenses — add one under Expenses first.</p>
+                {openExpenses.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">No open expenses — add one under Expenses first.</p>
                 )}
               </div>
             )}

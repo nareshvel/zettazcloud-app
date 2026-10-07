@@ -48,7 +48,7 @@ export default function AttachmentUploader({
 
   const load = useCallback(() => {
     setLoading(true);
-    fetchApi<any>(`/attachments?entity_type=${entityType}&entity_id=${entityId}`)
+    fetchApi<any>(`/attachments/${entityType}/${entityId}`)
       .then(r => setFiles((r && r.data) ? r.data : (r || [])))
       .catch(() => setFiles([]))
       .finally(() => setLoading(false));
@@ -64,10 +64,8 @@ export default function AttachmentUploader({
     for (const f of toUpload) {
       const fd = new FormData();
       fd.append('file', f);
-      fd.append('entity_type', entityType);
-      fd.append('entity_id', entityId);
       try {
-        await fetchApi<any>('/attachments', { method: 'POST', body: fd });
+        await fetchApi<any>(`/attachments/${entityType}/${entityId}`, { method: 'POST', body: fd });
         success++;
       } catch (e: any) {
         toast({ title: `Failed to upload ${f.name}`, description: e.message, variant: 'destructive' });

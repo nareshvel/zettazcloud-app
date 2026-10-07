@@ -8,6 +8,8 @@ export interface ExpenseItem {
   amount: number;
 }
 
+export type ExpenseStatus = 'unpaid' | 'partial' | 'paid' | 'pending_approval' | 'cancelled';
+
 export interface Expense {
   id: string;
   expenseNumber?: string;
@@ -17,16 +19,24 @@ export interface Expense {
   amount: number;
   subtotal?: number;
   taxAmount?: number;
+  taxInclusive?: number | boolean;
   shippingAmount?: number;
   discountAmount?: number;
   lineItems?: ExpenseItem[];
   expenseDate: string;
-  status: 'unpaid' | 'paid' | 'cancelled';
+  dueDate?: string;
+  status: ExpenseStatus;
+  paidAmount?: number;
   paymentMethod?: string;
   reference?: string;
   supplierId?: string;
   supplierName?: string;
   notes?: string;
+  isRecurring?: number | boolean;
+  recurrenceInterval?: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  nextOccurrence?: string;
+  approvedBy?: string;
+  approvedAt?: string;
   createdByName?: string;
   createdAt?: string;
 }
@@ -35,6 +45,7 @@ export interface ExpenseSummary {
   total: number;
   paidTotal: number;
   unpaidTotal: number;
+  overdueTotal?: number;
   thisMonth: number;
 }
 
@@ -81,6 +92,7 @@ export interface ExpensePayload {
   description?: string;
   amount: number;
   expenseDate: string;
+  dueDate?: string;
   status?: 'unpaid' | 'paid';
   paymentMethod?: string;
   reference?: string;
@@ -90,7 +102,22 @@ export interface ExpensePayload {
   taxAmount?: number;
   shippingAmount?: number;
   discountAmount?: number;
+  taxInclusive?: boolean;
+  isRecurring?: boolean;
+  recurrenceInterval?: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  nextOccurrence?: string;
 }
+
+export interface FinanceSettings {
+  expenseApprovalThreshold?: number | null;
+}
+
+export const RECURRENCE_INTERVALS = [
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'yearly', label: 'Yearly' },
+] as const;
 
 export interface Vendor {
   id: string;
@@ -145,6 +172,47 @@ export const financeService = {
 
   async deleteExpense(id: string) {
     return fetchApi<{ ok: boolean }>(`/finance/expenses/${id}`, { method: 'DELETE' });
+  },
+
+  async approveExpense(id: string, opts: { paid?: boolean; paymentMethod?: string; reference?: string } = {}) {
+    return fetchApi<{ ok: boolean; status: string }>(`/finance/expenses/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ status: opts.paid ? 'paid' : 'unpaid', paymentMethod: opts.paymentMethod, reference: opts.reference }),
+    });
+  },
+
+  async getSettings() {
+    return fetchApi<FinanceSettings>('/finance/settings');
+  },
+
+  async updateSettings(s: FinanceSettings) {
+    return fetchApi<{ ok: boolean }>('/finance/settings', { method: 'PUT', body: JSON.stringify(s) });
+  },
+
+  /** Authenticated CSV download (GL hand-off) — same pattern as platformApi's export. */
+  async downloadExpensesCsv(params: { search?: string; category?: string; status?: string; from?: string; to?: string } = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, v); });
+    const token = localStorage.getItem('auth_token');
+    const storeId = localStorage.getItem('store_id') || '';
+    const base = ((import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:5172') as string)
+      .replace(/\/api\/?$/, '');
+    const res = await fetch(`${base}/api/finance/expenses/export.csv?${qs.toString()}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(storeId ? { 'x-store-id': storeId, 'store-id': storeId } : {}),
+      },
+    });
+    if (!res.ok) throw new Error(`Export failed (${res.status})`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `expenses-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
   },
 
   async listPayments(params: { search?: string; payeeType?: string; supplierId?: string; from?: string; to?: string } = {}) {

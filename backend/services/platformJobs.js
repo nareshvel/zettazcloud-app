@@ -97,6 +97,114 @@ const processDeletions = async () => {
   return `deleted ${doomed.length} tenant(s)`;
 };
 
+/**
+ * Recurring expenses: a recurring expense row doubles as its own template.
+ * Each day, rows whose next_occurrence is due spawn a child expense
+ * (unpaid, linked via recurrence_parent_id) and advance next_occurrence.
+ * One child per run per template — catch-up runs drip one occurrence at a
+ * time rather than generating a backlog burst.
+ */
+const materializeRecurringExpenses = async () => {
+  const [due] = await pool.query(
+    `SELECT id FROM expenses
+      WHERE is_recurring = 1
+        AND recurrence_interval IS NOT NULL
+        AND next_occurrence IS NOT NULL
+        AND next_occurrence <= CURDATE()
+        AND status != 'cancelled'
+      LIMIT 200`
+  );
+  if (!due.length) return 'no recurring expenses due';
+
+  const INTERVAL_SQL = {
+    weekly: `DATE_ADD(next_occurrence, INTERVAL 1 WEEK)`,
+    monthly: `DATE_ADD(next_occurrence, INTERVAL 1 MONTH)`,
+    quarterly: `DATE_ADD(next_occurrence, INTERVAL 3 MONTH)`,
+    yearly: `DATE_ADD(next_occurrence, INTERVAL 1 YEAR)`,
+  };
+  const thresholdCache = new Map();
+  const thresholdFor = async (tenantId) => {
+    if (!thresholdCache.has(tenantId)) {
+      const [s] = await pool.query(
+        'SELECT expense_approval_threshold FROM tenant_finance_settings WHERE tenant_id = ?', [tenantId]);
+      thresholdCache.set(tenantId, s[0]?.expense_approval_threshold ?? null);
+    }
+    return thresholdCache.get(tenantId);
+  };
+
+  let created = 0;
+  for (const { id } of due) {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      // Lock the template and re-check due-ness inside the transaction.
+      const [rows] = await conn.query(
+        `SELECT * FROM expenses WHERE id = ? AND is_recurring = 1
+           AND status != 'cancelled' AND next_occurrence <= CURDATE()
+         FOR UPDATE`, [id]
+      );
+      if (!rows.length) { await conn.rollback(); continue; }
+      const t = rows[0];
+      const step = INTERVAL_SQL[t.recurrence_interval];
+      if (!step) { await conn.rollback(); continue; }
+
+      // Children of above-threshold templates go through approval too.
+      const threshold = await thresholdFor(t.tenant_id);
+      const childStatus = threshold !== null && Number(t.amount) > Number(threshold)
+        ? 'pending_approval' : 'unpaid';
+
+      const year = new Date(t.next_occurrence).getFullYear();
+      const [seq] = await conn.query(
+        `SELECT MAX(CAST(SUBSTRING_INDEX(expense_number, '-', -1) AS UNSIGNED)) AS maxSeq
+           FROM expenses WHERE tenant_id = ? AND expense_number LIKE ?`,
+        [t.tenant_id, `EXP-${year}-%`]
+      );
+      const number = `EXP-${year}-${String((seq[0].maxSeq || 0) + 1).padStart(6, '0')}`;
+      const childId = uuidv4();
+
+      // due_date keeps the template's payment-terms lag (due − expense_date).
+      await conn.query(
+        `INSERT INTO expenses
+           (id, tenant_id, store_id, expense_number, category, payee, description,
+            amount, subtotal, tax_amount, shipping_amount, discount_amount, tax_inclusive,
+            expense_date, due_date, status, payment_method, reference, supplier_id, notes,
+            is_recurring, recurrence_interval, next_occurrence, recurrence_parent_id, created_by)
+         SELECT ?, tenant_id, store_id, ?, category, payee, description,
+                amount, subtotal, tax_amount, shipping_amount, discount_amount, tax_inclusive,
+                next_occurrence,
+                IF(due_date IS NULL, NULL,
+                   DATE_ADD(next_occurrence, INTERVAL DATEDIFF(due_date, expense_date) DAY)),
+                ?, NULL, NULL, supplier_id,
+                CONCAT(COALESCE(notes, ''), ' (recurring)'),
+                0, NULL, NULL, id, created_by
+           FROM expenses WHERE id = ?`,
+        [childId, number, childStatus, id]
+      );
+      // Copy the template's line items onto the child.
+      await conn.query(
+        `INSERT INTO expense_items
+           (id, tenant_id, expense_id, description, quantity, unit_cost, amount, sort_order)
+         SELECT UUID(), tenant_id, ?, description, quantity, unit_cost, amount, sort_order
+           FROM expense_items WHERE expense_id = ?`,
+        [childId, id]
+      );
+      // Advance the template to the following occurrence.
+      await conn.query(
+        `UPDATE expenses SET next_occurrence = ${step} WHERE id = ?`,
+        [id]
+      );
+      await conn.commit();
+      created++;
+    } catch (e) {
+      try { await conn.rollback(); } catch (_) {}
+      console.error(`[platformJobs] recurring expense ${id} failed:`, e.message);
+    } finally {
+      conn.release();
+    }
+  }
+  return `materialized ${created} recurring expense occurrence(s)`;
+};
+
 // ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
@@ -127,6 +235,7 @@ const JOBS = [
   { name: 'expire_trials',      intervalMs: 60 * 60 * 1000,      fn: expireTrials },
   { name: 'dunning',            intervalMs: 60 * 60 * 1000,      fn: runDunning },
   { name: 'process_deletions',  intervalMs: 6 * 60 * 60 * 1000,  fn: processDeletions },
+  { name: 'recurring_expenses', intervalMs: 60 * 60 * 1000,      fn: materializeRecurringExpenses },
 ];
 
 const state = new Map(JOBS.map((j) => [j.name, initialState()]));
@@ -165,4 +274,4 @@ const stop = () => {
   timer = null;
 };
 
-module.exports = { start, stop, expireTrials, runDunning, processDeletions };
+module.exports = { start, stop, expireTrials, runDunning, processDeletions, materializeRecurringExpenses };

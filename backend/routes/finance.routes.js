@@ -17,8 +17,24 @@
  *                                       (marks it paid), or free-form 'other'
  *   POST   /payments/:id/void           void a payment (re-opens the expense/PO balance)
  *   GET    /supplier-outstanding        ?supplier_id -> POs with outstanding balances
+ *   GET    /vendors / POST /vendors     supplier search + quick-add for forms
+ *   GET    /expenses/export.csv         CSV export (GL/accounting hand-off)
+ *   POST   /expenses/:id/approve        approver releases a pending_approval expense
+ *   GET/PUT /settings                   per-tenant finance knobs (approval threshold)
  *
- * Permissions: finance.view for reads, finance.manage for writes.
+ * Workflows:
+ *   - partial payments: an expense accrues completed payments; status is
+ *     unpaid -> partial -> paid from the running paid total.
+ *   - due_date: unpaid/partial rows past due surface as 'overdue'.
+ *   - tax_inclusive: line amounts already include tax; tax_amount is
+ *     informational and excluded from the payable.
+ *   - recurring: is_recurring+recurrence_interval+next_occurrence; a
+ *     platformJobs task materializes each occurrence as a new unpaid expense.
+ *   - approval: when tenant_finance_settings.expense_approval_threshold is set
+ *     and the amount exceeds it, creators without finance.approve get
+ *     status 'pending_approval' until an approver releases it.
+ *
+ * Permissions: finance.view reads, finance.manage writes, finance.approve approves.
  */
 
 'use strict';
@@ -30,12 +46,14 @@ const { pool, getConnectionWithTimeZone } = require('../config/db');
 const { authenticate, requireTenantId, requireStoreId } = require('../middleware/unifiedAuthMiddleware');
 const { requirePermission } = require('../middleware/rbacPermissionMiddleware');
 const { logActivity } = require('../services/auditLogService');
+const rbacService = require('../services/rbacService');
 
 router.use(authenticate);
 router.use(requireTenantId);
 router.use(requireStoreId);
 
 const PAYEE_TYPES = ['supplier', 'expense', 'other'];
+const RECURRENCE_INTERVALS = ['weekly', 'monthly', 'quarterly', 'yearly'];
 
 function parseAmount(v) {
   const n = Number(v);
@@ -108,6 +126,66 @@ async function docNumber(conn, table, col, prefix, tenantId, year) {
   return `${prefix}-${year}-${String(seq).padStart(6, '0')}`;
 }
 
+/** Tenant's finance settings row (empty object when none saved). */
+async function getFinanceSettings(tenantId) {
+  const [rows] = await pool.query(
+    'SELECT expense_approval_threshold FROM tenant_finance_settings WHERE tenant_id = ?',
+    [tenantId]
+  );
+  return rows[0] || {};
+}
+
+/**
+ * Recompute an expense's status from its completed payments:
+ * none -> unpaid, some -> partial, covered -> paid.
+ * Must be called inside the caller's transaction.
+ */
+async function syncExpensePaymentStatus(conn, tenantId, expenseId) {
+  const [rows] = await conn.query(
+    `SELECT e.amount, e.status,
+            COALESCE(SUM(CASE WHEN p.status = 'completed' THEN p.amount END), 0) AS paid
+       FROM expenses e
+       LEFT JOIN outgoing_payments p ON p.expense_id = e.id AND p.tenant_id = e.tenant_id
+      WHERE e.id = ? AND e.tenant_id = ?
+      GROUP BY e.id FOR UPDATE`,
+    [expenseId, tenantId]
+  );
+  if (!rows.length) return;
+  const { amount, status, paid } = rows[0];
+  if (status === 'cancelled' || status === 'pending_approval') return;
+  const total = Number(amount);
+  const paidAmt = Number(paid);
+  const next = paidAmt >= total - 0.004 ? 'paid' : paidAmt > 0.004 ? 'partial' : 'unpaid';
+  if (next !== status) {
+    await conn.query('UPDATE expenses SET status = ? WHERE id = ?', [next, expenseId]);
+  }
+  return next;
+}
+
+/** Validate/normalize a YYYY-MM-DD date string or return null. */
+const parseDate = (v) => {
+  if (!v) return null;
+  const s = String(v).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+};
+
+/** Next occurrence of an interval after `from` (YYYY-MM-DD). */
+function advanceDate(dateStr, interval) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  if (interval === 'weekly') d.setUTCDate(d.getUTCDate() + 7);
+  else if (interval === 'monthly') d.setUTCMonth(d.getUTCMonth() + 1);
+  else if (interval === 'quarterly') d.setUTCMonth(d.getUTCMonth() + 3);
+  else if (interval === 'yearly') d.setUTCFullYear(d.getUTCFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Payable total. Tax-inclusive expenses carry tax inside the line amounts,
+ * so tax is reported but not added to the payable.
+ */
+const payableTotal = (subtotal, tax, shipping, discount, taxInclusive) =>
+  round2(subtotal + (taxInclusive ? 0 : tax) + shipping - discount);
+
 // ---------------------------------------------------------------------------
 // Expenses
 // ---------------------------------------------------------------------------
@@ -119,7 +197,11 @@ router.get('/expenses', requirePermission('finance.view'), async (req, res) => {
 
     const where = ['e.tenant_id = ?'];
     const params = [tenantId];
-    if (status) { where.push('e.status = ?'); params.push(status); }
+    if (status === 'overdue') {
+      where.push(`e.status IN ('unpaid','partial') AND e.due_date IS NOT NULL AND e.due_date < CURDATE()`);
+    } else if (status) {
+      where.push('e.status = ?'); params.push(status);
+    }
     if (category) { where.push('e.category = ?'); params.push(category); }
     if (supplierId) { where.push('e.supplier_id = ?'); params.push(supplierId); }
     if (from) { where.push('e.expense_date >= ?'); params.push(from); }
@@ -132,10 +214,17 @@ router.get('/expenses', requirePermission('finance.view'), async (req, res) => {
 
     const [items] = await pool.query(
       `SELECT e.*, s.supplier_name AS supplier_name,
-              u.name AS created_by_name
+              u.name AS created_by_name,
+              COALESCE(paid.paid_amount, 0) AS paid_amount
          FROM expenses e
          LEFT JOIN suppliers s ON s.id = e.supplier_id
          LEFT JOIN users u ON u.id = e.created_by
+         LEFT JOIN (
+           SELECT expense_id, tenant_id, SUM(amount) AS paid_amount
+             FROM outgoing_payments
+            WHERE status = 'completed' AND expense_id IS NOT NULL
+            GROUP BY expense_id, tenant_id
+         ) paid ON paid.expense_id = e.id AND paid.tenant_id = e.tenant_id
         WHERE ${where.join(' AND ')}
         ORDER BY e.expense_date DESC, e.created_at DESC
         LIMIT 500`,
@@ -163,7 +252,10 @@ router.get('/expenses', requirePermission('finance.view'), async (req, res) => {
       `SELECT
          COALESCE(SUM(CASE WHEN status != 'cancelled' THEN amount END), 0) AS total,
          COALESCE(SUM(CASE WHEN status = 'paid' THEN amount END), 0) AS paid_total,
-         COALESCE(SUM(CASE WHEN status = 'unpaid' THEN amount END), 0) AS unpaid_total,
+         COALESCE(SUM(CASE WHEN status IN ('unpaid','partial') THEN amount END), 0) AS unpaid_total,
+         COALESCE(SUM(CASE WHEN status IN ('unpaid','partial')
+                           AND due_date IS NOT NULL AND due_date < CURDATE()
+                          THEN amount END), 0) AS overdue_total,
          COALESCE(SUM(CASE WHEN status != 'cancelled'
                            AND YEAR(expense_date) = YEAR(CURDATE())
                            AND MONTH(expense_date) = MONTH(CURDATE())
@@ -198,17 +290,20 @@ router.post('/expenses', requirePermission('finance.manage'), async (req, res) =
     const tenantId = req.tenantId;
     const storeId = req.storeId;
     const userId = req.user?.id || null;
-    const { category, payee, description, amount, expense_date, status,
+    const { category, payee, description, amount, expense_date, due_date, status,
             payment_method, reference, supplier_id, notes,
-            items: rawItems, tax_amount, shipping_amount, discount_amount } = req.body || {};
+            items: rawItems, tax_amount, shipping_amount, discount_amount,
+            tax_inclusive, is_recurring, recurrence_interval, next_occurrence } = req.body || {};
 
     if (!category || !String(category).trim()) return res.status(400).json({ message: 'Category is required.' });
 
     // Document totals: subtotal (from line items, or the direct amount) plus
-    // tax + shipping minus discount = payable `amount`.
+    // tax + shipping minus discount = payable `amount`. When tax_inclusive,
+    // the tax is already inside the line amounts and is informational only.
     const norm = normalizeLineItems(rawItems);
     if (norm.error) return res.status(400).json({ message: norm.error });
     const lineItems = norm.items;
+    const taxIncl = tax_inclusive === 1 || tax_inclusive === true || tax_inclusive === '1' || tax_inclusive === 'true';
     const tax = parseOptionalAmount(tax_amount);
     const shipping = parseOptionalAmount(shipping_amount);
     const discount = parseOptionalAmount(discount_amount);
@@ -220,11 +315,31 @@ router.post('/expenses', requirePermission('finance.manage'), async (req, res) =
       subtotal = parseAmount(amount);
       if (subtotal === null) return res.status(400).json({ message: 'Add at least one line item or a positive amount.' });
     }
-    const amt = round2(subtotal + tax + shipping - discount);
+    const amt = payableTotal(subtotal, tax, shipping, discount, taxIncl);
     if (amt <= 0) return res.status(400).json({ message: 'The payable total must be positive.' });
 
     const date = expense_date || new Date().toISOString().slice(0, 10);
-    const expStatus = status === 'paid' ? 'paid' : 'unpaid';
+    const dueDate = parseDate(due_date);
+
+    // Recurring: the expense itself is the template — each occurrence spawns
+    // a child expense and next_occurrence advances.
+    const recurring = is_recurring === 1 || is_recurring === true || is_recurring === '1' || is_recurring === 'true';
+    const interval = recurring && RECURRENCE_INTERVALS.includes(recurrence_interval) ? recurrence_interval : null;
+    if (recurring && !interval) return res.status(400).json({ message: 'Choose a recurrence interval (weekly/monthly/quarterly/yearly).' });
+    const nextOcc = recurring ? (parseDate(next_occurrence) || advanceDate(date, interval)) : null;
+
+    // Approval gate: amounts above the tenant threshold need finance.approve
+    // unless the creator already holds that permission.
+    let expStatus = status === 'paid' ? 'paid' : 'unpaid';
+    const settings = await getFinanceSettings(tenantId);
+    const threshold = settings.expense_approval_threshold != null ? Number(settings.expense_approval_threshold) : null;
+    const needsApproval = threshold !== null && amt > threshold;
+    if (needsApproval) {
+      const canApprove = userId
+        ? await rbacService.hasPermission(userId, 'finance.approve', tenantId, storeId)
+        : false;
+      if (!canApprove) expStatus = 'pending_approval';
+    }
 
     if (supplier_id) {
       const [sup] = await conn.query('SELECT id FROM suppliers WHERE id = ? AND tenant_id = ?', [supplier_id, tenantId]);
@@ -237,13 +352,15 @@ router.post('/expenses', requirePermission('finance.manage'), async (req, res) =
     await conn.query(
       `INSERT INTO expenses
          (id, tenant_id, store_id, expense_number, category, payee, description,
-          amount, subtotal, tax_amount, shipping_amount, discount_amount,
-          expense_date, status, payment_method, reference, supplier_id, notes, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          amount, subtotal, tax_amount, shipping_amount, discount_amount, tax_inclusive,
+          expense_date, due_date, status, payment_method, reference, supplier_id, notes,
+          is_recurring, recurrence_interval, next_occurrence, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, tenantId, storeId, number, String(category).trim(), payee || null,
        description || lineItems[0]?.description || null,
-       amt, subtotal, tax, shipping, discount,
-       date, expStatus, payment_method || null, reference || null, supplier_id || null, notes || null, userId]
+       amt, subtotal, tax, shipping, discount, taxIncl ? 1 : 0,
+       date, dueDate, expStatus, payment_method || null, reference || null, supplier_id || null, notes || null,
+       recurring ? 1 : 0, interval, nextOcc, userId]
     );
 
     await insertLineItems(conn, tenantId, id, lineItems);
@@ -265,7 +382,7 @@ router.post('/expenses', requirePermission('finance.manage'), async (req, res) =
     }
 
     await conn.commit();
-    res.status(201).json({ id, expense_number: number });
+    res.status(201).json({ id, expense_number: number, status: expStatus });
   } catch (err) {
     await conn.rollback().catch(() => {});
     console.error('[finance] POST /expenses failed:', err);
@@ -280,9 +397,10 @@ router.put('/expenses/:id', requirePermission('finance.manage'), async (req, res
   try {
     const tenantId = req.tenantId;
     const userId = req.user?.id || null;
-    const { category, payee, description, amount, expense_date, status,
+    const { category, payee, description, amount, expense_date, due_date, status,
             payment_method, reference, supplier_id, notes,
-            items: rawItems, tax_amount, shipping_amount, discount_amount } = req.body || {};
+            items: rawItems, tax_amount, shipping_amount, discount_amount,
+            tax_inclusive, is_recurring, recurrence_interval, next_occurrence } = req.body || {};
 
     const [rows] = await conn.query(
       'SELECT * FROM expenses WHERE id = ? AND tenant_id = ? FOR UPDATE',
@@ -309,33 +427,68 @@ router.put('/expenses/:id', requirePermission('finance.manage'), async (req, res
       subtotal = amount !== undefined ? parseAmount(amount) : Number(existing.subtotal ?? existing.amount);
       if (subtotal === null) return res.status(400).json({ message: 'A positive amount is required.' });
     }
+    const taxIncl = tax_inclusive !== undefined
+      ? (tax_inclusive === 1 || tax_inclusive === true || tax_inclusive === '1' || tax_inclusive === 'true')
+      : !!existing.tax_inclusive;
     const tax = tax_amount !== undefined ? parseOptionalAmount(tax_amount) : Number(existing.tax_amount || 0);
     const shipping = shipping_amount !== undefined ? parseOptionalAmount(shipping_amount) : Number(existing.shipping_amount || 0);
     const discount = discount_amount !== undefined ? parseOptionalAmount(discount_amount) : Number(existing.discount_amount || 0);
-    const amt = round2(subtotal + tax + shipping - discount);
+    const amt = payableTotal(subtotal, tax, shipping, discount, taxIncl);
     if (amt <= 0) return res.status(400).json({ message: 'The payable total must be positive.' });
 
-    const expStatus = status !== undefined ? (status === 'paid' ? 'paid' : status === 'cancelled' ? 'cancelled' : 'unpaid') : existing.status;
+    // Recurring fields — absent keys keep stored values.
+    const recurring = is_recurring !== undefined
+      ? (is_recurring === 1 || is_recurring === true || is_recurring === '1' || is_recurring === 'true')
+      : !!existing.is_recurring;
+    const interval = recurrence_interval !== undefined
+      ? (RECURRENCE_INTERVALS.includes(recurrence_interval) ? recurrence_interval : null)
+      : existing.recurrence_interval;
+    if (recurring && !interval) return res.status(400).json({ message: 'Choose a recurrence interval (weekly/monthly/quarterly/yearly).' });
+    const effDate = expense_date || existing.expense_date;
+    const nextOcc = next_occurrence !== undefined
+      ? parseDate(next_occurrence)
+      : (existing.next_occurrence || (recurring && interval ? advanceDate(String(effDate).slice(0, 10), interval) : null));
+
+    // Already-paid amounts constrain status flips: 'paid' tops up the
+    // remaining balance with a new payment row; 'unpaid'/'cancelled' void
+    // every live payment (partial payments are 'completed' rows too).
+    let expStatus = status !== undefined
+      ? (status === 'paid' ? 'paid' : status === 'cancelled' ? 'cancelled' : status === 'pending_approval' ? 'pending_approval' : 'unpaid')
+      : existing.status;
+
+    // Approval gate on amount edits: raising the amount above the threshold
+    // re-pends the expense for non-approvers.
+    const settings = await getFinanceSettings(tenantId);
+    const threshold = settings.expense_approval_threshold != null ? Number(settings.expense_approval_threshold) : null;
+    if (threshold !== null && amt > threshold && existing.status !== 'pending_approval' && expStatus !== 'cancelled') {
+      const canApprove = userId
+        ? await rbacService.hasPermission(userId, 'finance.approve', tenantId, req.storeId)
+        : false;
+      if (!canApprove) expStatus = 'pending_approval';
+    }
 
     await conn.beginTransaction();
     await conn.query(
       `UPDATE expenses SET
          category = ?, payee = ?, description = ?, amount = ?, subtotal = ?,
-         tax_amount = ?, shipping_amount = ?, discount_amount = ?,
-         expense_date = ?,
-         status = ?, payment_method = ?, reference = ?, supplier_id = ?, notes = ?
+         tax_amount = ?, shipping_amount = ?, discount_amount = ?, tax_inclusive = ?,
+         expense_date = ?, due_date = ?,
+         status = ?, payment_method = ?, reference = ?, supplier_id = ?, notes = ?,
+         is_recurring = ?, recurrence_interval = ?, next_occurrence = ?
        WHERE id = ?`,
       [
         category !== undefined ? String(category).trim() : existing.category,
         payee !== undefined ? payee : existing.payee,
         description !== undefined ? description : existing.description,
-        amt, subtotal, tax, shipping, discount,
-        expense_date || existing.expense_date,
+        amt, subtotal, tax, shipping, discount, taxIncl ? 1 : 0,
+        effDate,
+        due_date !== undefined ? parseDate(due_date) : existing.due_date,
         expStatus,
         payment_method !== undefined ? payment_method : existing.payment_method,
         reference !== undefined ? reference : existing.reference,
         supplier_id !== undefined ? supplier_id : existing.supplier_id,
         notes !== undefined ? notes : existing.notes,
+        recurring ? 1 : 0, recurring ? interval : null, recurring ? nextOcc : null,
         req.params.id,
       ]
     );
@@ -346,14 +499,16 @@ router.put('/expenses/:id', requirePermission('finance.manage'), async (req, res
       await insertLineItems(conn, tenantId, req.params.id, lineItems);
     }
 
-    // Keep the linked payment row in step with the expense's paid state.
+    // Keep payment rows in step with the expense's paid state.
     const [links] = await conn.query(
-      `SELECT id, status FROM outgoing_payments
+      `SELECT id, amount, status FROM outgoing_payments
         WHERE expense_id = ? AND tenant_id = ?`, [req.params.id, tenantId]);
-    const liveLink = links.find(l => l.status === 'completed');
+    const liveLinks = links.filter(l => l.status === 'completed');
+    const paidSoFar = liveLinks.reduce((s, l) => s + Number(l.amount), 0);
 
-    if (expStatus === 'paid' && !liveLink) {
-      const year = new Date(expense_date || existing.expense_date).getFullYear();
+    if (expStatus === 'paid' && paidSoFar < amt - 0.004) {
+      // Top up the remaining balance with a payment row.
+      const year = new Date(effDate).getFullYear();
       const payNum = await docNumber(conn, 'outgoing_payments', 'payment_number', 'PAY', tenantId, year);
       await conn.query(
         `INSERT INTO outgoing_payments
@@ -364,29 +519,30 @@ router.put('/expenses/:id', requirePermission('finance.manage'), async (req, res
         [uuidv4(), tenantId, existing.store_id, payNum,
          (payee !== undefined ? payee : existing.payee) || (category !== undefined ? category : existing.category),
          (supplier_id !== undefined ? supplier_id : existing.supplier_id),
-         req.params.id, amt, expense_date || existing.expense_date,
+         req.params.id, round2(amt - paidSoFar), effDate,
          payment_method !== undefined ? payment_method : existing.payment_method,
          reference !== undefined ? reference : existing.reference,
          `Expense ${existing.expense_number}`, userId]
       );
-    } else if (expStatus !== 'paid' && liveLink) {
+    } else if (expStatus !== 'paid' && expStatus !== 'partial' && liveLinks.length) {
       await conn.query(
         `UPDATE outgoing_payments SET status = 'voided', voided_by = ?, voided_at = NOW(),
            void_reason = 'Expense marked unpaid/cancelled'
-         WHERE id = ?`, [userId, liveLink.id]);
-    } else if (expStatus === 'paid' && liveLink) {
-      await conn.query(
-        `UPDATE outgoing_payments SET amount = ?, payment_date = ?,
-           payment_method = COALESCE(?, payment_method), reference = COALESCE(?, reference)
-         WHERE id = ?`,
-        [amt, expense_date || existing.expense_date,
-         payment_method !== undefined ? payment_method : null,
-         reference !== undefined ? reference : null, liveLink.id]
+         WHERE expense_id = ? AND tenant_id = ? AND status = 'completed'`,
+        [userId, req.params.id, tenantId]
       );
     }
 
+    // Stored status follows payment reality (raising the payable above what
+    // was paid honestly demotes 'paid' to 'partial'). Cancelled and
+    // pending_approval are explicit states, not derived.
+    let finalStatus = expStatus;
+    if (expStatus !== 'cancelled' && expStatus !== 'pending_approval') {
+      finalStatus = await syncExpensePaymentStatus(conn, tenantId, req.params.id) || expStatus;
+    }
+
     await conn.commit();
-    res.json({ ok: true });
+    res.json({ ok: true, status: finalStatus });
   } catch (err) {
     await conn.rollback().catch(() => {});
     console.error('[finance] PUT /expenses/:id failed:', err);
@@ -618,17 +774,29 @@ router.post('/payments', requirePermission('finance.manage'), async (req, res) =
     } else if (payee_type === 'expense') {
       if (!expense_id) { await conn.rollback(); return res.status(400).json({ message: 'Expense is required.' }); }
       const [exp] = await conn.query(
-        'SELECT id, payee, category, amount, status, expense_number, supplier_id FROM expenses WHERE id = ? AND tenant_id = ? FOR UPDATE',
-        [expense_id, tenantId]
+        `SELECT e.id, e.payee, e.category, e.amount, e.status, e.expense_number, e.supplier_id,
+                COALESCE(p.paid_amount, 0) AS paid_amount
+           FROM expenses e
+           LEFT JOIN (
+             SELECT expense_id, SUM(amount) AS paid_amount FROM outgoing_payments
+              WHERE status = 'completed' AND tenant_id = ? GROUP BY expense_id
+           ) p ON p.expense_id = e.id
+          WHERE e.id = ? AND e.tenant_id = ? FOR UPDATE`,
+        [tenantId, expense_id, tenantId]
       );
       if (!exp.length) { await conn.rollback(); return res.status(400).json({ message: 'Expense not found.' }); }
-      if (exp[0].status !== 'unpaid') { await conn.rollback(); return res.status(400).json({ message: 'That expense is already paid.' }); }
+      if (!['unpaid', 'partial'].includes(exp[0].status)) {
+        await conn.rollback();
+        return res.status(400).json({ message: exp[0].status === 'pending_approval' ? 'That expense is awaiting approval.' : 'That expense is already paid.' });
+      }
+      // Partial payments allowed — cap at the remaining balance.
+      const remaining = Number(exp[0].amount) - Number(exp[0].paid_amount);
+      if (amt > remaining + 0.004) {
+        await conn.rollback();
+        return res.status(400).json({ message: `Amount exceeds the remaining balance (${remaining.toFixed(2)}).` });
+      }
       resolvedPayeeName = exp[0].payee || exp[0].category;
       linkedSupplierId = exp[0].supplier_id || null;
-      await conn.query(
-        `UPDATE expenses SET status = 'paid', payment_method = ?, reference = COALESCE(?, reference) WHERE id = ?`,
-        [payment_method || null, reference || null, expense_id]
-      );
     } else if (!resolvedPayeeName) {
       await conn.rollback();
       return res.status(400).json({ message: 'Payee name is required.' });
@@ -646,6 +814,16 @@ router.post('/payments', requirePermission('finance.manage'), async (req, res) =
        linkedSupplierId, purchase_order_id || null, expense_id || null, amt, date,
        payment_method || null, reference || null, notes || null, userId]
     );
+
+    // Expense payments roll up to the expense's derived status
+    // (unpaid → partial → paid).
+    if (expense_id) {
+      await conn.query(
+        `UPDATE expenses SET payment_method = COALESCE(?, payment_method) WHERE id = ?`,
+        [payment_method || null, expense_id]
+      );
+      await syncExpensePaymentStatus(conn, tenantId, expense_id);
+    }
 
     await conn.commit();
     res.status(201).json({ id, payment_number: number });
@@ -679,12 +857,10 @@ router.post('/payments/:id/void', requirePermission('finance.manage'), async (re
       [userId, reason || null, req.params.id]
     );
 
-    // Voiding an expense payment re-opens the expense as unpaid.
+    // Voiding an expense payment re-derives the expense status — it may be
+    // partial rather than fully unpaid when other payments stand.
     if (payment.expense_id) {
-      await conn.query(
-        `UPDATE expenses SET status = 'unpaid' WHERE id = ? AND tenant_id = ?`,
-        [payment.expense_id, tenantId]
-      );
+      await syncExpensePaymentStatus(conn, tenantId, payment.expense_id);
     }
 
     await conn.commit();
@@ -695,6 +871,175 @@ router.post('/payments/:id/void', requirePermission('finance.manage'), async (re
     res.status(500).json({ message: 'Failed to void payment.' });
   } finally {
     conn.release();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Approval — release a pending_approval expense. Optional { status: 'paid',
+// payment_method, reference } settles it in the same step.
+// ---------------------------------------------------------------------------
+
+router.post('/expenses/:id/approve', requirePermission('finance.approve'), async (req, res) => {
+  const conn = await getConnectionWithTimeZone();
+  try {
+    const tenantId = req.tenantId;
+    const userId = req.user?.id || null;
+    const { status, payment_method, reference } = req.body || {};
+    const approveAsPaid = status === 'paid';
+
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT * FROM expenses WHERE id = ? AND tenant_id = ? FOR UPDATE`, [req.params.id, tenantId]
+    );
+    if (!rows.length) { await conn.rollback(); return res.status(404).json({ message: 'Expense not found.' }); }
+    const exp = rows[0];
+    if (exp.status !== 'pending_approval') {
+      await conn.rollback();
+      return res.status(400).json({ message: 'This expense is not awaiting approval.' });
+    }
+
+    const nextStatus = approveAsPaid ? 'paid' : 'unpaid';
+    await conn.query(
+      `UPDATE expenses SET status = ?, approved_by = ?, approved_at = NOW(),
+         payment_method = COALESCE(?, payment_method), reference = COALESCE(?, reference)
+       WHERE id = ?`,
+      [nextStatus, userId, payment_method || null, reference || null, exp.id]
+    );
+
+    if (approveAsPaid) {
+      // DATE columns come back as Date objects — normalize to YYYY-MM-DD.
+      const expDate = new Date(exp.expense_date).toISOString().slice(0, 10);
+      const payNum = await docNumber(conn, 'outgoing_payments', 'payment_number', 'PAY', tenantId, new Date(expDate).getUTCFullYear());
+      await conn.query(
+        `INSERT INTO outgoing_payments
+           (id, tenant_id, store_id, payment_number, payee_type, payee_name,
+            supplier_id, expense_id, amount, payment_date, payment_method,
+            reference, notes, created_by)
+         VALUES (?, ?, ?, ?, 'expense', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuidv4(), tenantId, exp.store_id, payNum, exp.payee || exp.category,
+         exp.supplier_id, exp.id, Number(exp.amount), expDate,
+         payment_method || exp.payment_method || null, reference || exp.reference || null,
+         `Expense ${exp.expense_number} (approved)`, userId]
+      );
+    }
+
+    await conn.commit();
+    res.json({ ok: true, status: nextStatus });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[finance] POST /expenses/:id/approve failed:', err);
+    res.status(500).json({ message: 'Failed to approve expense.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Settings — per-tenant finance knobs (approval threshold today).
+// ---------------------------------------------------------------------------
+
+router.get('/settings', requirePermission('finance.view'), async (req, res) => {
+  try {
+    res.json(await getFinanceSettings(req.tenantId));
+  } catch (err) {
+    console.error('[finance] GET /settings failed:', err);
+    res.status(500).json({ message: 'Failed to load finance settings.' });
+  }
+});
+
+router.put('/settings', requirePermission('finance.manage'), async (req, res) => {
+  try {
+    const { expense_approval_threshold } = req.body || {};
+    let threshold = null;
+    if (expense_approval_threshold !== null && expense_approval_threshold !== undefined && expense_approval_threshold !== '') {
+      const n = Number(expense_approval_threshold);
+      if (!Number.isFinite(n) || n < 0) {
+        return res.status(400).json({ message: 'Threshold must be a non-negative amount, or empty to disable approval.' });
+      }
+      threshold = round2(n);
+    }
+    await pool.query(
+      `INSERT INTO tenant_finance_settings (tenant_id, expense_approval_threshold)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE expense_approval_threshold = VALUES(expense_approval_threshold)`,
+      [req.tenantId, threshold]
+    );
+    res.json({ ok: true, expense_approval_threshold: threshold });
+  } catch (err) {
+    console.error('[finance] PUT /settings failed:', err);
+    res.status(500).json({ message: 'Failed to save finance settings.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// CSV export — GL hand-off for accountants. Same filters as the list.
+// ---------------------------------------------------------------------------
+
+router.get('/expenses/export.csv', requirePermission('finance.view'), async (req, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const { search, category, status, from, to } = req.query;
+
+    const where = ["e.tenant_id = ?", "e.status != 'cancelled'"];
+    // The paid-rollup subquery's tenant_id ? sits in SELECT — it binds FIRST.
+    const params = [tenantId, tenantId];
+    if (status === 'overdue') {
+      where.push(`e.status IN ('unpaid','partial') AND e.due_date IS NOT NULL AND e.due_date < CURDATE()`);
+    } else if (status) {
+      where.push('e.status = ?'); params.push(status);
+    }
+    if (category) { where.push('e.category = ?'); params.push(category); }
+    if (from) { where.push('e.expense_date >= ?'); params.push(from); }
+    if (to) { where.push('e.expense_date <= ?'); params.push(to); }
+    if (search) {
+      where.push('(e.payee LIKE ? OR e.description LIKE ? OR e.reference LIKE ? OR e.expense_number LIKE ?)');
+      const like = `%${search}%`;
+      params.push(like, like, like, like);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT e.expense_number, DATE_FORMAT(e.expense_date, '%Y-%m-%d') AS expense_date,
+              DATE_FORMAT(e.due_date, '%Y-%m-%d') AS due_date, e.category, e.payee,
+              s.supplier_name, e.subtotal, e.tax_amount, e.tax_inclusive,
+              e.shipping_amount, e.discount_amount, e.amount,
+              e.status, e.payment_method, e.reference, e.notes,
+              COALESCE(paid.paid_amount, 0) AS paid_total
+         FROM expenses e
+         LEFT JOIN suppliers s ON s.id = e.supplier_id
+         LEFT JOIN (
+           SELECT expense_id, SUM(amount) AS paid_amount FROM outgoing_payments
+            WHERE status = 'completed' GROUP BY expense_id
+         ) paid ON paid.expense_id = e.id
+        WHERE ${where.join(' AND ')}
+        ORDER BY e.expense_date DESC
+        LIMIT 5000`,
+      params.slice(1)
+    );
+
+    const esc = (v) => {
+      const s = v === null || v === undefined ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const head = ['Expense #', 'Date', 'Due date', 'Category', 'Payee', 'Supplier',
+      'Subtotal', 'Tax', 'Tax inclusive', 'Shipping', 'Discount', 'Total',
+      'Paid', 'Balance', 'Status', 'Payment method', 'Reference', 'Notes'];
+    const lines = [head.map(esc).join(',')];
+    for (const r of rows) {
+      lines.push([
+        r.expense_number, r.expense_date, r.due_date, r.category, r.payee,
+        r.supplier_name, r.subtotal, r.tax_amount, r.tax_inclusive ? 'yes' : 'no',
+        r.shipping_amount, r.discount_amount, r.amount, r.paid_total,
+        round2(Number(r.amount) - Number(r.paid_total)), r.status,
+        r.payment_method, r.reference, r.notes,
+      ].map(esc).join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="expenses-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(lines.join('\n'));
+  } catch (err) {
+    console.error('[finance] GET /expenses/export.csv failed:', err);
+    res.status(500).json({ message: 'Failed to export expenses.' });
   }
 });
 

@@ -257,6 +257,7 @@ DELETE FROM `tenant_features` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tena
 
 DELETE FROM `tenant_field_overrides` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 
+DELETE FROM `tenant_finance_settings` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 DELETE FROM `tenant_payment_settings` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 
 DELETE FROM `tenant_pricing_settings` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;

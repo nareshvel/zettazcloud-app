@@ -33,9 +33,9 @@ class PermissionSeedingService {
       'system.audit', 'system.backup', 'system.settings', 'system.maintenance',
       'orders.view', 'orders.delete', 'orders.fulfill',
       'employees.view', 'employees.create', 'employees.edit', 'employees.delete',
-      'finance.view', 'finance.manage'
+      'finance.view', 'finance.manage', 'finance.approve'
     ],
-    
+
     'Store Manager': [
       // 60 permissions - Store operations excluding 21 advanced permissions
       'dashboard.view', 'reports.view', 'reports.export',
@@ -55,9 +55,9 @@ class PermissionSeedingService {
       'settings.view', 'settings.edit', 'settings.tax', 'settings.payment', 'settings.printer', 'settings.store',
       'orders.view', 'orders.fulfill', 'orders.delete',
       'employees.view', 'employees.create', 'employees.edit',
-      'finance.view', 'finance.manage'
+      'finance.view', 'finance.manage', 'finance.approve'
     ],
-    
+
     'Cashier': [
       // 17 permissions - Essential POS operations only.
       // dashboard.view deliberately excluded (2026-09-03): this permission
@@ -134,6 +134,7 @@ class PermissionSeedingService {
       // Finance (2)
       { name: 'finance.view', description: 'View expenses and outgoing payments', module: 'finance' },
       { name: 'finance.manage', description: 'Record, edit and void expenses and outgoing payments', module: 'finance' },
+      { name: 'finance.approve', description: 'Approve expenses above the tenant approval threshold', module: 'finance' },
       
       // Sales (5)
       { name: 'sales.view', description: 'View sales', module: 'sales' },
