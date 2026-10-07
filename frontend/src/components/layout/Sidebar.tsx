@@ -12,7 +12,6 @@ import {
   Settings2,
   Store,
   Warehouse,
-  Menu, 
   X, 
   ChevronLeft, 
   ChevronRight,
@@ -45,6 +44,9 @@ interface SidebarProps {
   className?: string;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  /** Controlled mobile drawer state — when provided, overrides internal state. */
+  mobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
 }
 
 interface NavigationItemRaw {
@@ -222,8 +224,10 @@ const isPathActive = (pathname: string, path: string): boolean => {
   return !!matchPath({ path, end: false }, pathname);
 };
 
-const Sidebar = ({ className = '', isCollapsed, onToggleCollapse }: SidebarProps) => {
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
+const Sidebar = ({ className = '', isCollapsed, onToggleCollapse, mobileOpen, onMobileOpenChange }: SidebarProps) => {
+  const [internalMobileOpen, setInternalMobileOpen] = useState(false);
+  const isMobileOpen = mobileOpen ?? internalMobileOpen;
+  const setIsMobileOpen = onMobileOpenChange ?? setInternalMobileOpen;
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [openFlyoutSection, setOpenFlyoutSection] = useState<number | null>(null);
   const sectionRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -542,18 +546,17 @@ const Sidebar = ({ className = '', isCollapsed, onToggleCollapse }: SidebarProps
 
   return (
     <>
-      {/* Mobile Menu Toggle Button - Always visible */}
-      <button 
-        className={`fixed top-4 z-[60] p-2 rounded-md shadow-md md:hidden focus:outline-none focus:ring-2 focus:ring-slate-400 transition-all duration-300 ${
-          isMobileOpen 
-            ? 'left-[19rem] bg-slate-700/90 text-white hover:bg-slate-600' 
-            : 'left-4 bg-slate-800 text-white hover:bg-slate-700'
-        }`}
-        onClick={toggleMobileSidebar}
-        title={isMobileOpen ? 'Close menu' : 'Open menu'}
-      >
-        {isMobileOpen ? <X size={18} /> : <Menu size={18} />}
-      </button>
+      {/* Mobile drawer is opened via the bottom-nav "More" tab (BottomNav.tsx).
+          The drawer itself still needs a close control while open. */}
+      {isMobileOpen && (
+        <button
+          className="fixed top-4 left-[19rem] z-[60] p-2 rounded-md shadow-md md:hidden focus:outline-none focus:ring-2 focus:ring-slate-400 bg-slate-700/90 text-white hover:bg-slate-600 transition-all duration-300"
+          onClick={toggleMobileSidebar}
+          title="Close menu"
+        >
+          <X size={18} />
+        </button>
+      )}
 
       {/* Sidebar */}
       <aside

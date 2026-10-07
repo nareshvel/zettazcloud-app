@@ -77,13 +77,11 @@ const TopBar: React.FC = () => {
     <header className="bg-background-card shadow-topbar h-16 flex items-center justify-between sticky top-0 z-30">
       {/* Left Section: page identity. Mobile (below `md:`) shows just the current page's
           own name — one line, truncated, no "Dashboard >" prefix — in the space between
-          the fixed hamburger toggle (Sidebar.tsx, `left-4`, ~34px) and the icon cluster
-          on the right; `md:` and up shows the full breadcrumb trail instead, where there's
-          room for it. Two earlier attempts (2026-08-31) both regressed this: showing the
-          full trail here at `pl-6` wrapped to two lines next to the hamburger on phones,
-          and hiding it here entirely while duplicating it under each page's own title
-          just left this row blank and repeated the title a second time for no reason. */}
-      <div className="flex md:hidden items-center text-sm pl-14 pr-2 min-w-0 flex-1">
+          the icon cluster on the right; `md:` and up shows the full breadcrumb
+          trail instead, where there's room for it. (The fixed hamburger that used
+          to sit at `left-4` was replaced by the bottom-nav "More" tab — 2026-10-06 —
+          so this row no longer needs `pl-14` clearance.) */}
+      <div className="flex md:hidden items-center text-sm pl-4 pr-2 min-w-0 flex-1">
         <span className="truncate font-medium text-text-primary">{currentPageLabel}</span>
       </div>
       <div className="hidden md:flex items-center text-sm pl-6">
