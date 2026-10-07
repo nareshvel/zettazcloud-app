@@ -1,5 +1,6 @@
 import type { User, LoginCredentials, BackendUserForApi, UserMeResponseData, Store, BackendStoreForApi } from '@/types'; // Changed path to use @ alias; removed TaxConfig
 import * as api from './api';
+import { PRINT_AGENT_TOKEN_KEY } from './printAgentV2Service';
 
 // Base URL for API requests. VITE_API_BASE_URL is documented (see api.ts) as the
 // server ROOT without a trailing /api (e.g. http://localhost:5172) — every real
@@ -81,9 +82,19 @@ class BrowserStorage {
     this.memoryStorage.delete(key);
   }
   
+  // Keys bound to the workstation rather than the user session — they
+  // survive logout. The Print Agent pairing token is the important one:
+  // re-pairing on every login would force a staff member to walk to the
+  // agent machine and re-enter its one-time code each shift change.
+  private static readonly PRESERVED_KEYS = [PRINT_AGENT_TOKEN_KEY];
+
   static clear(): void {
     try {
+      const preserved = this.PRESERVED_KEYS.map(k => [k, localStorage.getItem(k)] as const);
       localStorage.clear();
+      for (const [k, v] of preserved) {
+        if (v !== null) localStorage.setItem(k, v);
+      }
     } catch (error) {}
     
     try {

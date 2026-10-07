@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User, LoginCredentials } from '@/types';
 import * as authService from '../services/authService';
+import { PRINT_AGENT_TOKEN_KEY } from '../services/printAgentV2Service';
 
 // Simple storage wrapper
 const BrowserStorage = {
@@ -318,8 +319,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       // Even if logout fails, we should still clear the local auth state
       // to prevent the app from being in an inconsistent state
       setUser(null);
+      const agentToken = localStorage.getItem(PRINT_AGENT_TOKEN_KEY);
       localStorage.clear();
       sessionStorage.clear();
+      if (agentToken) localStorage.setItem(PRINT_AGENT_TOKEN_KEY, agentToken);
       
       // Set a more user-friendly error message
       setError('There was a problem signing you out. Please try again.');
