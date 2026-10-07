@@ -16,11 +16,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
 import {
   financeService, OutgoingPayment, PaymentSummary, PaymentPayload,
-  SupplierOutstandingPo, Expense, PAYMENT_METHODS,
+  SupplierOutstandingPo, Expense, Vendor, PAYMENT_METHODS,
 } from '@/services/financeService';
-import { fetchApi } from '@/services/api';
-
-interface SupplierLite { id: string; name: string; }
+import VendorSelect from '@/components/finance/VendorSelect';
 
 const ALL = '__all';
 const NONE = '__none';
@@ -39,7 +37,7 @@ export default function PaymentsPage() {
 
   const [items, setItems] = useState<OutgoingPayment[]>([]);
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
-  const [suppliers, setSuppliers] = useState<SupplierLite[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [unpaidExpenses, setUnpaidExpenses] = useState<Expense[]>([]);
   const [outstandingPos, setOutstandingPos] = useState<SupplierOutstandingPo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +53,7 @@ export default function PaymentsPage() {
 
   // form
   const [fType, setFType] = useState<'supplier' | 'expense' | 'other'>('supplier');
-  const [fSupplier, setFSupplier] = useState('');
+  const [fVendor, setFVendor] = useState<Vendor | null>(null);
   const [fPo, setFPo] = useState(NONE);
   const [fExpense, setFExpense] = useState(NONE);
   const [fPayee, setFPayee] = useState('');
@@ -85,12 +83,7 @@ export default function PaymentsPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    fetchApi<any>('/suppliers?limit=200')
-      .then((r: any) => {
-        const list = Array.isArray(r) ? r : (r.suppliers || r.items || []);
-        setSuppliers(list.map((s: any) => ({ id: s.id, name: s.supplierName || s.name })));
-      })
-      .catch(() => {});
+    financeService.searchVendors('').then(r => setVendors(r.items)).catch(() => {});
     financeService.listExpenses({ status: 'unpaid' })
       .then(r => setUnpaidExpenses(r.items))
       .catch(() => {});
@@ -98,14 +91,21 @@ export default function PaymentsPage() {
 
   // Outstanding POs for the chosen supplier
   useEffect(() => {
-    if (!fSupplier) { setOutstandingPos([]); return; }
-    financeService.supplierOutstanding(fSupplier)
+    if (!fVendor) { setOutstandingPos([]); return; }
+    financeService.supplierOutstanding(fVendor.id)
       .then(r => setOutstandingPos(r.items))
       .catch(() => setOutstandingPos([]));
-  }, [fSupplier]);
+  }, [fVendor]);
+
+  const addVendor = async (name: string): Promise<Vendor> => {
+    const created = await financeService.createVendor({ name });
+    const v: Vendor = { id: created.id, supplierName: created.supplierName || name };
+    setVendors(prev => prev.some(x => x.id === v.id) ? prev : [...prev, v]);
+    return v;
+  };
 
   const openNew = () => {
-    setFType('supplier'); setFSupplier(''); setFPo(NONE); setFExpense(NONE);
+    setFType('supplier'); setFVendor(null); setFPo(NONE); setFExpense(NONE);
     setFPayee(''); setFAmount(''); setFDate(new Date().toISOString().slice(0, 10));
     setFMethod('Cash'); setFReference(''); setFNotes('');
     setOutstandingPos([]);
@@ -124,7 +124,7 @@ export default function PaymentsPage() {
   const save = async () => {
     const amt = Number(fAmount);
     if (!Number.isFinite(amt) || amt <= 0) { setFormError('Enter a positive amount.'); return; }
-    if (fType === 'supplier' && !fSupplier) { setFormError('Choose a supplier.'); return; }
+    if (fType === 'supplier' && !fVendor) { setFormError('Choose a supplier.'); return; }
     if (fType === 'expense' && fExpense === NONE) { setFormError('Choose an unpaid expense.'); return; }
     if (fType === 'other' && !fPayee.trim()) { setFormError('Enter who the payment is to.'); return; }
 
@@ -133,7 +133,7 @@ export default function PaymentsPage() {
     try {
       const payload: PaymentPayload = {
         payeeType: fType,
-        supplierId: fType === 'supplier' ? fSupplier : undefined,
+        supplierId: fType === 'supplier' ? fVendor!.id : undefined,
         purchaseOrderId: fType === 'supplier' && fPo !== NONE ? fPo : undefined,
         expenseId: fType === 'expense' && fExpense !== NONE ? fExpense : undefined,
         payeeName: fType === 'other' ? fPayee.trim() : undefined,
@@ -294,15 +294,15 @@ export default function PaymentsPage() {
               <>
                 <div>
                   <label className="text-sm font-medium">Supplier</label>
-                  <Select value={fSupplier || NONE} onValueChange={v => { setFSupplier(v === NONE ? '' : v); setFPo(NONE); }}>
-                    <SelectTrigger className="mt-1 w-full"><SelectValue placeholder="Select supplier…" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select supplier…</SelectItem>
-                      {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <VendorSelect
+                    vendors={vendors}
+                    value={fVendor}
+                    onChange={(v) => { setFVendor(v); setFPo(NONE); }}
+                    onAdd={addVendor}
+                    placeholder="Search suppliers…"
+                  />
                 </div>
-                {fSupplier && (
+                {fVendor && (
                   <div>
                     <label className="text-sm font-medium">Apply to purchase order <span className="text-muted-foreground font-normal">(optional)</span></label>
                     <Select value={fPo} onValueChange={setFPo}>
@@ -316,7 +316,7 @@ export default function PaymentsPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {fSupplier && outstandingPos.length === 0 && (
+                    {outstandingPos.length === 0 && (
                       <p className="text-xs text-muted-foreground mt-1">No open POs with a balance for this supplier.</p>
                     )}
                   </div>

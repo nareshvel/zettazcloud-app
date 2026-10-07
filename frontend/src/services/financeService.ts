@@ -1,5 +1,13 @@
 import { fetchApi } from './api';
 
+export interface ExpenseItem {
+  id?: string;
+  description: string;
+  quantity: number;
+  unitCost?: number | null;
+  amount: number;
+}
+
 export interface Expense {
   id: string;
   expenseNumber?: string;
@@ -7,6 +15,11 @@ export interface Expense {
   payee?: string;
   description?: string;
   amount: number;
+  subtotal?: number;
+  taxAmount?: number;
+  shippingAmount?: number;
+  discountAmount?: number;
+  lineItems?: ExpenseItem[];
   expenseDate: string;
   status: 'unpaid' | 'paid' | 'cancelled';
   paymentMethod?: string;
@@ -73,6 +86,18 @@ export interface ExpensePayload {
   reference?: string;
   supplierId?: string;
   notes?: string;
+  items?: ExpenseItem[];
+  taxAmount?: number;
+  shippingAmount?: number;
+  discountAmount?: number;
+}
+
+export interface Vendor {
+  id: string;
+  supplierName: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
 }
 
 export interface PaymentPayload {
@@ -138,5 +163,13 @@ export const financeService = {
 
   async supplierOutstanding(supplierId: string) {
     return fetchApi<{ items: SupplierOutstandingPo[] }>(`/finance/supplier-outstanding?supplierId=${supplierId}`);
+  },
+
+  async searchVendors(search = '') {
+    return fetchApi<{ items: Vendor[] }>(`/finance/vendors?search=${encodeURIComponent(search)}`);
+  },
+
+  async createVendor(payload: { name: string; contactPerson?: string; email?: string; phone?: string }) {
+    return fetchApi<{ id: string; supplierName: string }>('/finance/vendors', { method: 'POST', body: JSON.stringify(payload) });
   },
 };

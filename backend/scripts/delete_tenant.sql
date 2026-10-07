@@ -115,6 +115,8 @@ DELETE FROM `employee_sales_targets` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci 
 
 DELETE FROM `employees` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 
+DELETE FROM `expense_items` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
+
 DELETE FROM `expenses` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 
 DELETE FROM `goods_received_notes` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
