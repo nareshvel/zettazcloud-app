@@ -2,25 +2,25 @@ import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import {
-  LayoutDashboard, ShoppingCart, Gem, Users, BarChart3, Menu as MenuIcon,
-  Plus, UserPlus, Package, PlusCircle, X, LucideIcon,
+  LayoutDashboard, ClipboardList, Tag, Menu as MenuIcon,
+  Plus, UserPlus, Package, PlusCircle, Archive, X, LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useI18n } from '@/hooks/useI18n';
-import { useIndustry } from '@/hooks/useIndustry';
 import { useKeyboard } from '@/hooks/useKeyboard';
 import { hasAnyPermission } from '@/utils/permissionUtils';
-import { hasSalesHub } from '@/utils/salesHubIndustries';
 
-type Tab = { to: string; labelKey: string; fallback: string; icon: LucideIcon; end?: boolean };
+type Tab = { to: string; labelKey: string; fallback: string; icon: LucideIcon; alsoActiveOn?: string[] };
 type Quick = { to: string; labelKey: string; fallback: string; icon: LucideIcon; tone: string };
 
 /**
  * Phone-only bottom tab bar (below md, matching the sidebar's mobile
- * drawer breakpoint). Permission-filtered tabs + "More" which opens the
- * full sidebar drawer. Users who can sell get a raised centre "+" with
- * quick actions. Rendered in-flow below <main> — no fixed positioning —
- * and hidden while the on-screen keyboard is open.
+ * drawer breakpoint): Dashboard / Stock Count / "+" / Promotions / More.
+ * Tabs are permission-filtered; "More" opens the full sidebar drawer and
+ * always renders so the full menu is never unreachable. The raised centre
+ * "+" opens a quick-actions sheet (new customer/product/PO/GRN).
+ * Rendered in-flow below <main> — no fixed positioning — and hidden while
+ * the on-screen keyboard is open.
  *
  * Not rendered on /pos, /sales-hub, or HubFlowShell pages: those routes
  * live outside AppLayout, so nothing special is needed to exclude them.
@@ -28,7 +28,6 @@ type Quick = { to: string; labelKey: string; fallback: string; icon: LucideIcon;
 const BottomNav = ({ onMore }: { onMore: () => void }) => {
   const { t } = useI18n();
   const { user } = useAuth();
-  const { industry } = useIndustry();
   const navigate = useNavigate();
   const location = useLocation();
   const [quickOpen, setQuickOpen] = useState(false);
@@ -48,45 +47,48 @@ const BottomNav = ({ onMore }: { onMore: () => void }) => {
 
   const can = (...permissions: string[]) => hasAnyPermission(effectiveUser, permissions);
 
-  const sellPath = hasSalesHub(industry) ? '/sales-hub' : '/pos';
-
   const tabs: Tab[] = [
-    can('dashboard.view') && { to: '/admin', labelKey: 'nav.dashboard', fallback: 'Home', icon: LayoutDashboard },
-    can('sales.create') && { to: sellPath, labelKey: hasSalesHub(industry) ? 'nav.sales_hub' : 'nav.pos', fallback: 'Sell', icon: hasSalesHub(industry) ? Gem : ShoppingCart },
-    can('customers.view') && { to: '/customers', labelKey: 'nav.customers', fallback: 'Customers', icon: Users },
-    can('reports.view') && { to: '/reports', labelKey: 'nav.reports', fallback: 'Reports', icon: BarChart3 },
+    can('dashboard.view') && { to: '/admin', labelKey: 'nav.dashboard', fallback: 'Dashboard', icon: LayoutDashboard, alsoActiveOn: ['/', '/dashboard'] },
+    can('inventory.adjust') && { to: '/stock-count', labelKey: 'nav.stock_count', fallback: 'Stock Count', icon: ClipboardList },
+    can('sales.view') && { to: '/promotions', labelKey: 'nav.promotions', fallback: 'Promotions', icon: Tag },
   ].filter((tab): tab is Tab => !!tab);
 
   const quick: Quick[] = [
-    can('sales.create') && { to: sellPath, labelKey: 'quick.new_sale', fallback: 'New sale', icon: ShoppingCart, tone: 'bg-blue-50 text-blue-700' },
-    can('customers.view') && { to: '/customers', labelKey: 'quick.new_customer', fallback: 'New customer', icon: UserPlus, tone: 'bg-emerald-50 text-emerald-700' },
-    can('products.view') && { to: '/products', labelKey: 'quick.new_product', fallback: 'New product', icon: Package, tone: 'bg-sky-50 text-sky-700' },
-    can('inventory.view') && { to: '/purchase-orders', labelKey: 'quick.new_po', fallback: 'Purchase order', icon: PlusCircle, tone: 'bg-amber-50 text-amber-700' },
+    can('customers.create') && { to: '/customers', labelKey: 'quick.new_customer', fallback: 'New Customer', icon: UserPlus, tone: 'bg-emerald-50 text-emerald-700' },
+    can('products.create') && { to: '/products', labelKey: 'quick.new_product', fallback: 'New Product', icon: Package, tone: 'bg-sky-50 text-sky-700' },
+    can('inventory.view') && { to: '/purchase-orders', labelKey: 'quick.new_po', fallback: 'New Purchase Order', icon: PlusCircle, tone: 'bg-amber-50 text-amber-700' },
+    can('inventory.view') && { to: '/goods-receiving', labelKey: 'quick.new_grn', fallback: 'New GRN', icon: Archive, tone: 'bg-violet-50 text-violet-700' },
   ].filter((q): q is Quick => !!q);
 
   useEffect(() => { setQuickOpen(false); }, [location.pathname]);
 
   const label = (key: string, fallback: string) => t(key, { defaultValue: fallback });
 
-  const tabEl = (tab: Tab) => (
-    <NavLink
-      key={tab.to}
-      to={tab.to}
-      className={({ isActive }) => clsx(
-        'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10.5px] font-medium leading-tight',
-        isActive ? 'text-blue-700' : 'text-gray-500',
-      )}
-    >
-      {({ isActive }) => (
-        <>
-          <span className={clsx('flex h-7 w-12 items-center justify-center rounded-full transition', isActive && 'bg-blue-50')}>
-            <tab.icon className="h-[22px] w-[22px]" strokeWidth={isActive ? 2.2 : 1.8} />
-          </span>
-          <span className="w-full truncate px-0.5 text-center">{label(tab.labelKey, tab.fallback)}</span>
-        </>
-      )}
-    </NavLink>
-  );
+  const tabEl = (tab: Tab) => {
+    const extraActive = !!tab.alsoActiveOn?.includes(location.pathname);
+    return (
+      <NavLink
+        key={tab.to}
+        to={tab.to}
+        className={({ isActive }) => clsx(
+          'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10.5px] font-medium leading-tight',
+          isActive || extraActive ? 'text-blue-700' : 'text-gray-500',
+        )}
+      >
+        {({ isActive }) => {
+          const active = isActive || extraActive;
+          return (
+            <>
+              <span className={clsx('flex h-7 w-12 items-center justify-center rounded-full transition', active && 'bg-blue-50')}>
+                <tab.icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.2 : 1.8} />
+              </span>
+              <span className="w-full truncate px-0.5 text-center">{label(tab.labelKey, tab.fallback)}</span>
+            </>
+          );
+        }}
+      </NavLink>
+    );
+  };
 
   // "More" always renders — it is the only guaranteed path to the full menu.
   const mid = quick.length > 0 ? Math.ceil(tabs.length / 2) : tabs.length;
