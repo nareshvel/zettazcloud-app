@@ -20,6 +20,7 @@ import {
   EXPENSE_CATEGORIES, PAYMENT_METHODS, RECURRENCE_INTERVALS,
 } from '@/services/financeService';
 import AttachmentUploader from '@/components/common/AttachmentUploader';
+import DatePickerInput from '@/components/ui/DatePickerInput';
 
 const ALL = '__all';
 const CUSTOM = '__custom';
@@ -513,7 +514,7 @@ export default function ExpensesPage() {
               </div>
               <div>
                 <label className="text-sm font-medium">Expense date</label>
-                <Input type="date" value={fDate} onChange={e => setFDate(e.target.value)} className="mt-1 h-11" />
+                <DatePickerInput value={fDate} onChange={setFDate} maxDate="2099-12-31" className="mt-1" />
               </div>
             </div>
 
@@ -533,7 +534,7 @@ export default function ExpensesPage() {
               </div>
               <div>
                 <label className="text-sm font-medium">Due date <span className="text-muted-foreground font-normal">(optional)</span></label>
-                <Input type="date" value={fDueDate} onChange={e => setFDueDate(e.target.value)} className="mt-1 h-11" />
+                <DatePickerInput value={fDueDate} onChange={setFDueDate} maxDate="2099-12-31" className="mt-1" />
               </div>
               <div>
                 <label className="text-sm font-medium">Status</label>
@@ -561,15 +562,7 @@ export default function ExpensesPage() {
 
             {/* Line items */}
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm font-medium">Items</label>
-                <Button
-                  type="button" variant="outline" size="sm" className="h-8"
-                  onClick={() => setFItems(p => [...p, { description: '', quantity: 1, unitCost: null, amount: 0 }])}
-                >
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Add line
-                </Button>
-              </div>
+              <label className="text-sm font-medium block mb-1">Items</label>
               <div className="rounded-lg border overflow-x-auto">
                 <table className="w-full text-sm min-w-[520px]">
                   <thead>
@@ -637,38 +630,44 @@ export default function ExpensesPage() {
                   </tbody>
                 </table>
               </div>
+              <Button
+                type="button" variant="outline" size="sm" className="h-8 mt-2"
+                onClick={() => setFItems(p => [...p, { description: '', quantity: 1, unitCost: null, amount: 0 }])}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add line
+              </Button>
             </div>
 
-            {/* Totals — GRN-style */}
+            {/* Totals — invoice-style, right-aligned label : value rows */}
             <div className="rounded-lg border bg-muted/30 p-3 sm:p-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">Subtotal</div>
-                  <div className="font-semibold tabular-nums h-11 flex items-center">{formatCurrency(subtotal)}</div>
+              <div className="ml-auto w-full sm:w-80 space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">Subtotal</span>
+                  <span className="font-semibold tabular-nums">{formatCurrency(subtotal)}</span>
                 </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1 flex items-center justify-between gap-1">
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-muted-foreground flex items-center gap-2" htmlFor="exp-tax">
                     Tax paid
-                    <label className="flex items-center gap-1 font-normal cursor-pointer" title="Line prices already include the tax">
+                    <label className="flex items-center gap-1 text-xs font-normal cursor-pointer" title="Line prices already include the tax">
                       <input type="checkbox" checked={fTaxIncl} onChange={e => setFTaxIncl(e.target.checked)} className="h-3 w-3 accent-primary" />
                       incl.
                     </label>
-                  </div>
-                  <Input type="number" min="0" step="0.01" value={fTax} onChange={e => setFTax(e.target.value)} placeholder="0.00" className="h-11 text-right" />
-                  {fTaxIncl && <p className="text-[11px] text-muted-foreground mt-0.5">already inside line prices — not added to total</p>}
+                  </label>
+                  <Input id="exp-tax" type="number" min="0" step="0.01" value={fTax} onChange={e => setFTax(e.target.value)} placeholder="0.00" className="h-9 w-32 text-right" />
                 </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">Shipping & handling</div>
-                  <Input type="number" min="0" step="0.01" value={fShipping} onChange={e => setFShipping(e.target.value)} placeholder="0.00" className="h-11 text-right" />
+                {fTaxIncl && <p className="text-[11px] text-muted-foreground text-right">already inside line prices — not added to total</p>}
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-muted-foreground" htmlFor="exp-ship">Shipping &amp; handling</label>
+                  <Input id="exp-ship" type="number" min="0" step="0.01" value={fShipping} onChange={e => setFShipping(e.target.value)} placeholder="0.00" className="h-9 w-32 text-right" />
                 </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">Discount received</div>
-                  <Input type="number" min="0" step="0.01" value={fDiscount} onChange={e => setFDiscount(e.target.value)} placeholder="0.00" className="h-11 text-right" />
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-muted-foreground" htmlFor="exp-disc">Discount received</label>
+                  <Input id="exp-disc" type="number" min="0" step="0.01" value={fDiscount} onChange={e => setFDiscount(e.target.value)} placeholder="0.00" className="h-9 w-32 text-right" />
                 </div>
-              </div>
-              <div className="flex items-center justify-between border-t mt-3 pt-3">
-                <span className="text-sm font-medium text-muted-foreground">Total payable</span>
-                <span className="text-xl font-bold tabular-nums">{formatCurrency(total)}</span>
+                <div className="flex items-center justify-between gap-4 border-t pt-2 mt-1">
+                  <span className="text-sm font-medium">Total payable</span>
+                  <span className="text-xl font-bold tabular-nums">{formatCurrency(total)}</span>
+                </div>
               </div>
             </div>
 
