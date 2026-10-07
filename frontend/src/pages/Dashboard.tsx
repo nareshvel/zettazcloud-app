@@ -885,7 +885,7 @@ const Dashboard = () => {
       {isLoading.sales || isLoading.inventory ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="flex items-center gap-2 sm:gap-3 rounded-xl border border-border bg-card p-2.5 sm:p-3.5">
+            <div key={i} className="flex items-center gap-2 sm:gap-3 rounded-xl border border-border border-r-4 border-r-primary/40 bg-card p-2.5 sm:p-3.5">
               <Skeleton className="h-10 w-10 rounded-full" />
               <div className="flex-1 space-y-2">
                 <Skeleton className="h-6 w-20" />
@@ -904,7 +904,7 @@ const Dashboard = () => {
             const changeColor = isGood ? 'text-green-600' : 'text-red-600';
             const Arrow = isPositive ? ArrowUpRight : ArrowDownRight;
             return (
-              <div key={item.label} className="flex items-center gap-2 sm:gap-3 rounded-xl border border-border bg-card p-2.5 sm:p-3.5">
+              <div key={item.label} className="flex items-center gap-2 sm:gap-3 rounded-xl border border-border border-r-4 border-r-primary/40 bg-card p-2.5 sm:p-3.5">
                 <Icon className={`h-4 w-4 sm:h-5 sm:w-5 shrink-0 ${item.color}`} />
                 <div className="min-w-0">
                   {/* Fluid font size (clamp) so long currency strings shrink to fit a 2-up

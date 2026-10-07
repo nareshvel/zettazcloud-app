@@ -184,7 +184,7 @@ const SerializedInventoryPage: React.FC = () => {
           const M = STATUS_META[s];
           return (
             <button key={s} onClick={() => setStatusFilter(statusFilter === s ? '' : s)}
-              className={`rounded-xl border p-3.5 text-left transition-all ${statusFilter === s ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border bg-card hover:border-primary/40'}`}>
+              className={`rounded-xl border border-r-4 p-3.5 text-left transition-all ${statusFilter === s ? 'border-primary border-r-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border border-r-primary/40 bg-card hover:border-primary/40'}`}>
               <p className="text-2xl font-bold text-foreground leading-none">{counts[s] ?? 0}</p>
               <p className={`text-xs font-medium mt-1 ${M.color}`}>{M.label}</p>
             </button>

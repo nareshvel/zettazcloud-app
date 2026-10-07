@@ -203,8 +203,8 @@ const OldGoldPage: React.FC = () => {
           const active = statusFilter === s;
           return (
             <button key={s} onClick={() => setStatusFilter(active ? '' : s)}
-              className={`flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all backdrop-blur-md ${
-                active ? 'border-primary bg-primary/10 shadow-sm' : 'border-white/40 bg-card/70 hover:border-primary/40 hover:shadow-md'
+              className={`flex items-center gap-3 rounded-2xl border border-r-4 p-3.5 text-left transition-all backdrop-blur-md ${
+                active ? 'border-primary border-r-primary bg-primary/10 shadow-sm' : 'border-white/40 border-r-primary/40 bg-card/70 hover:border-primary/40 hover:shadow-md'
               }`}>
               <Icon className={`h-5 w-5 shrink-0 ${M.iconColor}`} />
               <div>

@@ -494,10 +494,10 @@ const handlePrintPo = async (po: PurchaseOrder) => {
             <button
               key={s || 'all'}
               onClick={() => setStatusFilter(active ? '' : s)}
-              className={`flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all ${
+              className={`flex items-center gap-3 rounded-xl border border-r-4 p-3.5 text-left transition-all ${
                 active
-                  ? 'border-primary bg-primary/5 shadow-sm'
-                  : 'border-border bg-card hover:border-primary/40'
+                  ? 'border-primary border-r-primary bg-primary/5 shadow-sm'
+                  : 'border-border border-r-primary/40 bg-card hover:border-primary/40'
               }`}
             >
               <Meta.icon className={`h-5 w-5 shrink-0 ${Meta.color}`} />

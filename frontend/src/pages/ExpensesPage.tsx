@@ -422,19 +422,19 @@ export default function ExpensesPage() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-xl border border-r-4 border-r-primary/50 bg-card p-4">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Wallet className="h-3.5 w-3.5" /> This month</div>
           <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(summary?.thisMonth ?? 0)}</div>
         </div>
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-xl border border-r-4 border-r-amber-500 bg-card p-4">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5"><AlertCircle className="h-3.5 w-3.5" /> Owed</div>
           <div className="text-xl font-bold mt-1 tabular-nums text-amber-600">{formatCurrency(summary?.unpaidTotal ?? 0)}</div>
         </div>
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-xl border border-r-4 border-r-red-500 bg-card p-4">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5" /> Overdue</div>
           <div className="text-xl font-bold mt-1 tabular-nums text-red-600">{formatCurrency(summary?.overdueTotal ?? 0)}</div>
         </div>
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-xl border border-r-4 border-r-emerald-500 bg-card p-4">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5" /> All-time</div>
           <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(summary?.total ?? 0)}</div>
         </div>

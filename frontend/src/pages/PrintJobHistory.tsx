@@ -190,7 +190,7 @@ const PrintJobHistory: React.FC = () => {
           { label: 'Failed', value: statistics.failed || 0 },
           { label: 'Cancelled', value: statistics.cancelled || 0 },
         ].map((stat, index) => (
-          <div key={index} className="rounded-xl border p-4 bg-card">
+          <div key={index} className="rounded-xl border border-r-4 border-r-primary/40 p-4 bg-card">
             <div className="text-2xl font-bold">{stat.value}</div>
             <div className="text-sm text-muted-foreground">{stat.label}</div>
           </div>

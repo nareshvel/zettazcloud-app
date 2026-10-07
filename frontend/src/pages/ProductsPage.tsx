@@ -821,8 +821,8 @@ const ProductsPage: React.FC = () => {
               </div>
             </>
           );
-          const cls = `flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all ${
-            item.onClick ? 'border-border bg-card hover:border-primary/40 cursor-pointer' : 'border-border bg-card'
+          const cls = `flex items-center gap-3 rounded-xl border border-r-4 p-3.5 text-left transition-all ${
+            item.onClick ? 'border-border border-r-primary/40 bg-card hover:border-primary/40 cursor-pointer' : 'border-border border-r-primary/40 bg-card'
           }`;
           return item.onClick ? (
             <button key={item.label} onClick={item.onClick} className={cls}>

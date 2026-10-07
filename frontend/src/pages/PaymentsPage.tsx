@@ -225,15 +225,15 @@ export default function PaymentsPage() {
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-xl border border-r-4 border-r-emerald-500 bg-card p-4">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5"><CircleDollarSign className="h-3.5 w-3.5" /> Paid this month</div>
           <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(summary?.thisMonth ?? 0)}</div>
         </div>
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-xl border border-r-4 border-r-amber-500 bg-card p-4">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" /> Owed to suppliers</div>
           <div className="text-xl font-bold mt-1 tabular-nums text-amber-600">{formatCurrency(summary?.supplierOutstanding ?? 0)}</div>
         </div>
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-xl border border-r-4 border-r-primary/50 bg-card p-4">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5" /> Paid all-time</div>
           <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(summary?.totalPaid ?? 0)}</div>
         </div>

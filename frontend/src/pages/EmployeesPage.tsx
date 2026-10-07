@@ -221,7 +221,7 @@ const EmployeesPage: React.FC = () => {
         ].map(item => {
           const Icon = item.icon;
           return (
-            <div key={item.label} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5">
+            <div key={item.label} className="flex items-center gap-3 rounded-xl border border-border border-r-4 border-r-primary/40 bg-card p-3.5">
               <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
               <div>
                 <p className="text-2xl font-bold text-foreground leading-none">{item.value}</p>

@@ -184,17 +184,17 @@ export default function CycleCountPage() {
 
       {/* Summary counters */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-lg border bg-green-50 p-4 text-center">
+        <div className="rounded-lg border border-r-4 border-r-green-500 bg-green-50 p-4 text-center">
           <CheckCircle2 className="h-6 w-6 text-green-600 mx-auto mb-1" />
           <div className="text-2xl font-bold text-green-700">{scanned.length}</div>
           <div className="text-xs text-green-600">Scanned</div>
         </div>
-        <div className="rounded-lg border bg-red-50 p-4 text-center">
+        <div className="rounded-lg border border-r-4 border-r-red-500 bg-red-50 p-4 text-center">
           <XCircle className="h-6 w-6 text-red-500 mx-auto mb-1" />
           <div className="text-2xl font-bold text-red-600">{missing.length}</div>
           <div className="text-xs text-red-500">Missing</div>
         </div>
-        <div className="rounded-lg border bg-yellow-50 p-4 text-center">
+        <div className="rounded-lg border border-r-4 border-r-yellow-500 bg-yellow-50 p-4 text-center">
           <AlertTriangle className="h-6 w-6 text-yellow-600 mx-auto mb-1" />
           <div className="text-2xl font-bold text-yellow-700">{unexpected.length}</div>
           <div className="text-xs text-yellow-600">Unexpected</div>

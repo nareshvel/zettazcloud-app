@@ -231,7 +231,7 @@ const UserActivityReportPage: React.FC = () => {
 // ---- Sub-components ----
 
 const KpiCard: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+  <div className="rounded-xl border border-border border-r-4 border-r-primary/50 bg-card p-4 shadow-sm">
     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
     <p className="mt-1 text-xl font-bold text-foreground truncate">{value}</p>
   </div>

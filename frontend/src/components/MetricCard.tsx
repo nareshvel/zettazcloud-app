@@ -28,7 +28,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
   isClickable,
 }) => {
   const cardClasses = [
-    'bg-white dark:bg-card shadow-lg rounded-xl overflow-hidden flex flex-col border border-gray-100 dark:border-border hover:shadow-xl transition-shadow duration-200',
+    'bg-white dark:bg-card shadow-lg rounded-xl overflow-hidden flex flex-col border border-gray-100 dark:border-border border-r-4 border-r-primary/50 hover:shadow-xl transition-shadow duration-200',
     className || '',
     isClickable ? 'cursor-pointer hover:border-primary/30' : '',
   ].join(' ').trim();

@@ -494,7 +494,7 @@ const GoodsReceivingPage: React.FC = () => {
             return (
               <div
                 key={item.label}
-                className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5"
+                className="flex items-center gap-3 rounded-xl border border-border border-r-4 border-r-primary/40 bg-card p-3.5"
               >
                 <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
                 <div>
