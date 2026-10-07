@@ -43,7 +43,7 @@ const ModalBase: React.FC<ModalBaseProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
       onClick={() => {
         if (closeOnBackdropClick) {
           onClose();
@@ -51,7 +51,7 @@ const ModalBase: React.FC<ModalBaseProps> = ({
       }}
     >
       <div 
-        className={`bg-card rounded-lg shadow-xl w-full ${sizeClasses[size]} ${dialogClassName} mx-auto my-8 relative flex flex-col max-h-[90vh]`} 
+        className={`bg-card rounded-lg shadow-xl w-full ${sizeClasses[size]} ${dialogClassName} mx-auto my-4 sm:my-8 relative flex flex-col max-h-[92vh] sm:max-h-[90vh]`} 
         onClick={(e) => e.stopPropagation()} // Prevent click inside modal from closing it
       >
         {/* Modal Header */}

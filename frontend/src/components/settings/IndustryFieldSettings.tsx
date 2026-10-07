@@ -183,7 +183,7 @@ const IndustryFieldSettings: React.FC = () => {
       {showAddForm && (
         <div className="px-5 py-4 bg-primary/5 dark:bg-primary/10 border-b border-gray-100 dark:border-border">
           <p className="text-xs font-semibold text-gray-700 dark:text-foreground mb-3">New Custom Field</p>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <div>
               <label className={labelCls}>Field Key (unique, no spaces)</label>
               <input

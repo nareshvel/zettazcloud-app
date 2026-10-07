@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import CategoryTaxClassManager from '@/components/tax/CategoryTaxClassManager'; 
 import { Edit3, Package, AlertTriangle, XCircle, SlidersHorizontal, Trash2, Loader2 } from 'lucide-react'; 
 import ProductFormModal from '@/components/inventory/ProductFormModal';
@@ -113,10 +113,22 @@ const ProductsPage: React.FC = () => {
   }, [fetchData]); // Added fetchData to dependency array
 
   // Handlers for ProductFormModal
-  const handleAddProduct = () => { 
+  const handleAddProduct = () => {
     setSelectedProduct(null);
     setIsModalOpen(true);
   };
+
+  // Deep-link: open the create form when launched from the bottom-nav
+  // quick actions (?new=1). The param is stripped so a refresh won't reopen it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      searchParams.delete('new');
+      setSearchParams(searchParams, { replace: true });
+      handleAddProduct();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleEditProduct = useCallback((product: Product) => { 
     setSelectedProduct(product);

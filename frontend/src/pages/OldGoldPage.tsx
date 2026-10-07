@@ -491,7 +491,7 @@ const NewExchangeModal: React.FC<{ onClose: () => void; onSaved: () => void; pre
               {/* Metal & Purity */}
               <div className={sectionCls}>
                 <h3 className={sectionHeadCls}><Coins className="h-3.5 w-3.5" /> Metal & Purity</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className={labelCls}>Metal *</label>
                     <select className={inputCls} value={f.metal} onChange={e => onMetalChange(e.target.value)}>
@@ -513,7 +513,7 @@ const NewExchangeModal: React.FC<{ onClose: () => void; onSaved: () => void; pre
                     <Scale className="h-3.5 w-3.5" /> Assayed / Tested Purity
                     <span className="font-normal normal-case text-muted-foreground ml-1">optional</span>
                   </p>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={labelCls}>Test Method</label>
                       <select className={inputCls} value={f.test_method}
@@ -545,7 +545,7 @@ const NewExchangeModal: React.FC<{ onClose: () => void; onSaved: () => void; pre
               {/* Weight */}
               <div className={sectionCls}>
                 <h3 className={sectionHeadCls}><Scale className="h-3.5 w-3.5" /> Weight</h3>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className={labelCls}>Gross Weight (g) *</label>
                     <input className={inputCls} type="number" min="0" step="0.001" placeholder="0.000"
@@ -568,7 +568,7 @@ const NewExchangeModal: React.FC<{ onClose: () => void; onSaved: () => void; pre
               {/* Valuation */}
               <div className={sectionCls}>
                 <h3 className={sectionHeadCls}><Banknote className="h-3.5 w-3.5" /> Valuation</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className={labelCls}>Rate per Gram *</label>
                     <div className="flex gap-2">

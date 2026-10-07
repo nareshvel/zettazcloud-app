@@ -53,11 +53,13 @@ const BottomNav = ({ onMore }: { onMore: () => void }) => {
     can('sales.view') && { to: '/promotions', labelKey: 'nav.promotions', fallback: 'Promotions', icon: Tag },
   ].filter((tab): tab is Tab => !!tab);
 
+  // `?new=1` makes each list page open its create modal on arrival — the
+  // page strips the param after consuming it, so a refresh won't reopen it.
   const quick: Quick[] = [
-    can('customers.create') && { to: '/customers', labelKey: 'quick.new_customer', fallback: 'New Customer', icon: UserPlus, tone: 'bg-emerald-50 text-emerald-700' },
-    can('products.create') && { to: '/products', labelKey: 'quick.new_product', fallback: 'New Product', icon: Package, tone: 'bg-sky-50 text-sky-700' },
-    can('inventory.view') && { to: '/purchase-orders', labelKey: 'quick.new_po', fallback: 'New Purchase Order', icon: PlusCircle, tone: 'bg-amber-50 text-amber-700' },
-    can('inventory.view') && { to: '/goods-receiving', labelKey: 'quick.new_grn', fallback: 'New GRN', icon: Archive, tone: 'bg-violet-50 text-violet-700' },
+    can('customers.create') && { to: '/customers?new=1', labelKey: 'quick.new_customer', fallback: 'New Customer', icon: UserPlus, tone: 'bg-emerald-50 text-emerald-700' },
+    can('products.create') && { to: '/products?new=1', labelKey: 'quick.new_product', fallback: 'New Product', icon: Package, tone: 'bg-sky-50 text-sky-700' },
+    can('inventory.view') && { to: '/purchase-orders?new=1', labelKey: 'quick.new_po', fallback: 'New Purchase Order', icon: PlusCircle, tone: 'bg-amber-50 text-amber-700' },
+    can('inventory.view') && { to: '/goods-receiving?new=1', labelKey: 'quick.new_grn', fallback: 'New GRN', icon: Archive, tone: 'bg-violet-50 text-violet-700' },
   ].filter((q): q is Quick => !!q);
 
   useEffect(() => { setQuickOpen(false); }, [location.pathname]);

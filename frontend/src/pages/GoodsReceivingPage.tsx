@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
@@ -168,6 +169,18 @@ const GoodsReceivingPage: React.FC = () => {
     setViewOnly(false);
     setIsEditModalOpen(true);
   };
+
+  // Deep-link: open the create form when launched from the bottom-nav
+  // quick actions (?new=1). The param is stripped so a refresh won't reopen it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      searchParams.delete('new');
+      setSearchParams(searchParams, { replace: true });
+      handleAddNewGrn();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleGrnAddedOrUpdated = () => {
     setGrnToEdit(undefined);

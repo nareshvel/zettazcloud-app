@@ -508,7 +508,7 @@ const PieceDrawer: React.FC<{
           ) : (
             /* Edit form */
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Barcode</label>
                   <input className={inputCls} value={f.barcode} onChange={e => set('barcode', e.target.value)} />

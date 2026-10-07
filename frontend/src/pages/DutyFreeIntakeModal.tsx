@@ -261,7 +261,7 @@ const DutyFreeIntakeModal: React.FC<DutyFreeIntakeModalProps> = ({ onClose }) =>
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-primary/15">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-primary/15">
                   <div className="pt-3">
                     <div className={labelCls}><Phone className="inline h-3 w-3 mr-1 -mt-0.5" />Phone</div>
                     <div className="text-sm text-foreground">{existingCustomer.phone || '—'}</div>
@@ -307,7 +307,7 @@ const DutyFreeIntakeModal: React.FC<DutyFreeIntakeModalProps> = ({ onClose }) =>
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
                         <label className={labelCls}>First Name *</label>
                         <input className={inputCls()} placeholder="First name" value={newCustomer.firstName}
@@ -319,7 +319,7 @@ const DutyFreeIntakeModal: React.FC<DutyFreeIntakeModalProps> = ({ onClose }) =>
                           onChange={(e) => setNewField('lastName', e.target.value)} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
                         <label className={labelCls}>Phone</label>
                         <input className={inputCls()} type="tel" placeholder="Phone number" value={newCustomer.phone}
@@ -336,7 +336,7 @@ const DutyFreeIntakeModal: React.FC<DutyFreeIntakeModalProps> = ({ onClose }) =>
                       <input className={inputCls()} placeholder="Street, P.O. box…" value={newCustomer.addressLine1}
                         onChange={(e) => setNewField('addressLine1', e.target.value)} />
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
                         <label className={labelCls}>City</label>
                         <input className={inputCls()} placeholder="City" value={newCustomer.city}
@@ -348,7 +348,7 @@ const DutyFreeIntakeModal: React.FC<DutyFreeIntakeModalProps> = ({ onClose }) =>
                           onChange={(e) => setNewField('stateProvince', e.target.value)} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
                         <label className={labelCls}>Postal Code</label>
                         <input className={inputCls()} placeholder="Postal code" value={newCustomer.postalCode}
@@ -375,7 +375,7 @@ const DutyFreeIntakeModal: React.FC<DutyFreeIntakeModalProps> = ({ onClose }) =>
 
           {/* Right column — Traveller & travel details */}
           <div className="px-6 py-5 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Traveller ID Type</label>
                 <select
@@ -429,7 +429,7 @@ const DutyFreeIntakeModal: React.FC<DutyFreeIntakeModalProps> = ({ onClose }) =>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>{travelRefLabel} {requiredMark}</label>
                 <input
@@ -450,7 +450,7 @@ const DutyFreeIntakeModal: React.FC<DutyFreeIntakeModalProps> = ({ onClose }) =>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Destination {requiredMark}</label>
                 <input

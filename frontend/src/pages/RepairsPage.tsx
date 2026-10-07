@@ -550,7 +550,7 @@ const NewRepairModal: React.FC<{
                 <input className={inputCls} placeholder="e.g. Gold necklace with diamond pendant, approx 15g"
                   value={f.item_description} onChange={e => set('item_description', e.target.value)} />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="col-span-2">
                   <label className={labelCls}>Metal / Material</label>
                   <select className={inputCls} value={f.metal} onChange={e => set('metal', e.target.value)}>
@@ -564,7 +564,7 @@ const NewRepairModal: React.FC<{
                     value={f.weight} onChange={e => set('weight', e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Serial / Hallmark No.</label>
                   <div className="relative">
@@ -592,7 +592,7 @@ const NewRepairModal: React.FC<{
             {/* Stones */}
             <div className={sectionCls}>
               <h3 className={labelCls + ' flex items-center gap-1.5'}>💎 Stone Details</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Stone Type</label>
                   <select className={inputCls} value={f.stone_type} onChange={e => set('stone_type', e.target.value)}>
@@ -658,7 +658,7 @@ const NewRepairModal: React.FC<{
             {/* Cost & Schedule */}
             <div className={sectionCls}>
               <h3 className={labelCls + ' flex items-center gap-1.5'}><Banknote className="h-3.5 w-3.5" /> Cost & Schedule</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Estimated Cost</label>
                   <div className="relative">
@@ -695,7 +695,7 @@ const NewRepairModal: React.FC<{
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Received Date</label>
                   <DatePickerInput value={today()} onChange={() => {}} disabled />

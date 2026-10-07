@@ -466,9 +466,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   );
 
   const modalFooter = (
-    <div className="flex items-center justify-between w-full">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 w-full">
       {/* Active toggle in footer-left */}
-      <label className="flex items-center gap-2 cursor-pointer select-none">
+      <label className="flex items-center gap-2 cursor-pointer select-none shrink-0">
         <div className="relative">
           <input
             type="checkbox"
@@ -485,14 +485,14 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         </span>
       </label>
       {isNewProduct && (
-        <label className="flex items-start gap-2 cursor-pointer select-none">
+        <label className="flex items-start gap-2 cursor-pointer select-none min-w-0 flex-1 basis-48 sm:basis-auto sm:flex-none">
           <input
             type="checkbox"
             checked={restrictToThisStore}
             onChange={(e) => setRestrictToThisStore(e.target.checked)}
-            className="mt-0.5 h-4 w-4 text-primary focus:ring-ring border-gray-300 dark:border-border rounded"
+            className="mt-0.5 h-4 w-4 shrink-0 text-primary focus:ring-ring border-gray-300 dark:border-border rounded"
           />
-          <span className="text-sm text-gray-600 dark:text-muted-foreground">
+          <span className="text-sm text-gray-600 dark:text-muted-foreground min-w-0">
             Restrict to this store only
             <span className="block text-xs text-gray-400 dark:text-muted-foreground/70 font-normal">
               By default this product is shared across all stores. Check this to keep it
@@ -502,7 +502,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         </label>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 ml-auto">
         <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>
         <Button onClick={handleSubmit} disabled={isSaving} form="product-form">
           {isSaving ? <><Loader2 size={16} className="animate-spin mr-1.5" />Saving…</> : 'Save Product'}
@@ -591,7 +591,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             <SectionHeader icon={Tag} title="Pricing" />
             <div className="space-y-4">
               {/* Sales Price + Cost Price */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="price" className={labelCls}>Sales Price</label>
                   <div className="relative">
@@ -625,7 +625,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 <p className="text-xs font-semibold text-gray-500 dark:text-muted-foreground uppercase tracking-wide mb-2.5">
                   Calculate from purchase cost
                 </p>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div>
                     <label className={labelCls}>Purchase Price</label>
                     <input type="number" name="purchasePrice" min="0" step="0.01"
@@ -657,7 +657,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   <p className="text-xs font-semibold text-gray-500 dark:text-muted-foreground uppercase tracking-wide mb-2.5">
                     Jewelry Details
                   </p>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     <div>
                       <label className={labelCls}>Purity</label>
                       <input type="text" name="purity"
@@ -713,7 +713,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               )}
 
               {/* Tax + Promo side by side */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="taxClassId" className={labelCls}>Tax Class</label>
                   <select name="taxClassId" id="taxClassId"
@@ -753,7 +753,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           {/* INVENTORY */}
           <div>
             <SectionHeader icon={Package} title="Inventory" />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="stockQuantity" className={labelCls}>Stock Quantity</label>
                 <input
@@ -792,7 +792,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           {/* IDENTIFIERS */}
           <div>
             <SectionHeader icon={ReceiptText} title="Identifiers" />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="barcode" className={labelCls}>Barcode</label>
                 <input type="text" name="barcode" id="barcode"
@@ -819,7 +819,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             <SectionHeader icon={Layers} title="Product Image" />
             <label
               htmlFor="productImage"
-              className="block w-full aspect-square rounded-xl border-2 border-dashed border-border hover:border-primary transition-colors cursor-pointer overflow-hidden bg-white dark:bg-card relative group"
+              className="block w-full h-36 lg:h-auto lg:aspect-square rounded-xl border-2 border-dashed border-border hover:border-primary transition-colors cursor-pointer overflow-hidden bg-white dark:bg-card relative group"
             >
               <input
                 type="file" name="productImage" id="productImage"

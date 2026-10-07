@@ -75,7 +75,7 @@ const DynamicProductFields: React.FC<DynamicProductFieldsProps> = ({ value, onCh
   return (
     <div>
       <SectionHeader icon={Gem} title={sectionTitle} />
-      <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
         {fields.map((f) => {
           const selectedMetal: string = value['metal_type'] ?? '';
 

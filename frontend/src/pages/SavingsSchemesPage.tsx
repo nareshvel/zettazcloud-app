@@ -834,7 +834,7 @@ const PlanModal: React.FC<{
               value={f.name} onChange={e => set('name', e.target.value)} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Accrual Type</label>
               <select className={inputCls} value={f.accrual_type} onChange={e => set('accrual_type', e.target.value)}>
@@ -858,7 +858,7 @@ const PlanModal: React.FC<{
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
               <Gift className="h-3.5 w-3.5" /> Bonus (Optional)
             </h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Bonus Type</label>
                 <select className={inputCls} value={f.bonus_type} onChange={e => set('bonus_type', e.target.value)}>
@@ -1005,7 +1005,7 @@ const EnrollModal: React.FC<{
             <select className={inputCls} value={planId} onChange={e => setPlanId(e.target.value)}>
               {plans.map(p => <option key={p.id} value={p.id}>{p.name} — {p.durationMonths} months</option>)}
             </select>
-            <div className="grid grid-cols-2 gap-3 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
               <div>
                 <label className={labelCls}>Start Date</label>
                 <input className={inputCls} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />

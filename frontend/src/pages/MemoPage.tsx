@@ -792,7 +792,7 @@ const NewMemoModal: React.FC<{ defaultDirection?: MemoDirection; onClose: () => 
           </div>
 
           {/* Dates */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Issue Date</label>
               <input type="date" className={inputCls} value={issueDate} onChange={e => setIssueDate(e.target.value)} />

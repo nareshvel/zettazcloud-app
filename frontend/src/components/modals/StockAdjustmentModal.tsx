@@ -317,7 +317,7 @@ const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
                         </p>
                     </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 mt-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                     <div className="bg-white dark:bg-card p-3 rounded-md border border-blue-100">
                         <p className="text-xs font-medium text-primary uppercase tracking-wide">Current Stock</p>
                         <p className="text-xl font-bold text-blue-900">
@@ -378,7 +378,7 @@ const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
         <label className="block text-sm font-semibold text-gray-700 dark:text-foreground mb-3">
           Adjustment Type <span className="text-red-500">*</span>
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className={`flex items-center justify-center p-3 border-2 rounded-lg cursor-pointer transition-all ${
             adjustmentType === 'INCREMENT' 
               ? 'border-green-500 bg-green-50 text-green-700' 

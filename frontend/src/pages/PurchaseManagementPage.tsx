@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Edit, Eye, Trash2, ShoppingCart, FileText, DollarSign, MoreVertical, Printer, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import {
@@ -106,6 +107,18 @@ const PurchaseManagementPage: React.FC = () => {
     setModalMode('create');
     setIsModalOpen(true);
   };
+
+  // Deep-link: open the create form when launched from the bottom-nav
+  // quick actions (?new=1). The param is stripped so a refresh won't reopen it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      searchParams.delete('new');
+      setSearchParams(searchParams, { replace: true });
+      handleAddNew();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleEdit = async (poSummary: PurchaseOrder) => {
     if (!poSummary.id) {

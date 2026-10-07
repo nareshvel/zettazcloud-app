@@ -370,7 +370,7 @@ const CustomerSearchSelect: React.FC<CustomerSearchSelectProps> = ({
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className={labelCls}>First Name *</label>
               <input className={inputCls} placeholder="First name" value={quickForm.firstName}

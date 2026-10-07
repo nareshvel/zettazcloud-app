@@ -491,13 +491,13 @@ const SettingsTaxes: React.FC = () => {
         <DialogHeader><DialogTitle>{modalMode === 'edit' ? 'Edit Tax Class' : 'Add New Tax Class'}</DialogTitle><DialogDescription>Details and rates for this tax class.</DialogDescription></DialogHeader>
         <form onSubmit={handleSaveTaxClass} className="mt-4">
           <div className="grid gap-4">
-            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="name" className="text-right">Name</Label><Input id="name" value={currentTaxClass?.name || ''} onChange={(e) => setCurrentTaxClass(p => ({...p!, name: e.target.value}))} className="col-span-3" required disabled={modalMode === 'add' ? !canCreateTax : !canEditTax} /></div>
-            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="description" className="text-right">Description</Label><Input id="description" value={currentTaxClass?.description || ''} onChange={(e) => setCurrentTaxClass(p => ({...p!, description: e.target.value}))} className="col-span-3" disabled={modalMode === 'add' ? !canCreateTax : !canEditTax} /></div>
-            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="is_default" className="text-right">Set as Default</Label><Checkbox id="is_default" checked={isDefaultInModal} onCheckedChange={(checked) => setIsDefaultInModal(!!checked)} className="col-span-3 justify-self-start" disabled={!canEditStoreTax} /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-4 sm:items-center gap-2 sm:gap-4"><Label htmlFor="name" className="sm:text-right">Name</Label><Input id="name" value={currentTaxClass?.name || ''} onChange={(e) => setCurrentTaxClass(p => ({...p!, name: e.target.value}))} className="sm:col-span-3" required disabled={modalMode === 'add' ? !canCreateTax : !canEditTax} /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-4 sm:items-center gap-2 sm:gap-4"><Label htmlFor="description" className="sm:text-right">Description</Label><Input id="description" value={currentTaxClass?.description || ''} onChange={(e) => setCurrentTaxClass(p => ({...p!, description: e.target.value}))} className="sm:col-span-3" disabled={modalMode === 'add' ? !canCreateTax : !canEditTax} /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-4 sm:items-center gap-2 sm:gap-4"><Label htmlFor="is_default" className="sm:text-right">Set as Default</Label><Checkbox id="is_default" checked={isDefaultInModal} onCheckedChange={(checked) => setIsDefaultInModal(!!checked)} className="sm:col-span-3 justify-self-start" disabled={!canEditStoreTax} /></div>
             {modalMode === 'add' ? (
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="applies_to_all_stores" className="text-right">Applies To</Label>
-                <div className="col-span-3 flex items-center gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-4 sm:items-center gap-2 sm:gap-4">
+                <Label htmlFor="applies_to_all_stores" className="sm:text-right">Applies To</Label>
+                <div className="sm:col-span-3 flex items-center gap-2">
                   <Checkbox
                     id="applies_to_all_stores"
                     checked={appliesToAllStoresInModal}
@@ -510,9 +510,9 @@ const SettingsTaxes: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Scope</Label>
-                <span className="col-span-3 text-sm text-muted-foreground">
+              <div className="grid grid-cols-1 sm:grid-cols-4 sm:items-center gap-2 sm:gap-4">
+                <Label className="sm:text-right">Scope</Label>
+                <span className="sm:col-span-3 text-sm text-muted-foreground">
                   {currentTaxClass?.store_id ? 'This store only' : 'All stores (tenant-wide default)'}
                 </span>
               </div>
@@ -524,7 +524,7 @@ const SettingsTaxes: React.FC = () => {
               {editingRate && (
                 <div className="p-4 border rounded-lg mb-4 bg-gray-50 dark:bg-muted/50">
                   <h4 className="font-semibold mb-2">{editingRate.id ? 'Edit Rate' : 'Add New Rate'}</h4>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div><Label htmlFor="taxRateName">Rate Name</Label><Input id="taxRateName" value={editingRate.taxRateName || ''} onChange={(e) => setEditingRate(p => ({...p!, taxRateName: e.target.value}))} required disabled={editingRate.id ? !canEditTax : !canCreateTax} /></div>
                     <div><Label htmlFor="rate">Rate (%)</Label><Input id="rate" type="number" value={editingRate.rate || ''} onChange={(e) => setEditingRate(p => ({...p!, rate: parseFloat(e.target.value)}))} required disabled={editingRate.id ? !canEditTax : !canCreateTax} /></div>
                     <div><Label htmlFor="priority">Priority</Label><Input id="priority" type="number" value={editingRate.priority || ''} onChange={(e) => setEditingRate(p => ({...p!, priority: parseInt(e.target.value, 10)}))} required disabled={editingRate.id ? !canEditTax : !canCreateTax} /></div>

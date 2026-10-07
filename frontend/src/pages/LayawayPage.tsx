@@ -958,7 +958,7 @@ const NewPlanModal: React.FC<{
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Instalments</label>
                   <input className={inputCls} type="number" min="1" max="60"
@@ -1565,7 +1565,7 @@ const PaymentModal: React.FC<{
           </div>
 
           {/* Reference */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Reference / Receipt No.</label>
               <input className={inputCls} placeholder="Optional"
@@ -1677,7 +1677,7 @@ export const EmailModal: React.FC<{
           {/* Document type */}
           <div>
             <label className={labelCls}>Document</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {(['agreement', 'statement'] as const).map(t => (
                 <button
                   key={t}

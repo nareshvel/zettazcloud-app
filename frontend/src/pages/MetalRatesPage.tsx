@@ -471,7 +471,7 @@ const SettingsPanel: React.FC<{
           <p className="text-xs text-muted-foreground mt-1">Get a free key at <span className="font-medium">goldapi.io</span>. Rates auto-convert to your org's currency.</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Local premium %</label>
             <input type="number" min="0" max="50" step="0.1" className={inputCls}
@@ -733,7 +733,7 @@ const PublishRateModal: React.FC<{
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Metal *</label>
               <input className={inputCls} list="metal-list" value={metal} onChange={e => setMetal(e.target.value)} />

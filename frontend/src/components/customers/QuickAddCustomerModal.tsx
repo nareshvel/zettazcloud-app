@@ -195,7 +195,7 @@ const QuickAddCustomerModal: React.FC<QuickAddCustomerModalProps> = ({
 
           {/* ── Essential ─────────────────────────────────────────── */}
           <div className="space-y-3.5">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>First Name <span className="text-red-400">*</span></label>
                 <input ref={firstRef} className={inp()} placeholder="First name"
@@ -209,7 +209,7 @@ const QuickAddCustomerModal: React.FC<QuickAddCustomerModalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Phone</label>
                 <div className="relative">
@@ -249,7 +249,7 @@ const QuickAddCustomerModal: React.FC<QuickAddCustomerModalProps> = ({
           {/* ── Identity & Contact ────────────────────────────────── */}
           <Section icon={ShieldCheck} label="Identity & Contact" open={openIdentity} onToggle={() => setOpenIdentity(x => !x)}>
             {isPersonal && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={lbl}>Date of Birth</label>
                   <DatePickerInput
@@ -282,7 +282,7 @@ const QuickAddCustomerModal: React.FC<QuickAddCustomerModalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>ID Type</label>
                 <div className="relative">
@@ -316,7 +316,7 @@ const QuickAddCustomerModal: React.FC<QuickAddCustomerModalProps> = ({
               <input className={inp()} placeholder="Apt, suite, unit…"
                 value={form.addressLine2} onChange={e => set('addressLine2', e.target.value)} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>City</label>
                 <input className={inp()} placeholder="City"
@@ -328,7 +328,7 @@ const QuickAddCustomerModal: React.FC<QuickAddCustomerModalProps> = ({
                   value={form.stateProvince} onChange={e => set('stateProvince', e.target.value)} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Postal Code</label>
                 <input className={inp()} placeholder="Postal code"
@@ -349,7 +349,7 @@ const QuickAddCustomerModal: React.FC<QuickAddCustomerModalProps> = ({
 
           {/* ── Financial ─────────────────────────────────────────── */}
           <Section icon={DollarSign} label="Financial" open={openFinancial} onToggle={() => setOpenFinancial(x => !x)}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Tax ID / VAT</label>
                 <div className="relative">
