@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -638,9 +639,16 @@ export default function ExpensesPage() {
               </Button>
             </div>
 
-            {/* Totals — invoice-style, right-aligned label : value rows */}
-            <div className="rounded-lg border bg-muted/30 p-3 sm:p-4">
-              <div className="ml-auto w-full sm:w-80 space-y-2">
+            {/* Totals — invoice-style rows on the right, notes on the left */}
+            <div className="rounded-lg border bg-muted/30 p-3 sm:p-4 flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 min-w-0">
+                <label className="text-sm font-medium">Notes</label>
+                <Textarea
+                  value={fNotes} onChange={e => setFNotes(e.target.value)}
+                  className="mt-1 min-h-[132px] resize-y" placeholder="Optional — memo, invoice terms, internal note…"
+                />
+              </div>
+              <div className="w-full sm:w-80 shrink-0 space-y-2">
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-sm text-muted-foreground">Subtotal</span>
                   <span className="font-semibold tabular-nums">{formatCurrency(subtotal)}</span>
@@ -690,30 +698,7 @@ export default function ExpensesPage() {
               </div>
             )}
 
-            {/* Recurring + notes */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer select-none h-11 mt-1">
-                  <input type="checkbox" checked={fRecurring} onChange={e => setFRecurring(e.target.checked)} className="h-4 w-4 accent-primary" />
-                  <Repeat className="h-4 w-4 text-muted-foreground" /> Recurring expense
-                </label>
-                {fRecurring && (
-                  <>
-                    <Select value={fInterval} onValueChange={v => setFInterval(v as any)}>
-                      <SelectTrigger className="mt-1 w-full h-11"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {RECURRENCE_INTERVALS.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-[11px] text-muted-foreground mt-1">A new unpaid expense is generated each {fInterval === 'weekly' ? 'week' : fInterval.slice(0, -2)}ly period.</p>
-                  </>
-                )}
-              </div>
-              <div>
-                <label className="text-sm font-medium">Notes</label>
-                <Input value={fNotes} onChange={e => setFNotes(e.target.value)} className="mt-1 h-11" placeholder="Optional" />
-              </div>
-            </div>
+            {/* Recurring controls sit in the footer beside Cancel */}
 
             {/* Receipts — available once the expense exists */}
             {editing && (
@@ -729,12 +714,31 @@ export default function ExpensesPage() {
             )}
             {formError && <p className="text-sm text-destructive">{formError}</p>}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={save} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editing ? 'Save changes' : 'Add expense'}
-            </Button>
+          <DialogFooter className="sm:justify-between gap-2">
+            <div className="flex items-center gap-3 sm:mr-auto">
+              <label className="flex items-center gap-2 text-sm font-medium cursor-pointer select-none">
+                <input type="checkbox" checked={fRecurring} onChange={e => setFRecurring(e.target.checked)} className="h-4 w-4 accent-primary" />
+                <Repeat className="h-4 w-4 text-muted-foreground" /> Recurring
+              </label>
+              {fRecurring && (
+                <Select value={fInterval} onValueChange={v => setFInterval(v as any)}>
+                  <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {RECURRENCE_INTERVALS.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+              {fRecurring && (
+                <span className="text-[11px] text-muted-foreground hidden lg:inline">New unpaid expense each period</span>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
+              <Button onClick={save} disabled={saving}>
+                {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {editing ? 'Save changes' : 'Add expense'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
