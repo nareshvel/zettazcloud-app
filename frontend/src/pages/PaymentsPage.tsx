@@ -88,7 +88,7 @@ export default function PaymentsPage() {
     fetchApi<any>('/suppliers?limit=200')
       .then((r: any) => {
         const list = Array.isArray(r) ? r : (r.suppliers || r.items || []);
-        setSuppliers(list.map((s: any) => ({ id: s.id, name: s.name })));
+        setSuppliers(list.map((s: any) => ({ id: s.id, name: s.supplierName || s.name })));
       })
       .catch(() => {});
     financeService.listExpenses({ status: 'unpaid' })

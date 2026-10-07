@@ -14,8 +14,7 @@ export interface Expense {
   supplierId?: string;
   supplierName?: string;
   notes?: string;
-  createdByFirstName?: string;
-  createdByLastName?: string;
+  createdByName?: string;
   createdAt?: string;
 }
 
@@ -42,8 +41,7 @@ export interface OutgoingPayment {
   reference?: string;
   notes?: string;
   status: 'completed' | 'voided';
-  createdByFirstName?: string;
-  createdByLastName?: string;
+  createdByName?: string;
   createdAt?: string;
 }
 

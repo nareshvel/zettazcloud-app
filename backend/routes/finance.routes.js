@@ -80,8 +80,8 @@ router.get('/expenses', requirePermission('finance.view'), async (req, res) => {
     }
 
     const [items] = await pool.query(
-      `SELECT e.*, s.name AS supplier_name,
-              u.first_name AS created_by_first_name, u.last_name AS created_by_last_name
+      `SELECT e.*, s.supplier_name AS supplier_name,
+              u.name AS created_by_name
          FROM expenses e
          LEFT JOIN suppliers s ON s.id = e.supplier_id
          LEFT JOIN users u ON u.id = e.created_by
@@ -323,8 +323,8 @@ router.get('/payments', requirePermission('finance.view'), async (req, res) => {
     }
 
     const [items] = await pool.query(
-      `SELECT p.*, s.name AS supplier_name, po.purchase_order_number,
-              u.first_name AS created_by_first_name, u.last_name AS created_by_last_name
+      `SELECT p.*, s.supplier_name AS supplier_name, po.purchase_order_number,
+              u.name AS created_by_name
          FROM outgoing_payments p
          LEFT JOIN suppliers s ON s.id = p.supplier_id
          LEFT JOIN purchase_orders po ON po.id = p.purchase_order_id
@@ -413,9 +413,9 @@ router.post('/payments', requirePermission('finance.manage'), async (req, res) =
 
     if (payeeType === 'supplier') {
       if (!supplierId) { await conn.rollback(); return res.status(400).json({ message: 'Supplier is required.' }); }
-      const [sup] = await conn.query('SELECT id, name FROM suppliers WHERE id = ? AND tenant_id = ?', [supplierId, tenantId]);
+      const [sup] = await conn.query('SELECT id, supplier_name FROM suppliers WHERE id = ? AND tenant_id = ?', [supplierId, tenantId]);
       if (!sup.length) { await conn.rollback(); return res.status(400).json({ message: 'Supplier not found.' }); }
-      resolvedPayeeName = sup[0].name;
+      resolvedPayeeName = sup[0].supplier_name;
       linkedSupplierId = supplierId;
 
       if (purchaseOrderId) {
