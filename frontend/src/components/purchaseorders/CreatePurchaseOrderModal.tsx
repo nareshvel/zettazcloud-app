@@ -279,11 +279,11 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({
 
   const modalFooterContent = (
     <>
-      <Button onClick={() => handleSubmitInternal()} disabled={isSubmitting || !selectedSupplierId || items.length === 0 || isViewMode}>
-        {effectiveMode === 'edit' ? 'Save Changes' : (effectiveMode === 'create' ? 'Create Purchase Order' : 'View Purchase Order')}
-      </Button>
       <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
         {isViewMode ? 'Close' : 'Cancel'}
+      </Button>
+      <Button onClick={() => handleSubmitInternal()} disabled={isSubmitting || !selectedSupplierId || items.length === 0 || isViewMode}>
+        {effectiveMode === 'edit' ? 'Save Changes' : (effectiveMode === 'create' ? 'Create Purchase Order' : 'View Purchase Order')}
       </Button>
     </>
   );
@@ -297,7 +297,7 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({
       size="4xl" 
     >
       <form onSubmit={handleSubmitInternal} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-2 gap-3 sm:gap-6">
           <div className="form-group">
             <label htmlFor="supplier">Supplier *</label>
             {existingPurchaseOrder ? (
@@ -340,7 +340,7 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-2 gap-3 sm:gap-6">
           <div>
             <label htmlFor="orderDate" className="block text-sm font-medium text-gray-700 dark:text-foreground mb-1">Order Date *</label>
             <Popover>
@@ -397,7 +397,7 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
           <div>
             <label htmlFor="status" className="block text-sm font-medium text-gray-700 dark:text-foreground mb-1">Status *</label>
             <Select value={status} onValueChange={(value) => setStatus(value as PurchaseOrderCreationStatus)} disabled={isSubmitting || isViewMode}>

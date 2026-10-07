@@ -1032,7 +1032,7 @@ const AddGoodsReceivedModal = ({ isOpen, onClose, storeId, tenantId, onGrnAdded,
         )}
 
         {/* Row 1: Supplier & PO Button */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 border-b pb-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 p-3 border-b pb-4">
           <div>
             <Label htmlFor="supplier">Supplier *</Label>
             {isEditMode || isViewMode ? (
@@ -1115,7 +1115,7 @@ const AddGoodsReceivedModal = ({ isOpen, onClose, storeId, tenantId, onGrnAdded,
         {/* GRN Details Section - 2 Column Layout */}
         <div className="p-4 border-b">
           <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-foreground">GRN Details</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-2 gap-3 sm:gap-6">
             {/* Left Column */}
             <div className="space-y-4">
               <div className="space-y-2">
@@ -1272,7 +1272,8 @@ const AddGoodsReceivedModal = ({ isOpen, onClose, storeId, tenantId, onGrnAdded,
         <div className="p-3 border-b pb-4">
           <h3 className="text-lg font-semibold mb-2">GRN Items ({grnItems.length})</h3>
           {grnItems.length === 0 ? (<p className="text-muted-foreground text-center py-4">No items added.</p>) : (
-            <Table className="text-xs">
+            <div className="overflow-x-auto -mx-1 px-1">
+            <Table className="text-xs min-w-[760px]">
               <TableHeader><TableRow>
                   <TableHead className="w-[15%]">Product</TableHead>
                   <TableHead className="w-[100px]">Qty Rcvd*</TableHead>
@@ -1394,11 +1395,12 @@ const AddGoodsReceivedModal = ({ isOpen, onClose, storeId, tenantId, onGrnAdded,
               ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </div>
 
         {/* Row 5: Notes & Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-3">
+        <div className="grid grid-cols-2 gap-3 sm:gap-6 p-3">
           {/* Left column: Notes/Remarks */}
           <div className="space-y-2">
             <Label htmlFor="notes">Notes</Label>

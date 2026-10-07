@@ -300,7 +300,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           {/* ── Customer type strip ─────────────────────────────────── */}
           <div className="px-6 pt-5 pb-4 border-b border-border bg-muted/20">
             <p className={lbl + ' mb-2'}>Customer Type <span className="text-red-400">*</span></p>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-nowrap overflow-x-auto pb-1 -mx-1 px-1">
               {CUSTOMER_TYPES.map(t => {
                 const active = formData.customerType === t.value;
                 return (
@@ -308,7 +308,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                     key={t.value}
                     type="button"
                     onClick={() => set('customerType', t.value)}
-                    className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                    className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-all shrink-0 whitespace-nowrap ${
                       active
                         ? 'bg-primary text-primary-foreground border-primary shadow-sm'
                         : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
@@ -322,14 +322,14 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           </div>
 
           {/* ── 2 × 2 grid ─────────────────────────────────────────── */}
-          <div className="p-6 bg-muted/30 grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="p-3 sm:p-6 bg-muted/30 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
 
             {/* TOP-LEFT: Identity & Contact */}
             <SectionCard>
               <SectionHead icon={User} label="Identity & Contact" />
               <div className="space-y-3.5">
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>First Name <span className="text-red-400">*</span></label>
                     <input className={inp(errors.firstName)} name="firstName"
@@ -357,7 +357,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>Phone</label>
                     <div className="relative">
@@ -381,7 +381,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
 
                 {/* Personal only: DOB + gender */}
                 {isPersonal && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className={lbl}>Date of Birth</label>
                       <DatePickerInput
@@ -418,7 +418,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                 </div>
 
                 {/* ID Type + Number */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>ID Type</label>
                     <div className="relative">
@@ -446,7 +446,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                 </div>
 
                 {/* Preferred contact */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>Preferred Contact</label>
                     <div className="relative">
@@ -491,7 +491,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                   <input className={inp()} name="addressLine2" value={formData.addressLine2}
                     onChange={handleChange} placeholder="Apt, suite, unit…" />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>City</label>
                     <input className={inp()} name="city" value={formData.city}
@@ -503,7 +503,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                       onChange={handleChange} placeholder="State" />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>Postal Code</label>
                     <input className={inp()} name="postalCode" value={formData.postalCode}
@@ -541,7 +541,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>Credit Limit ({currencySymbol})</label>
                     <div className="relative">
@@ -566,7 +566,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                 </div>
 
                 {/* Default discount */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>Default Discount</label>
                     <select className={inp()} name="defaultDiscountType"
