@@ -13,11 +13,19 @@ cd "$ROOT"
 
 log "Pulling origin/${BRANCH}"
 git checkout "$BRANCH"
+# The migration runner moves applied .sql files into database/migrations/applied/
+# as untracked copies; when the same path gets committed upstream the next pull
+# aborts with "untracked working tree files would be overwritten". applied/ is a
+# pure archive — the runner never reads it — so dropping untracked copies is safe.
+git clean -fd database/migrations/applied/
 git pull --ff-only origin "$BRANCH"
 
 log "Installing backend dependencies"
 cd "$ROOT/backend"
 npm ci
+
+log "Applying database migrations"
+node scripts/migrate.js --yes
 
 log "Starting / restarting backend"
 if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
