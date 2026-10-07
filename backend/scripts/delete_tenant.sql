@@ -225,6 +225,10 @@ DELETE FROM `savings_scheme_sequences` WHERE tenant_id COLLATE utf8mb4_0900_ai_c
 
 DELETE FROM `stock_adjustments` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 
+DELETE FROM `stock_count_session_items` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
+
+DELETE FROM `stock_count_sessions` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
+
 DELETE FROM `store_jurisdiction_settings` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
 
 DELETE FROM `store_product_listings` WHERE tenant_id COLLATE utf8mb4_0900_ai_ci = @tenant_id COLLATE utf8mb4_0900_ai_ci;
