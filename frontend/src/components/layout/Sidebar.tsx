@@ -284,7 +284,9 @@ const Sidebar = ({ className = '', isCollapsed, onToggleCollapse, mobileOpen, on
         return { ...item, name: tNav(item.nameKey), children: visibleChildren };
       }
 
-      return { ...item, name: tNav(item.nameKey) };
+      // Leaf: `children` is undefined/empty here, but the spread still types it
+      // as NavigationItemRaw[] — clear it so the result satisfies NavigationItem.
+      return { ...item, name: tNav(item.nameKey), children: undefined };
     };
 
     return NAV_TREE.map((section) => {

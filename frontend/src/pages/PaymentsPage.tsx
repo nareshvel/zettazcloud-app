@@ -11,7 +11,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import ReusableTable, { ColumnDefinition } from '@/components/ReusableTable';
-import { useCurrency } from '@/contexts/LocalizationContext';
+import { useCurrency, useDateFormatting } from '@/contexts/LocalizationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
 import {
@@ -32,7 +32,8 @@ const typeBadge = (t: OutgoingPayment['payeeType']) => {
 };
 
 export default function PaymentsPage() {
-  const { formatCurrency, formatDate } = useCurrency();
+  const { formatCurrency } = useCurrency();
+  const { formatDate } = useDateFormatting();
   const { user } = useAuth();
   const canManage = hasAnyPermission(user, ['finance.manage']);
 
