@@ -37,6 +37,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getCategories } from '@/services/inventoryService';
 import * as sc from '@/services/stockCountService';
 import { useAuth } from '@/contexts/AuthContext';
@@ -235,6 +236,7 @@ export default function StockCountPage() {
   // --- count sheet controls -----------------------------------------------------
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<SheetFilter>('all');
+  const [itemCategory, setItemCategory] = useState(ALL_CATEGORIES);
   const [rowCap, setRowCap] = useState(ROW_CAP);
   const [scanMiss, setScanMiss] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -304,12 +306,25 @@ export default function StockCountPage() {
       setNoteDetails({});
       setSearch('');
       setFilter('all');
+      setItemCategory(ALL_CATEGORIES);
       setRowCap(ROW_CAP);
       pending.current.clear();
     } catch (e: any) {
       setError(e.message || 'Failed to open session.');
     } finally {
       setSessionLoading(false);
+    }
+  };
+
+  const refreshSession = async () => {
+    if (!session) return;
+    await flushPending();
+    try {
+      const { session: fresh, items: sessionItems } = await sc.getSession(session.id);
+      setSession(fresh);
+      setItems(sessionItems);
+    } catch (e: any) {
+      setError(e.message || 'Failed to refresh session.');
     }
   };
 
@@ -409,17 +424,26 @@ export default function StockCountPage() {
     [varianceItems, entryValues]);
   const remaining = items.length - countedItems.length;
 
-  // Search filters the session's items locally — the sheet is fixed at
-  // create time; scanning a barcode can still pull in out-of-scope products.
+  // Search + category filter the session's items locally — the sheet is
+  // fixed at create time; scanning a barcode can still pull in
+  // out-of-scope products. Category = "which shelf am I on right now".
   const needle = search.trim().toLowerCase();
+  const categoriesInSession = useMemo(
+    () => Array.from(new Set(items.map(i => i.categoryName).filter((c): c is string => !!c))).sort(),
+    [items]
+  );
   const searched = useMemo(() => {
-    if (!needle) return items;
-    return items.filter(i =>
-      i.productName.toLowerCase().includes(needle) ||
-      (i.sku && i.sku.toLowerCase().includes(needle)) ||
-      (i.barcode && i.barcode.toLowerCase().includes(needle))
-    );
-  }, [items, needle]);
+    let list = items;
+    if (itemCategory !== ALL_CATEGORIES) list = list.filter(i => i.categoryName === itemCategory);
+    if (needle) {
+      list = list.filter(i =>
+        i.productName.toLowerCase().includes(needle) ||
+        (i.sku && i.sku.toLowerCase().includes(needle)) ||
+        (i.barcode && i.barcode.toLowerCase().includes(needle))
+      );
+    }
+    return list;
+  }, [items, needle, itemCategory]);
 
   const visibleItems = useMemo(() => {
     let list = searched;
@@ -681,44 +705,53 @@ export default function StockCountPage() {
             </div>
           )}
 
-          {/* Scope + filter controls — hidden for read-only sessions except search */}
-          <div className="rounded-xl border bg-card p-3 space-y-3">
-            <div className="relative">
-              <ScanBarcode className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                ref={scanRef}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                onKeyDown={handleScanKeyDown}
-                placeholder={isReadOnly ? 'Search this count…' : 'Scan barcode, or search name / SKU…'}
-                className="pl-10 h-11 text-base font-mono"
-                autoComplete="off"
-                enterKeyHint="go"
-              />
-              {search && (
-                <button type="button" onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label="Clear search">
-                  <X className="h-4 w-4" />
-                </button>
+          {/* Sheet controls — one compact row: scan/search + shelf
+              (category) picker + status picker + refresh. */}
+          <div className="rounded-xl border bg-card p-3">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 min-w-0">
+                <ScanBarcode className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  ref={scanRef}
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  onKeyDown={handleScanKeyDown}
+                  placeholder={isReadOnly ? 'Search…' : 'Scan or search…'}
+                  className="pl-10 h-11 text-base font-mono"
+                  autoComplete="off"
+                  enterKeyHint="go"
+                />
+                {search && (
+                  <button type="button" onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label="Clear search">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {categoriesInSession.length > 1 && (
+                <Select value={itemCategory} onValueChange={setItemCategory}>
+                  <SelectTrigger className="w-28 sm:w-40 h-11 shrink-0" aria-label="Filter by category">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_CATEGORIES}>All shelves</SelectItem>
+                    {categoriesInSession.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               )}
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-              {([
-                ['all', `All (${items.length})`],
-                ['remaining', `Remaining (${remaining})`],
-                ['counted', `Counted (${countedItems.length})`],
-                ['variances', `Variances (${varianceItems.length})`],
-              ] as [SheetFilter, string][]).map(([key, lbl]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setFilter(key)}
-                  className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                    filter === key ? 'bg-foreground text-background border-foreground' : 'bg-background text-muted-foreground border-input hover:bg-muted'
-                  }`}
-                >
-                  {lbl}
-                </button>
-              ))}
+              <Select value={filter} onValueChange={v => setFilter(v as SheetFilter)}>
+                <SelectTrigger className="w-28 sm:w-40 h-11 shrink-0" aria-label="Filter by count status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All ({items.length})</SelectItem>
+                  <SelectItem value="remaining">Remaining ({remaining})</SelectItem>
+                  <SelectItem value="counted">Counted ({countedItems.length})</SelectItem>
+                  <SelectItem value="variances">Variances ({varianceItems.length})</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" onClick={refreshSession} disabled={busy} title="Refresh count">
+                <RefreshCcw className="h-4 w-4" />
+              </Button>
             </div>
           </div>
 
@@ -729,17 +762,17 @@ export default function StockCountPage() {
             </div>
           )}
 
-          {/* Count sheet */}
-          <div className="rounded-xl border divide-y overflow-hidden bg-card">
-            {visibleItems.length === 0 && (
-              <div className="px-4 py-10 text-center text-muted-foreground text-sm space-y-1">
-                <PackageSearch className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                {filter === 'remaining' ? 'Everything in scope is counted.'
-                  : filter === 'counted' ? 'Nothing counted yet — scan or tap through the list.'
-                  : filter === 'variances' ? 'No variances — every count matched.'
-                  : 'No items in this count.'}
-              </div>
-            )}
+          {/* Count sheet — cards: 2-col on desktop, stacked on phones */}
+          {visibleItems.length === 0 && (
+            <div className="rounded-xl border bg-card px-4 py-10 text-center text-muted-foreground text-sm space-y-1">
+              <PackageSearch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              {filter === 'remaining' ? 'Everything in scope is counted.'
+                : filter === 'counted' ? 'Nothing counted yet — scan or tap through the list.'
+                : filter === 'variances' ? 'No variances — every count matched.'
+                : 'No items in this count.'}
+            </div>
+          )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {shownItems.map(item => {
               const val = entryValues[item.productId] ?? '';
               const delta = deltaFor(item);
@@ -749,7 +782,7 @@ export default function StockCountPage() {
                 <div
                   key={item.productId}
                   ref={el => { if (el) rowRefs.current.set(item.productId, el); else rowRefs.current.delete(item.productId); }}
-                  className={`px-3 sm:px-4 py-3 transition-colors ${isFocused ? 'bg-primary/5 ring-2 ring-inset ring-primary/50' : 'hover:bg-muted/30'} ${status === 'match' ? 'bg-green-50/40' : ''}`}
+                  className={`rounded-xl border bg-card p-3.5 sm:p-4 transition-colors ${isFocused ? 'bg-primary/5 ring-2 ring-inset ring-primary/50' : ''} ${status === 'match' ? 'bg-green-50/40 border-green-200' : ''}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -816,12 +849,12 @@ export default function StockCountPage() {
                 </div>
               );
             })}
-            {visibleItems.length > rowCap && (
-              <button type="button" onClick={() => setRowCap(c => c + ROW_CAP)} className="w-full px-4 py-3 text-sm text-primary hover:bg-muted/30">
-                Show {Math.min(ROW_CAP, visibleItems.length - rowCap)} more of {visibleItems.length - rowCap} remaining…
-              </button>
-            )}
           </div>
+          {visibleItems.length > rowCap && (
+            <button type="button" onClick={() => setRowCap(c => c + ROW_CAP)} className="w-full rounded-xl border bg-card px-4 py-3 text-sm text-primary hover:bg-muted/30">
+              Show {Math.min(ROW_CAP, visibleItems.length - rowCap)} more of {visibleItems.length - rowCap} remaining…
+            </button>
+          )}
 
           {/* Sticky action bar */}
           {!isReadOnly && (
@@ -874,29 +907,15 @@ export default function StockCountPage() {
             </div>
             <div>
               <label className="text-sm font-medium">Scope</label>
-              <div className="flex gap-2 overflow-x-auto pb-1 mt-1 -mx-1 px-1">
-                <button
-                  type="button"
-                  onClick={() => setNewCategoryId(ALL_CATEGORIES)}
-                  className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                    newCategoryId === ALL_CATEGORIES ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-input hover:bg-muted'
-                  }`}
-                >
-                  All categories
-                </button>
-                {categories.map(c => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setNewCategoryId(c.id === newCategoryId ? ALL_CATEGORIES : c.id)}
-                    className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                      newCategoryId === c.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-input hover:bg-muted'
-                    }`}
-                  >
-                    {c.name}
-                  </button>
-                ))}
-              </div>
+              <Select value={newCategoryId} onValueChange={setNewCategoryId}>
+                <SelectTrigger className="mt-1 w-full" aria-label="Count scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_CATEGORIES}>All categories</SelectItem>
+                  {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/30">

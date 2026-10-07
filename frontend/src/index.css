@@ -44,7 +44,9 @@ input[type=number] {
     --secondary-foreground: 0 0% 9%; /* Dark Gray */
 
     --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
+    /* Darkened from 45.1% — light-gray secondary text was failing WCAG AA
+       (~4.4:1) and reading as placeholder-faint everywhere it was used. */
+    --muted-foreground: 0 0% 32%;
 
     --accent: 0 0% 96.1%;
     --accent-foreground: 0 0% 9%;
