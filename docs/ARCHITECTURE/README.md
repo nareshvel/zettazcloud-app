@@ -14,12 +14,20 @@ This guide covers the deployment process for each component, configuration manag
 
 ## 📚 Documentation Index
 
+> **Current deployment truth lives in `/AGENTS.md` (repo root).** Production is a
+> single VPS (`185.75.21.46`) hosting the repo at `/var/www/zettazcloud-app` with
+> MySQL `zettazcloud_prod @ localhost:3306`; deploy via
+> `bash /var/www/zettazcloud-app/deploy.sh` (full) or `deploy-quick.sh` (quick).
+> The guides linked below describe the pre-migration layout (frontend on shared
+> hosting, repo at `/var/www/app-zettaz-cloud/repo`, remote MySQL
+> `mysql.us.cloudlogin.co`, port 3001) and are kept for historical reference only.
+
 ### Quick Start
-- **[Production Deployment Guide](./production-deployment.md)** - Step-by-step production deployment
-- **[Frontend Deployment Steps](./frontend-deployment-steps.md)** - Detailed frontend build and deployment
+- **[Production Deployment Guide](./production-deployment.md)** - Step-by-step production deployment *(superseded — see AGENTS.md)*
+- **[Frontend Deployment Steps](./frontend-deployment-steps.md)** - Detailed frontend build and deployment *(superseded — see AGENTS.md)*
 
 ### Architecture & Infrastructure
-- **[Infrastructure Architecture](./infrastructure-architecture.md)** - Complete infrastructure overview and diagrams
+- **[Infrastructure Architecture](./infrastructure-architecture.md)** - Complete infrastructure overview and diagrams *(superseded — see AGENTS.md)*
 - **[Production Issue Resolution (Nov 2025)](./production-issue-resolution-nov2025.md)** - Detailed troubleshooting case study
 
 ### Reference

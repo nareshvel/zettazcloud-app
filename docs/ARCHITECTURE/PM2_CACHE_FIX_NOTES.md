@@ -1,3 +1,6 @@
+> **SUPERSEDED (2026-10):** This document describes the pre-migration production layout — backend at `/var/www/app-zettaz-cloud/repo`, remote MySQL `mysql.us.cloudlogin.co` (some docs also show the old shared-hosting frontend and port 3001). Current layout: everything on the VPS at `/var/www/zettazcloud-app` with MySQL `zettazcloud_prod @ localhost:3306`; deploy via `bash /var/www/zettazcloud-app/deploy.sh` or `deploy-quick.sh` (see `AGENTS.md` at the repo root). Kept for historical reference only.
+>
+
 Fix: Clear PM2 Cache
 
 pm2 stop all

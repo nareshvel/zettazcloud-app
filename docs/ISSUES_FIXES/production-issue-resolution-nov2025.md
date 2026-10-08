@@ -1,3 +1,5 @@
+> **SUPERSEDED (2026-10):** Dated incident record. Paths (`/var/www/app-zettaz-cloud/repo`) and the remote MySQL host (`mysql.us.cloudlogin.co`) predate the migration to `/var/www/zettazcloud-app` with MySQL on localhost — see `/AGENTS.md`.
+>
 # Production Deployment Issue Resolution - November 2025
 
 ## Executive Summary

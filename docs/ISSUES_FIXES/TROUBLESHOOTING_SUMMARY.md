@@ -1,3 +1,5 @@
+> **SUPERSEDED (2026-10):** Dated troubleshooting record. Paths shown (`/var/www/app-zettaz-cloud/repo`, port 3001, remote MySQL) predate the migration to `/var/www/zettazcloud-app` with MySQL on localhost — see `/AGENTS.md` for the current deployment.
+>
 # Deployment Troubleshooting Summary
 
 ## What Went Wrong

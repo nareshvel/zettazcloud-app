@@ -366,3 +366,24 @@ from here on; no special handling needed.
 **Tests:** backend 450 passing (+5 in `createSaleController.ledger.test.js`: split legs→one debit per method + a payment row each, under-total split → 400, on_account leg w/o customer → 400, only the on-account leg bumps outstanding_credit, COGS/INVENTORY legs valued from the unit_cost snapshot); frontend 734; tsc clean. Stub files needed `unitCost` added to the moneyPostingService stub.
 **Gotchas:** `pool.query` returns rows array directly (not `[rows,fields]`); `POST /sales` reads `store_id` snake key; `COMMENT 'x'` inside PREPARE-wrapped DDL trips the migration splitter (dropped it); GRN delete requires `?tenant_id=` query param.
 **Not done / honesty notes:** (a) linked-sale savings redemption crediting the tender account is code-reviewed but smoke was standalone only; (b) `updateGrn`/`updateGrnStatus` commit/reversal paths are code-reviewed, create-COMPLETED and delete are the live-verified ones; (c) period lock is one rolling date per tenant, not named fiscal periods.
+
+---
+
+## Session: 2026-10-14 — Production layout correction (docs sync)
+
+**Context:** The finance-completeness session ended with the old deploy command
+(`bash /var/www/app-zettaz-cloud/repo/deploy-backend.sh`), picked up from stale
+docs/summaries. Production migrated earlier (see `migrate-to-root.sh`) to a
+single-VPS layout — confirmed live by the user's deploy output.
+
+**Current production truth (supersedes all older references):**
+- Repo: `/var/www/zettazcloud-app` (was `/var/www/app-zettaz-cloud/repo`)
+- Deploy: `bash /var/www/zettazcloud-app/deploy.sh` (full: pull + `npm ci` + migrate + PM2 restart + frontend build + nginx reload) or `bash /var/www/zettazcloud-app/deploy-quick.sh` (skips `npm ci`)
+- DB: `zettazcloud_prod @ localhost:3306` on the VPS (user `zettazcloud_systemadmin`) — `mysql.us.cloudlogin.co` / `digitpulse_zcloud` no longer used
+- Dev `.env`: `zettaz_dev @ localhost` (user `zettaz`) — also local, not the shared host
+- PM2 `zettaz-api`, port 5172 — unchanged
+- The `max_user_connections=20` shared-host constraint no longer applies (both DBs are localhost); pool-limit discipline still matters
+
+**Fixed this session:** superseded banners on `docs/ARCHITECTURE/{DEPLOYMENT_GUIDE,PRODUCTION_DEPLOYMENT_INSTRUCTIONS,production-deployment,infrastructure-architecture,frontend-deployment-steps,CODEBASE_AND_DEPLOYMENT,PM2_CACHE_FIX_NOTES}.md` and `docs/ISSUES_FIXES/TROUBLESHOOTING_SUMMARY.md`; README index marked them historical; deleted obsolete `scripts/deploy-remote.sh` + `scripts/deploy_production.sh` (old path, wrong app name `api`, port 3001); `backend/.env.example` DB default → `zettaz_dev`.
+
+**Flag for user:** `backend/.env.production.example` contains a real-looking MySQL password — if it's live, rotate it and scrub the file; example files should hold placeholders only.
