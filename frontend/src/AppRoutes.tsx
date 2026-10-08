@@ -52,6 +52,8 @@ const PrintTemplateDesigner = React.lazy(() => import('./pages/PrintTemplateDesi
 const CustomerDetailsPage = React.lazy(() => import('./pages/CustomerDetailsPage'));
 const ProductDetailsPage = React.lazy(() => import('./pages/ProductDetailsPage'));
 const SupplierDetailsPage = React.lazy(() => import('./pages/SupplierDetailsPage'));
+const CashFlowReportPage = React.lazy(() => import('./pages/reports/CashFlowReportPage'));
+const ProfitLossReportPage = React.lazy(() => import('./pages/reports/ProfitLossReportPage'));
 
 // New Reports Structure
 const ReportsLayout = React.lazy(() => import('./pages/reports'));
@@ -184,6 +186,8 @@ const AppRoutes: React.FC = () => {
           <Route path="employee-performance" element={<EmployeePerformanceReport />} />
           <Route path="category-sales" element={<CategorySalesReport />} />
           <Route path="print-jobs" element={<PrintJobHistory />} />
+          <Route path="cash-flow" element={<CashFlowReportPage />} />
+          <Route path="profit-loss" element={<ProfitLossReportPage />} />
         </Route>
         
         <Route path="promotions" element={<Promotions />} />

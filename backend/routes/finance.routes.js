@@ -1750,4 +1750,201 @@ router.post('/transfers', requirePermission('finance.manage'), async (req, res) 
   }
 });
 
+// ---------------------------------------------------------------------------
+// Reports — cash-flow statement, profit & loss, journal CSV export.
+// All derived from the ledger: balances are computed per period with
+// opening/closing windows, so reports stay correct even with reversals.
+// ---------------------------------------------------------------------------
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// GET /api/finance/reports/cash-flow?from=&to=&store_id=
+// Per asset account (the money buckets): opening balance, money in (Σdebit),
+// money out (Σcredit), net change, closing — plus a by-source-type summary.
+router.get('/reports/cash-flow', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { from, to, store_id: storeId } = req.query;
+  if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) {
+    return res.status(400).json({ message: 'from/to must be YYYY-MM-DD' });
+  }
+  try {
+    const acctWhere = ["a.tenant_id = ?", "a.account_type = 'asset'"];
+    const acctParams = [tenantId];
+    if (storeId) { acctWhere.push('(a.store_id = ? OR a.store_id IS NULL)'); acctParams.push(storeId); }
+    const [accounts] = await pool.query(
+      `SELECT a.id, a.code, a.name, a.subtype, a.opening_balance, a.store_id
+         FROM money_accounts a WHERE ${acctWhere.join(' AND ')}
+        ORDER BY a.code`,
+      acctParams
+    );
+
+    // Lines joined to entries (entries carry store_id + entry_date). The
+    // line-level filter selects lines on these accounts; the entry-level
+    // filter optionally scopes to a store.
+    // Note: the six date placeholders sit in the SELECT list, which binds
+    // textually BEFORE the WHERE params — tenantId comes last.
+    const lineWhere = ['l.tenant_id = ?', "a.account_type = 'asset'"];
+    const lineParams = [tenantId];
+    if (storeId) { lineWhere.push('(a.store_id = ? OR a.store_id IS NULL)', 'e.store_id = ?'); lineParams.push(storeId, storeId); }
+    const [periodRows] = await pool.query(
+      `SELECT l.account_id,
+              SUM(IF(e.entry_date < ?, l.debit, 0))  AS open_debit,
+              SUM(IF(e.entry_date < ?, l.credit, 0)) AS open_credit,
+              SUM(IF(e.entry_date BETWEEN ? AND ?, l.debit, 0))  AS in_flow,
+              SUM(IF(e.entry_date BETWEEN ? AND ?, l.credit, 0)) AS out_flow
+         FROM money_journal_lines l
+         JOIN money_journal_entries e ON e.id = l.entry_id
+         JOIN money_accounts a ON a.id = l.account_id
+        WHERE ${lineWhere.join(' AND ')}
+        GROUP BY l.account_id`,
+      [from || '1970-01-01', from || '1970-01-01',
+       from || '1970-01-01', to || '9999-12-31',
+       from || '1970-01-01', to || '9999-12-31',
+       ...lineParams]
+    );
+
+    const bySourceWhere = ['e.tenant_id = ?'];
+    const bySourceParams = [tenantId];
+    if (storeId) { bySourceWhere.push('e.store_id = ?'); bySourceParams.push(storeId); }
+    if (from) { bySourceWhere.push('e.entry_date >= ?'); bySourceParams.push(from); }
+    if (to) { bySourceWhere.push('e.entry_date <= ?'); bySourceParams.push(to); }
+    const [bySource] = await pool.query(
+      `SELECT e.source_type,
+              SUM(IF(a.account_type = 'asset', l.debit, 0))  AS money_in,
+              SUM(IF(a.account_type = 'asset', l.credit, 0)) AS money_out
+         FROM money_journal_entries e
+         JOIN money_journal_lines l ON l.entry_id = e.id
+         JOIN money_accounts a ON a.id = l.account_id
+        WHERE ${bySourceWhere.join(' AND ')}
+        GROUP BY e.source_type`,
+      bySourceParams
+    );
+
+    const perAcct = Object.fromEntries(periodRows.map(r => [r.account_id, r]));
+    const rows = accounts.map(a => {
+      const p = perAcct[a.id] || {};
+      const opening = round2(Number(a.opening_balance) + Number(p.open_debit || 0) - Number(p.open_credit || 0));
+      const inflow = round2(Number(p.in_flow || 0));
+      const outflow = round2(Number(p.out_flow || 0));
+      return {
+        id: a.id, code: a.code, name: a.name, subtype: a.subtype, store_id: a.store_id,
+        opening, inflow, outflow, closing: round2(opening + inflow - outflow),
+      };
+    });
+    res.json({
+      status: 'success',
+      data: {
+        from: from || null, to: to || null,
+        accounts: rows,
+        bySource,
+        totals: {
+          opening: round2(rows.reduce((s, r) => s + r.opening, 0)),
+          inflow: round2(rows.reduce((s, r) => s + r.inflow, 0)),
+          outflow: round2(rows.reduce((s, r) => s + r.outflow, 0)),
+          closing: round2(rows.reduce((s, r) => s + r.closing, 0)),
+        },
+      },
+    });
+  } catch (err) {
+    console.error('[finance] GET /reports/cash-flow failed:', err);
+    res.status(500).json({ message: 'Failed to build cash-flow report.' });
+  }
+});
+
+// GET /api/finance/reports/profit-loss?from=&to=
+// Revenue and expense accounts with period activity. Revenue-type accounts
+// are credit-normal (SALESRET shows negative automatically). Net profit =
+// revenue − expenses.
+router.get('/reports/profit-loss', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { from, to, store_id: storeId } = req.query;
+  if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) {
+    return res.status(400).json({ message: 'from/to must be YYYY-MM-DD' });
+  }
+  const where = ['l.tenant_id = ?', "a.account_type IN ('revenue','expense')"];
+  const params = [tenantId];
+  if (from) { where.push('e.entry_date >= ?'); params.push(from); }
+  if (to) { where.push('e.entry_date <= ?'); params.push(to); }
+  if (storeId) { where.push('e.store_id = ?'); params.push(storeId); }
+  try {
+    const [rows] = await pool.query(
+      `SELECT a.id, a.code, a.name, a.account_type, a.subtype,
+              SUM(l.debit) AS total_debit, SUM(l.credit) AS total_credit
+         FROM money_journal_lines l
+         JOIN money_journal_entries e ON e.id = l.entry_id
+         JOIN money_accounts a ON a.id = l.account_id
+        WHERE ${where.join(' AND ')}
+        GROUP BY a.id
+        ORDER BY a.account_type DESC, a.code`,
+      params
+    );
+    const revenue = [];
+    const expenses = [];
+    for (const r of rows) {
+      const signed = round2(Number(r.total_debit) - Number(r.total_credit));
+      const amount = r.account_type === 'revenue' ? -signed : signed; // normal-side balance
+      const item = { code: r.code, name: r.name, subtype: r.subtype, amount };
+      (r.account_type === 'revenue' ? revenue : expenses).push(item);
+    }
+    const totalRevenue = round2(revenue.reduce((s, r) => s + r.amount, 0));
+    const totalExpenses = round2(expenses.reduce((s, r) => s + r.amount, 0));
+    res.json({
+      status: 'success',
+      data: {
+        from: from || null, to: to || null,
+        revenue, expenses, totalRevenue, totalExpenses,
+        netProfit: round2(totalRevenue - totalExpenses),
+      },
+    });
+  } catch (err) {
+    console.error('[finance] GET /reports/profit-loss failed:', err);
+    res.status(500).json({ message: 'Failed to build profit & loss report.' });
+  }
+});
+
+// GET /api/finance/ledger/export.csv — flat journal-lines CSV for accountants.
+// Same filters as GET /ledger.
+router.get('/ledger/export.csv', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { account_id: accountId, source_type: sourceType, from, to } = req.query;
+  const where = ['e.tenant_id = ?'];
+  const params = [tenantId];
+  if (req.query.store_id) { where.push('e.store_id = ?'); params.push(req.query.store_id); }
+  if (sourceType) { where.push('e.source_type = ?'); params.push(sourceType); }
+  if (from) { where.push('e.entry_date >= ?'); params.push(from); }
+  if (to) { where.push('e.entry_date <= ?'); params.push(to); }
+  if (accountId) { where.push('l.account_id = ?'); params.push(accountId); }
+  try {
+    const [rows] = await pool.query(
+      `SELECT e.entry_number, e.entry_date, e.source_type, e.status, e.memo AS entry_memo,
+              l.line_no, a.code AS account_code, a.name AS account_name,
+              l.debit, l.credit, l.memo AS line_memo
+         FROM money_journal_entries e
+         JOIN money_journal_lines l ON l.entry_id = e.id
+         JOIN money_accounts a ON a.id = l.account_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY e.entry_date, e.entry_number, l.line_no
+        LIMIT 20000`,
+      params
+    );
+    const esc = (v) => {
+      const s = v === null || v === undefined ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = 'entry_number,entry_date,source_type,status,entry_memo,account_code,account_name,debit,credit,line_memo';
+    const body = rows.map(r => [
+      r.entry_number,
+      r.entry_date instanceof Date ? r.entry_date.toISOString().slice(0, 10) : r.entry_date,
+      r.source_type, r.status, r.entry_memo, r.account_code, r.account_name,
+      Number(r.debit).toFixed(2), Number(r.credit).toFixed(2), r.line_memo,
+    ].map(esc).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="journal-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(header + '\n' + body + '\n');
+  } catch (err) {
+    console.error('[finance] GET /ledger/export.csv failed:', err);
+    res.status(500).json({ message: 'Failed to export journal.' });
+  }
+});
+
 module.exports = router;

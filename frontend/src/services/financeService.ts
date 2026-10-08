@@ -237,6 +237,43 @@ export interface DrawerMovement {
   createdAt: string;
 }
 
+export interface CashFlowAccountRow {
+  id: string;
+  code: string;
+  name: string;
+  subtype?: string | null;
+  storeId?: string | null;
+  opening: number;
+  inflow: number;
+  outflow: number;
+  closing: number;
+}
+
+export interface CashFlowReport {
+  from?: string | null;
+  to?: string | null;
+  accounts: CashFlowAccountRow[];
+  bySource: { sourceType: string; moneyIn: number; moneyOut: number }[];
+  totals: { opening: number; inflow: number; outflow: number; closing: number };
+}
+
+export interface ProfitLossLine {
+  code: string;
+  name: string;
+  subtype?: string | null;
+  amount: number;
+}
+
+export interface ProfitLossReport {
+  from?: string | null;
+  to?: string | null;
+  revenue: ProfitLossLine[];
+  expenses: ProfitLossLine[];
+  totalRevenue: number;
+  totalExpenses: number;
+  netProfit: number;
+}
+
 export const financeService = {
   async listExpenses(params: { search?: string; category?: string; status?: string; supplierId?: string; from?: string; to?: string } = {}) {
     const qs = new URLSearchParams();
@@ -401,5 +438,53 @@ export const financeService = {
 
   async createTransfer(payload: { fromAccountId: string; toAccountId: string; amount: number; memo?: string; entryDate?: string; storeId?: string }) {
     return fetchApi<{ entryId: string; entryNumber: string }>('/finance/transfers', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  // ---- Reports -----------------------------------------------------------
+
+  async getCashFlow(params: { from?: string; to?: string; storeId?: string } = {}) {
+    const qs = new URLSearchParams();
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.storeId) qs.set('store_id', params.storeId);
+    return fetchApi<CashFlowReport>(`/finance/reports/cash-flow?${qs.toString()}`);
+  },
+
+  async getProfitLoss(params: { from?: string; to?: string; storeId?: string } = {}) {
+    const qs = new URLSearchParams();
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.storeId) qs.set('store_id', params.storeId);
+    return fetchApi<ProfitLossReport>(`/finance/reports/profit-loss?${qs.toString()}`);
+  },
+
+  /** Authenticated journal-lines CSV download — same pattern as expenses export. */
+  async downloadLedgerCsv(params: { accountId?: string; sourceType?: string; from?: string; to?: string; storeId?: string } = {}) {
+    const qs = new URLSearchParams();
+    if (params.accountId) qs.set('account_id', params.accountId);
+    if (params.storeId) qs.set('store_id', params.storeId);
+    if (params.sourceType) qs.set('source_type', params.sourceType);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    const token = localStorage.getItem('auth_token');
+    const storeId = localStorage.getItem('store_id') || '';
+    const base = ((import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:5172') as string)
+      .replace(/\/api\/?$/, '');
+    const res = await fetch(`${base}/api/finance/ledger/export.csv?${qs.toString()}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(storeId ? { 'x-store-id': storeId, 'store-id': storeId } : {}),
+      },
+    });
+    if (!res.ok) throw new Error(`Export failed (${res.status})`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `journal-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
   },
 };

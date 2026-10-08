@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Loader2, Plus, RefreshCcw, BookOpen, AlertCircle, Ban, Trash2,
+  Loader2, Plus, RefreshCcw, BookOpen, AlertCircle, Ban, Trash2, Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -232,9 +232,23 @@ export default function LedgerPage() {
           <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-6 w-6" /> Ledger</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Every money movement as a balanced journal entry — sales, refunds, payments, deposits.</p>
         </div>
-        {canManage && (
-          <Button onClick={openJournal}><Plus className="h-4 w-4 mr-2" /> New Journal Entry</Button>
-        )}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            title="Export filtered journal lines as CSV"
+            onClick={() => financeService.downloadLedgerCsv({
+              accountId: accountFilter !== ALL ? accountFilter : undefined,
+              sourceType: sourceFilter !== ALL ? sourceFilter : undefined,
+              from: fromDate || undefined,
+              to: toDate || undefined,
+            }).catch((e: any) => setError(e.message || 'Export failed.'))}
+          >
+            <Download className="h-4 w-4 mr-2" /> Export CSV
+          </Button>
+          {canManage && (
+            <Button onClick={openJournal}><Plus className="h-4 w-4 mr-2" /> New Journal Entry</Button>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

@@ -18,6 +18,8 @@ import {
   RotateCcw,
   UserCheck,
   PieChart,
+  Banknote,
+  Scale,
 } from 'lucide-react';
 import PageHeader from '@/components/common/PageHeader';
 import { getTenantIndustry } from '../../services/industryService';
@@ -47,6 +49,8 @@ const coreReports: ReportDef[] = [
   { name: 'Employee Performance', path: '/reports/employee-performance', icon: UserCheck, description: 'Sales by employee, targets, and commissions.', accent: 'bg-indigo-500/10 text-indigo-600 ring-indigo-500/20' },
   { name: 'Category Sales', path: '/reports/category-sales', icon: PieChart, description: 'Revenue by product category and mix analysis.', accent: 'bg-pink-500/10 text-pink-600 ring-pink-500/20' },
   { name: 'Print Job History', path: '/reports/print-jobs', icon: Printer, description: 'Print queue, failures, and reprint history.', accent: 'bg-gray-500/10 text-gray-600 ring-gray-500/20' },
+  { name: 'Cash Flow', path: '/reports/cash-flow', icon: Banknote, description: 'Money in and out of cash, bank, and clearing accounts.', accent: 'bg-green-500/10 text-green-600 ring-green-500/20' },
+  { name: 'Profit & Loss', path: '/reports/profit-loss', icon: Scale, description: 'Revenue and expense activity from the accounting ledger.', accent: 'bg-slate-500/10 text-slate-600 ring-slate-500/20' },
 ];
 
 // Industry-specific report cards
