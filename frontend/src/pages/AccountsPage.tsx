@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import {
   Loader2, Plus, RefreshCcw, Landmark, AlertCircle, Pencil,
   Wallet, ArrowDownToLine, ArrowUpFromLine, Scale, ArrowRightLeft,
+  Lock, LockOpen, Receipt,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,7 +19,7 @@ import ReusableTable, { ColumnDefinition } from '@/components/ReusableTable';
 import { useCurrency } from '@/contexts/LocalizationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
-import { financeService, MoneyAccount, AccountMapping, AccountType, ACCOUNT_TYPES } from '@/services/financeService';
+import { financeService, MoneyAccount, AccountMapping, AccountType, ACCOUNT_TYPES, PeriodLock, TaxRemission } from '@/services/financeService';
 
 const typeBadgeVariant: Record<AccountType, string> = {
   asset: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -46,6 +48,9 @@ const MAPPING_LABELS: Record<string, string> = {
   'event:layaway_liability': 'Layaway deposits held',
   'event:savings_liability': 'Savings-scheme deposits held',
   'event:over_short': 'Cash over/short',
+  'event:inventory': 'Inventory on hand',
+  'event:cogs': 'Cost of goods sold',
+  'event:forfeited_deposits': 'Forfeited deposit income',
   'event:equity': 'Opening balance / equity',
   'event:default_in': 'Other money in (fallback)',
   'event:default_out': 'Other money out (fallback)',
@@ -80,6 +85,20 @@ export default function AccountsPage() {
   const [tAmount, setTAmount] = useState('');
   const [tMemo, setTMemo] = useState('');
 
+  // Period lock + tax remittance
+  const [periodLock, setPeriodLock] = useState<PeriodLock | null>(null);
+  const [lockDate, setLockDate] = useState('');
+  const [lockConfirm, setLockConfirm] = useState(false);
+  const [taxPayable, setTaxPayable] = useState<{ balance: number; remittedTotal: number }>({ balance: 0, remittedTotal: 0 });
+  const [remissions, setRemissions] = useState<TaxRemission[]>([]);
+  const [remitOpen, setRemitOpen] = useState(false);
+  const [rAmount, setRAmount] = useState('');
+  const [rFrom, setRFrom] = useState('');
+  const [rTo, setRTo] = useState('');
+  const [rAccount, setRAccount] = useState('');
+  const [rReference, setRReference] = useState('');
+  const [rNotes, setRNotes] = useState('');
+
   // form
   const [fCode, setFCode] = useState('');
   const [fName, setFName] = useState('');
@@ -91,12 +110,19 @@ export default function AccountsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [a, m] = await Promise.all([
+      const [a, m, lock, tax, rems] = await Promise.all([
         financeService.listAccounts(),
         financeService.listMappings().catch(() => ({ mappings: [] })),
+        financeService.getPeriodLock().catch(() => ({ lock: null })),
+        financeService.getTaxPayable().catch(() => ({ accountId: null, balance: 0, remittedTotal: 0 })),
+        financeService.listTaxRemissions().catch(() => ({ remissions: [] })),
       ]);
       setAccounts(a.accounts);
       setMappings(m.mappings);
+      setPeriodLock(lock.lock);
+      if (lock.lock?.lockedThrough) setLockDate(String(lock.lock.lockedThrough).slice(0, 10));
+      setTaxPayable({ balance: tax.balance, remittedTotal: tax.remittedTotal });
+      setRemissions(rems.remissions);
       setError(null);
     } catch (e: any) {
       setError(e.message || 'Failed to load accounts.');
@@ -188,6 +214,61 @@ export default function AccountsPage() {
       await load();
     } catch (e: any) {
       setFormError(e.message || 'Failed to record transfer.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveLock = async () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lockDate)) { setFormError('Pick a lock-through date.'); return; }
+    setSaving(true);
+    setFormError(null);
+    try {
+      await financeService.setPeriodLock(lockDate);
+      setLockConfirm(false);
+      toast.success(`Books locked through ${lockDate}.`);
+      await load();
+    } catch (e: any) {
+      setFormError(e.message || 'Failed to update period lock.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unlock = async () => {
+    setSaving(true);
+    setFormError(null);
+    try {
+      await financeService.setPeriodLock(null);
+      toast.success('Period lock removed.');
+      await load();
+    } catch (e: any) {
+      setFormError(e.message || 'Failed to remove period lock.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const doRemit = async () => {
+    const amt = Number(rAmount);
+    if (!Number.isFinite(amt) || amt <= 0) { setFormError('Enter a positive amount.'); return; }
+    if (!rAccount) { setFormError('Choose the account the payment left from.'); return; }
+    setSaving(true);
+    setFormError(null);
+    try {
+      await financeService.createTaxRemittance({
+        amount: amt,
+        paidFromAccountId: rAccount,
+        periodFrom: rFrom || undefined,
+        periodTo: rTo || undefined,
+        reference: rReference.trim() || undefined,
+        notes: rNotes.trim() || undefined,
+      });
+      setRemitOpen(false);
+      toast.success('Tax remittance posted.');
+      await load();
+    } catch (e: any) {
+      setFormError(e.message || 'Failed to record remittance.');
     } finally {
       setSaving(false);
     }
@@ -365,6 +446,93 @@ export default function AccountsPage() {
         </div>
       </div>
 
+      {/* Period lock — prevents any journal posting on/before the locked date */}
+      <div className="rounded-xl border bg-card">
+        <div className="px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="font-semibold flex items-center gap-2"><Lock className="h-4 w-4" /> Period lock</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Lock the books through a date — no journal entry (sale, payment, reversal, or manual) can post on or before it.
+            </p>
+          </div>
+          {periodLock ? (
+            <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
+              Locked through {String(periodLock.lockedThrough).slice(0, 10)}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-muted-foreground">Unlocked</Badge>
+          )}
+        </div>
+        <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
+          {canManage ? (
+            <>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="lock-date" className="text-sm whitespace-nowrap">Lock through</Label>
+                <Input id="lock-date" type="date" value={lockDate} onChange={(e) => setLockDate(e.target.value)} className="w-40" />
+              </div>
+              <Button variant="outline" size="sm" onClick={() => { setFormError(null); setLockConfirm(true); }} disabled={!lockDate}>
+                <Lock className="h-4 w-4 mr-1.5" /> {periodLock ? 'Update lock' : 'Lock period'}
+              </Button>
+              {periodLock && (
+                <Button variant="outline" size="sm" onClick={unlock} disabled={saving}>
+                  <LockOpen className="h-4 w-4 mr-1.5" /> Unlock
+                </Button>
+              )}
+              {periodLock?.lockedByName && (
+                <span className="text-xs text-muted-foreground">by {periodLock.lockedByName}{periodLock.lockedAt ? ` · ${String(periodLock.lockedAt).slice(0, 10)}` : ''}</span>
+              )}
+            </>
+          ) : (
+            <span className="text-sm text-muted-foreground">Only finance managers can lock the books.</span>
+          )}
+        </div>
+      </div>
+
+      {/* Tax payable — accrued liability + remittance history */}
+      <div className="rounded-xl border bg-card">
+        <div className="px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="font-semibold flex items-center gap-2"><Receipt className="h-4 w-4" /> Tax payable</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Tax accrued on sales, net of returns. Remit to the tax authority to settle it.</p>
+          </div>
+          {canManage && taxPayable.balance > 0 && (
+            <Button size="sm" onClick={() => { setRAmount(taxPayable.balance.toFixed(2)); setRAccount(''); setRFrom(''); setRTo(''); setRReference(''); setRNotes(''); setFormError(null); setRemitOpen(true); }}>
+              Remit {formatCurrency(taxPayable.balance)}
+            </Button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 divide-x">
+          <div className="px-4 py-3">
+            <div className="text-xs text-muted-foreground">Accrued payable</div>
+            <div className="text-xl font-bold tabular-nums">{formatCurrency(taxPayable.balance)}</div>
+          </div>
+          <div className="px-4 py-3">
+            <div className="text-xs text-muted-foreground">Total remitted</div>
+            <div className="text-xl font-bold tabular-nums">{formatCurrency(taxPayable.remittedTotal)}</div>
+          </div>
+        </div>
+        {remissions.length > 0 && (
+          <div className="border-t divide-y">
+            {remissions.slice(0, 8).map((r) => (
+              <div key={r.id} className="px-4 py-2 flex items-center justify-between gap-3 text-sm">
+                <div className="min-w-0">
+                  <span className="font-medium tabular-nums">{formatCurrency(Number(r.amount))}</span>
+                  <span className="text-muted-foreground"> via {r.paidFromCode || 'account'}</span>
+                  {(r.periodFrom || r.periodTo) && (
+                    <span className="text-muted-foreground"> · {String(r.periodFrom || '').slice(0, 10)} → {String(r.periodTo || '').slice(0, 10)}</span>
+                  )}
+                  {r.reference && <span className="text-muted-foreground"> · {r.reference}</span>}
+                </div>
+                <div className="text-xs text-muted-foreground whitespace-nowrap">
+                  {r.entryNumber && <span className="font-mono mr-2">{r.entryNumber}</span>}
+                  {String(r.createdAt).slice(0, 10)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* New / edit account dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-md">
@@ -476,6 +644,80 @@ export default function AccountsPage() {
             <Button variant="outline" onClick={() => setTransferOpen(false)}>Cancel</Button>
             <Button onClick={doTransfer} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Transfer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Period-lock confirmation */}
+      <Dialog open={lockConfirm} onOpenChange={setLockConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Lock the books through {lockDate}?</DialogTitle>
+            <DialogDescription>
+              This is an accounting control. Once locked, no journal entry can be posted on or before {lockDate} — including
+              automatic postings from sales, payments, and reversals. You can move the date forward or unlock again later.
+            </DialogDescription>
+          </DialogHeader>
+          {formError && <p className="text-sm text-destructive">{formError}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLockConfirm(false)}>Cancel</Button>
+            <Button onClick={saveLock} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Lock period
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Tax remittance */}
+      <Dialog open={remitOpen} onOpenChange={setRemitOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Record tax remittance</DialogTitle>
+            <DialogDescription>
+              Posts Dr tax payable / Cr the account you paid from. Partial remittances are fine — the accrued balance carries forward.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Amount</Label>
+              <Input type="number" min="0" step="0.01" value={rAmount} onChange={(e) => setRAmount(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>Paid from</Label>
+              <Select value={rAccount} onValueChange={setRAccount}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Bank, cash…" /></SelectTrigger>
+                <SelectContent>
+                  {activeAccounts.filter(a => a.accountType === 'asset').map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Period from <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input type="date" value={rFrom} onChange={(e) => setRFrom(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>Period to <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input type="date" value={rTo} onChange={(e) => setRTo(e.target.value)} className="mt-1" />
+              </div>
+            </div>
+            <div>
+              <Label>Reference <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input value={rReference} onChange={(e) => setRReference(e.target.value)} className="mt-1" placeholder="Authority filing ref, cheque #…" />
+            </div>
+            <div>
+              <Label>Notes <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input value={rNotes} onChange={(e) => setRNotes(e.target.value)} className="mt-1" />
+            </div>
+            {formError && <p className="text-sm text-destructive">{formError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemitOpen(false)}>Cancel</Button>
+            <Button onClick={doRemit} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Post remittance
             </Button>
           </DialogFooter>
         </DialogContent>

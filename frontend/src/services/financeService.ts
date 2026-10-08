@@ -295,6 +295,57 @@ export interface ProfitLossReport {
   netProfit: number;
 }
 
+export interface PeriodLock {
+  lockedThrough: string;
+  lockedAt?: string;
+  lockedByName?: string | null;
+  notes?: string | null;
+}
+
+export interface TaxRemission {
+  id: string;
+  periodFrom?: string | null;
+  periodTo?: string | null;
+  amount: number;
+  paidFromAccountId?: string | null;
+  paidFromCode?: string | null;
+  journalEntryId?: string | null;
+  entryNumber?: string | null;
+  reference?: string | null;
+  notes?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface Reconciliation {
+  id: string;
+  accountId: string;
+  accountCode?: string;
+  accountName?: string;
+  statementDate: string;
+  statementBalance: number;
+  clearedBalance?: number | null;
+  difference?: number | null;
+  status: 'in_progress' | 'completed';
+  createdByName?: string | null;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+export interface ReconciliationLine {
+  id: string;
+  entryId: string;
+  entryNumber: string;
+  entryDate: string;
+  sourceType: string;
+  entryStatus: string;
+  entryMemo?: string | null;
+  lineMemo?: string | null;
+  debit: number;
+  credit: number;
+  reconciliationId?: string | null;
+}
+
 export const financeService = {
   async listExpenses(params: { search?: string; category?: string; status?: string; supplierId?: string; from?: string; to?: string } = {}) {
     const qs = new URLSearchParams();
@@ -501,6 +552,57 @@ export const financeService = {
     if (params.to) qs.set('to', params.to);
     if (params.storeId) qs.set('store_id', params.storeId);
     return fetchApi<ProfitLossReport>(`/finance/reports/profit-loss?${qs.toString()}`);
+  },
+
+  // ---- Period lock, tax remittance, reconciliation ------------------------
+
+  async getPeriodLock() {
+    return fetchApi<{ lock: PeriodLock | null }>('/finance/period-lock');
+  },
+
+  async setPeriodLock(lockedThrough: string | null, notes?: string) {
+    return fetchApi<{ lock: PeriodLock | null }>('/finance/period-lock', {
+      method: 'PUT',
+      body: JSON.stringify({ lockedThrough, notes }),
+    });
+  },
+
+  async getTaxPayable() {
+    return fetchApi<{ accountId: string | null; balance: number; remittedTotal: number }>('/finance/tax-payable');
+  },
+
+  async createTaxRemittance(payload: { amount: number; paymentMethod?: string; paidFromAccountId?: string; periodFrom?: string; periodTo?: string; reference?: string; notes?: string }) {
+    return fetchApi<{ id: string; entryNumber: string }>('/finance/tax-remittance', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  async listTaxRemissions() {
+    return fetchApi<{ remissions: TaxRemission[] }>('/finance/tax-remissions');
+  },
+
+  async listReconciliations(params: { accountId?: string; status?: string } = {}) {
+    const qs = new URLSearchParams();
+    if (params.accountId) qs.set('account_id', params.accountId);
+    if (params.status) qs.set('status', params.status);
+    return fetchApi<{ reconciliations: Reconciliation[] }>(`/finance/reconciliations?${qs.toString()}`);
+  },
+
+  async createReconciliation(payload: { accountId: string; statementDate: string; statementBalance: number }) {
+    return fetchApi<{ id: string }>('/finance/reconciliations', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  async getReconciliation(id: string) {
+    return fetchApi<{ reconciliation: Reconciliation; lines: ReconciliationLine[]; clearedBalance: number; difference: number }>(`/finance/reconciliations/${id}`);
+  },
+
+  async setReconciliationLines(id: string, lineIds: string[], cleared: boolean) {
+    return fetchApi(`/finance/reconciliations/${id}/lines`, { method: 'POST', body: JSON.stringify({ lineIds, cleared }) });
+  },
+
+  async completeReconciliation(id: string, adjustmentAccountId?: string) {
+    return fetchApi<{ clearedBalance: number; difference: number; adjustmentEntryId?: string | null }>(
+      `/finance/reconciliations/${id}/complete`,
+      { method: 'POST', body: JSON.stringify({ adjustmentAccountId }) },
+    );
   },
 
   /** Authenticated journal-lines CSV download — same pattern as expenses export. */

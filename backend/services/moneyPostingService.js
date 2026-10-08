@@ -46,6 +46,9 @@ const DEFAULT_ACCOUNTS = [
   ['OPEXP',     'Operating Expenses',                    'expense',   'operating'],
   ['OVERSHORT', 'Cash Over/Short',                       'expense',   'cash_over_short'],
   ['EQUITY',    "Owner's Equity",                        'equity',    'opening_balance'],
+  ['INVENTORY', 'Inventory on Hand',                     'asset',     'inventory'],
+  ['COGS',      'Cost of Goods Sold',                    'expense',   'cogs'],
+  ['FORFINC',   'Forfeited Deposit Income',              'revenue',   'forfeited_deposits'],
 ];
 
 const DEFAULT_MAPPINGS = [
@@ -69,6 +72,9 @@ const DEFAULT_MAPPINGS = [
   ['event:equity',          'EQUITY'],
   ['event:default_out',     'BANK'],
   ['event:default_in',      'CASH'],
+  ['event:inventory',       'INVENTORY'],
+  ['event:cogs',            'COGS'],
+  ['event:forfeited_deposits', 'FORFINC'],
 ];
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
@@ -188,6 +194,25 @@ async function nextEntryNumber(conn, tenantId, year) {
 async function insertEntry(conn, input, lines) {
   const entryId = uuidv4();
   const entryDate = input.entryDate || new Date().toISOString().slice(0, 10);
+
+  // Period locking: once a tenant locks the books through a date, no journal
+  // (manual, automatic, or reversal) may post on or before it. The check lives
+  // here so EVERY write path funnels through it. ER_NO_SUCH_TABLE = the
+  // 2026-10-14a migration hasn't run yet — degrade gracefully.
+  try {
+    const [locks] = await conn.query(
+      'SELECT locked_through FROM accounting_period_locks WHERE tenant_id = ?',
+      [input.tenantId]
+    );
+    if (locks.length && locks[0].locked_through) {
+      const lockedThrough = new Date(locks[0].locked_through).toISOString().slice(0, 10);
+      if (entryDate <= lockedThrough) {
+        throw new Error(`Books are locked through ${lockedThrough} — journal entries dated on or before that day are not allowed`);
+      }
+    }
+  } catch (e) {
+    if (e.code !== 'ER_NO_SUCH_TABLE') throw e;
+  }
   const entryNumber = await nextEntryNumber(conn, input.tenantId, Number(entryDate.slice(0, 4)));
 
   await conn.query(
@@ -388,6 +413,43 @@ async function tenderAccountId(conn, tenantId, methodCode, direction = 'in') {
   return resolveAccountId(tenantId, fallbackKey, conn);
 }
 
+/**
+ * Current unit cost for COGS relief. Mirrors the inventory valuation source:
+ * serialized piece → its cost_price/purchase_price; store-owned product →
+ * products.weighted_average_cost; shared (store_id NULL) product → that
+ * store's store_product_listings WAC, falling back through overrides and
+ * last-received cost. Returns 0 when no cost basis exists — callers should
+ * still post the revenue/tax legs and just skip a 0-value COGS pair.
+ */
+async function unitCost(conn, tenantId, { productId, pieceId, storeId } = {}) {
+  const nz = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
+  if (pieceId) {
+    const [[piece]] = await conn.query(
+      'SELECT cost_price, purchase_price FROM product_pieces WHERE id = ? AND tenant_id = ?',
+      [pieceId, tenantId]
+    );
+    const c = nz(piece?.cost_price) || nz(piece?.purchase_price);
+    if (c) return c;
+  }
+  if (!productId) return 0;
+  const [[p]] = await conn.query(
+    'SELECT store_id, weighted_average_cost, last_received_cost_price, cost_price FROM products WHERE id = ? AND tenant_id = ?',
+    [productId, tenantId]
+  );
+  if (!p) return 0;
+  if (p.store_id === null && storeId) {
+    const [[l]] = await conn.query(
+      'SELECT weighted_average_cost, last_received_cost_price, cost_price_override FROM store_product_listings WHERE tenant_id = ? AND store_id = ? AND product_id = ?',
+      [tenantId, storeId, productId]
+    );
+    if (l) {
+      return nz(l.weighted_average_cost) || nz(l.cost_price_override) || nz(l.last_received_cost_price)
+        || nz(p.weighted_average_cost) || nz(p.cost_price);
+    }
+  }
+  return nz(p.weighted_average_cost) || nz(p.cost_price) || nz(p.last_received_cost_price);
+}
+
 module.exports = {
   DEBIT_NORMAL_TYPES,
   DEFAULT_ACCOUNTS,
@@ -397,6 +459,7 @@ module.exports = {
   ensureDefaults,
   resolveAccountId,
   tenderAccountId,
+  unitCost,
   postEntry,
   reverseEntry,
   accountBalances,

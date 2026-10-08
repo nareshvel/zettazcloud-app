@@ -2,6 +2,53 @@ const { pool } = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { getUserId } = require('../middleware/permissionMiddleware');
 const storeProductListingService = require('../services/storeProductListingService');
+const moneyPosting = require('../services/moneyPostingService');
+
+/**
+ * Receipt-side accrual posting for a committed GRN:
+ *   Dr Inventory on Hand (event:inventory) / Cr Accounts Payable (event:payable)
+ * for the GRN's total_received_value. supplier payments later debit AP — the
+ * pair is what turns purchases into balance-sheet inventory instead of a
+ * same-day expense. source_type='grn_receipt' + uq_entry_source makes it
+ * idempotent across create-COMPLETED and status-commit paths.
+ * Skips silently when the ledger tables don't exist yet (unmigrated DB).
+ */
+async function postGrnReceiptEntry(connection, tenantId, grn, userId) {
+  const value = Math.round(Number(grn.total_received_value || 0) * 100) / 100;
+  if (value <= 0) return;
+  const dr = await moneyPosting.resolveAccountId(tenantId, 'event:inventory', connection);
+  const cr = await moneyPosting.resolveAccountId(tenantId, 'event:payable', connection);
+  if (!dr || !cr) throw new Error('Ledger posting failed: required money account(s) are missing or inactive');
+  await moneyPosting.postEntry({
+    tenantId, storeId: grn.store_id || null,
+    sourceType: 'grn_receipt', sourceId: grn.id,
+    memo: `GRN ${grn.grn_number} — goods received`, createdBy: userId,
+    lines: [
+      { accountId: dr, debit: value, credit: 0, memo: 'Inventory received', supplierId: grn.supplier_id || null },
+      { accountId: cr, debit: 0, credit: value, memo: 'Payable to supplier', supplierId: grn.supplier_id || null },
+    ],
+  }, connection);
+}
+
+/** Reverse a GRN's receipt entry when inventory is de-committed (void/return-to-draft/delete). */
+async function reverseGrnReceiptEntry(connection, tenantId, grnId, grnNumber, userId) {
+  let rows;
+  try {
+    [rows] = await connection.query(
+      `SELECT id FROM money_journal_entries
+        WHERE tenant_id = ? AND source_type = 'grn_receipt' AND source_id = ? AND status = 'posted'`,
+      [tenantId, grnId]
+    );
+  } catch (e) {
+    if (e.code === 'ER_NO_SUCH_TABLE') return;
+    throw e;
+  }
+  if (rows.length) {
+    await moneyPosting.reverseEntry(rows[0].id, {
+      tenantId, memo: `GRN ${grnNumber} receipt reversed`, createdBy: userId,
+    }, connection);
+  }
+}
 
 // Set to false to disable debug logs
 const DEBUG_GRN = process.env.DEBUG_GRN === 'true' || false;
@@ -630,7 +677,11 @@ const createGrn = async (req, res) => {
         debugLog('[Backend] createGrn: Updating affected PO statuses...');
         await updateAllAffectedPurchaseOrders(connection, currentGrnId, processedItemsForPOUpdate, grnHeader.purchase_order_id, tenant_id, received_date);
         debugLog('[Backend] createGrn: PO status updates completed.');
-        
+
+        // 5. Accrual posting — goods on the shelf are an asset until sold:
+        //    Dr Inventory / Cr AP for the received value.
+        await postGrnReceiptEntry(connection, tenant_id, grnHeader, userId);
+
       } else if (grnHeader.status === 'DRAFT') {
         debugLog(`[Backend] createGrn: GRN status is DRAFT. Skipping inventory and PO updates (will process when status changes to COMPLETED).`);
       } else {
@@ -876,7 +927,7 @@ const updateGrnStatus = async (req, res) => {
       
       // 1. Fetch current GRN details
       const [grnRows] = await connection.query(
-        'SELECT id, tenant_id, store_id, grn_number, status, received_date, purchase_order_id FROM goods_received_notes WHERE id = ? AND tenant_id = ? FOR UPDATE',
+        'SELECT id, tenant_id, store_id, grn_number, status, received_date, purchase_order_id, supplier_id, total_received_value FROM goods_received_notes WHERE id = ? AND tenant_id = ? FOR UPDATE',
         [grnId, tenant_id]
       );
       
@@ -1098,6 +1149,10 @@ const updateGrnStatus = async (req, res) => {
         // Update all POs affected by this GRN
         await updateAllAffectedPurchaseOrders(connection, grnId, grnItemsArray, purchaseOrderId, tenant_id, receivedDate);
         debugLog(`[GRN STATUS UPDATE DEBUG] ✅ PO STATUS UPDATES COMPLETED`);
+
+        // Ledger — reverse the Dr Inventory / Cr AP receipt entry alongside
+        // the stock de-commitment so the books never keep phantom inventory.
+        await reverseGrnReceiptEntry(connection, tenant_id, grnId, grnNumber, userId);
       }
       // B. INVENTORY COMMITMENT LOGIC
       else if (nonCommittedOldStatuses.includes(currentStatus) && inventoryCommittedStatuses.includes(newStatus)) {
@@ -1161,6 +1216,10 @@ const updateGrnStatus = async (req, res) => {
         }
         // Update all POs affected by this GRN
         await updateAllAffectedPurchaseOrders(connection, grnId, grnItemsArray, purchaseOrderId, tenant_id, receivedDate);
+
+        // Ledger — Dr Inventory / Cr AP for the received value now that the
+        // goods are committed to stock (idempotent via source key).
+        await postGrnReceiptEntry(connection, tenant_id, { ...grnResult, store_id: storeId }, userId);
       } else {
         debugLog(`[GRN STATUS UPDATE DEBUG] ❌ NO LOGIC EXECUTED - Neither reversal nor commitment conditions met`);
       }
@@ -1442,6 +1501,10 @@ const deleteGrn = async (req, res) => {
         // Update all POs affected by this GRN
         await updateAllAffectedPurchaseOrders(connection, grnId, grnItemsArray, purchaseOrderId, tenant_id, receivedDate);
         debugLog(`🗑️ [GRN DELETION DEBUG] ✅ PO status updates completed`);
+
+        // Ledger — reverse the Dr Inventory / Cr AP receipt entry so a
+        // deleted GRN doesn't leave phantom inventory/payable behind.
+        await reverseGrnReceiptEntry(connection, tenant_id, grnId, grnNumber, userId);
       } else {
         debugLog(`🗑️ [GRN DELETION DEBUG] ⚠️ Skipping inventory reversal - GRN status '${currentStatus}' not in committed statuses`);
       }
@@ -1695,6 +1758,12 @@ const updateGrn = async (req, res) => {
           if (finalPoIdForUpdate) {
              await updateAllAffectedPurchaseOrders(connection, grnId, grnItemsForCommitment, finalPoIdForUpdate, tenant_id, receivedDateForCommit);
           }
+          // Ledger — Dr Inventory / Cr AP for the committed received value.
+          await postGrnReceiptEntry(connection, tenant_id, {
+            ...existingGrn,
+            total_received_value: grnUpdates.total_received_value !== undefined
+              ? grnUpdates.total_received_value : existingGrn.total_received_value,
+          }, userId);
           grnUpdates.status = newStatus; // Set the new status for the GRN header update
         } else if (inventoryCommittedStatuses.includes(existingGrn.status) && nonCommittedOldStatuses.includes(newStatus)) {
           // Handle reversal if changing from COMPLETED/POSTED to DRAFT (Simplified: log and suggest using updateGrnStatus for full reversal)

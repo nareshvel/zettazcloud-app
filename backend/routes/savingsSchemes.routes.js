@@ -428,6 +428,68 @@ router.post('/enrollments/:id/status', async (req, res) => {
     );
     if (!r.affectedRows) { await conn.rollback(); return res.status(404).json({ status: 'error', message: 'not found' }); }
 
+    // Redemption relieves the deferred-revenue liability:
+    //   • linked to a sale (redeemed_sale_id): the scheme value offsets what
+    //     that sale debited — Dr SAVDEF / Cr the sale's tender account for
+    //     min(total_paid, sale total); any excess over the sale is returned
+    //     to the customer via body.payoutMethod (default cash).
+    //   • no linked sale: the redemption IS the revenue event — Dr SAVDEF /
+    //     Cr event:revenue for total_paid.
+    if (status === 'redeemed') {
+      const paid = Math.round(Number(existing.total_paid || 0) * 100) / 100;
+      if (paid > 0) {
+        const dr = await moneyPosting.resolveAccountId(tid(req), 'event:savings_liability', conn);
+        const lines = [];
+        let applied = paid;
+
+        if (redeemed_sale_id) {
+          const [[sale]] = await conn.query(
+            'SELECT id, total, payment_method FROM sales WHERE id = ? AND tenant_id = ?',
+            [redeemed_sale_id, tid(req)]
+          );
+          if (!sale) { await conn.rollback(); return res.status(404).json({ status: 'error', message: 'redeemed_sale_id does not match a sale' }); }
+          // sales.payment_method stores the raw id — a system code or a
+          // tenant payment_methods row id; resolve to the code for the
+          // tender lookup so the credit lands on the account the sale debited.
+          let methodCode = String(sale.payment_method || '').toLowerCase();
+          if (!['cash', 'card', 'phone', 'on_account', 'stripe', 'paypal', 'bank_transfer', 'none'].includes(methodCode)) {
+            const [[pm]] = await conn.query(
+              'SELECT code FROM payment_methods WHERE id = ? AND tenant_id = ?',
+              [sale.payment_method, tid(req)]
+            );
+            if (pm?.code) methodCode = String(pm.code).toLowerCase();
+          }
+          const saleTender = await moneyPosting.tenderAccountId(conn, tid(req), methodCode, 'in');
+          applied = Math.min(paid, Math.round(Number(sale.total || 0) * 100) / 100);
+          if (applied > 0) {
+            if (!saleTender) { await conn.rollback(); return res.status(500).json({ status: 'error', message: 'Ledger posting failed: money account(s) missing' }); }
+            lines.push({ accountId: saleTender, debit: 0, credit: applied, memo: 'Scheme value applied to sale', customerId: existing.customer_id || null });
+          }
+        } else {
+          const rev = await moneyPosting.resolveAccountId(tid(req), 'event:revenue', conn);
+          if (!rev) { await conn.rollback(); return res.status(500).json({ status: 'error', message: 'Ledger posting failed: money account(s) missing' }); }
+          lines.push({ accountId: rev, debit: 0, credit: paid, memo: 'Scheme redemption recognized as revenue', customerId: existing.customer_id || null });
+        }
+
+        const remainder = Math.round((paid - applied) * 100) / 100;
+        if (redeemed_sale_id && remainder > 0) {
+          const payout = await moneyPosting.tenderAccountId(conn, tid(req), req.body?.payoutMethod || 'cash', 'out');
+          if (!payout) { await conn.rollback(); return res.status(500).json({ status: 'error', message: 'Ledger posting failed: money account(s) missing' }); }
+          lines.push({ accountId: payout, debit: 0, credit: remainder, memo: 'Excess scheme value paid out', customerId: existing.customer_id || null });
+        }
+
+        if (!dr || !lines.length) { await conn.rollback(); return res.status(500).json({ status: 'error', message: 'Ledger posting failed: money account(s) missing' }); }
+        lines.unshift({ accountId: dr, debit: paid, credit: 0, memo: 'Relieve savings deferred revenue', customerId: existing.customer_id || null });
+        await moneyPosting.postEntry({
+          tenantId: tid(req), storeId: existing.store_id || null,
+          sourceType: 'savings_redeem', sourceId: existing.id,
+          memo: `Savings enrollment ${existing.enrollment_no || existing.id} redeemed`,
+          createdBy: uid(req),
+          lines,
+        }, conn);
+      }
+    }
+
     // Relieve the deferred-revenue liability when cancelling a paid scheme.
     //   refund (default): Dr SAVDEF / Cr refund tender (body.refundMethod,
     //                     default cash). body.forfeit=true books it as

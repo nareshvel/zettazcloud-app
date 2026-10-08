@@ -405,6 +405,42 @@ exports.createReturn = async (req, res, next) => {
       if (retTax > 0) {
         retLines.push({ accountId: retTaxAcctId, debit: retTax, credit: 0, memo: 'Tax payable reversal', customerId: customerIdForDB || null });
       }
+
+      // Restockable goods come back onto the shelf — restore the inventory
+      // asset and relieve the COGS the sale booked (Dr INVENTORY / Cr COGS).
+      // Non-restockable (damaged) goods stay expensed — nothing restocked.
+      // Cost basis: the sale item's unit_cost snapshot when present (identical
+      // to what the sale relieved); the live valuation source only as a
+      // fallback for rows predating the snapshot.
+      let returnedCost = 0;
+      for (const item of (Array.isArray(items) ? items : [])) {
+        if (item.restockable === false) continue;
+        const qty = Number(item.quantity_returned ?? item.quantity) || 0;
+        if (qty <= 0 || !item.product_id) continue;
+        let perUnit = 0;
+        try {
+          const [[snap]] = await connection.query(
+            'SELECT unit_cost FROM sale_items WHERE sale_id = ? AND product_id = ? AND unit_cost IS NOT NULL LIMIT 1',
+            [original_sale_id, item.product_id]
+          );
+          perUnit = Number(snap?.unit_cost) || 0;
+        } catch (e) { if (e.code !== 'ER_BAD_FIELD_ERROR' && e.code !== 'ER_NO_SUCH_TABLE') throw e; }
+        if (!perUnit) {
+          perUnit = await moneyPosting.unitCost(connection, tenantId, {
+            productId: item.product_id, storeId,
+          });
+        }
+        returnedCost += qty * perUnit;
+      }
+      returnedCost = Math.round(returnedCost * 100) / 100;
+      if (returnedCost > 0) {
+        const invAcctId = await moneyPosting.resolveAccountId(tenantId, 'event:inventory', connection);
+        const cogsAcctId = await moneyPosting.resolveAccountId(tenantId, 'event:cogs', connection);
+        if (invAcctId && cogsAcctId) {
+          retLines.push({ accountId: invAcctId, debit: returnedCost, credit: 0, memo: 'Restocked goods back into inventory' });
+          retLines.push({ accountId: cogsAcctId, debit: 0, credit: returnedCost, memo: 'COGS relieved by return' });
+        }
+      }
       await moneyPosting.postEntry({
         tenantId,
         storeId,
@@ -414,6 +450,16 @@ exports.createReturn = async (req, res, next) => {
         createdBy: userId,
         lines: retLines,
       }, connection);
+
+      // A store_credit/exchange refund credits AR — mirror it onto
+      // outstanding_credit (negative = we owe the customer) in the same
+      // transaction, the same direction receive-payment writes use.
+      if (refundIsCredit && customerIdForDB) {
+        await connection.query(
+          'UPDATE customers SET outstanding_credit = outstanding_credit - ? WHERE id = ? AND tenant_id = ?',
+          [retTotal, customerIdForDB, tenantId]
+        );
+      }
     }
 
     await connection.commit();
@@ -662,6 +708,33 @@ exports.cancelReturn = async (req, res, next) => {
                     VALUES (?, ?, ?, ?, ?, 'SALES_RETURN_CANCELLED', ?, 'Sales Return Cancelled', ?, NOW())
                 `, [uuidv4(), item.product_id, tenant_id, store_id, userId, -item.quantity_returned, id]);
             }
+        }
+
+        // Reverse the return's journal entry — otherwise a cancelled return
+        // leaves the refund tender credit (and any restocked inventory leg)
+        // posted as if money still moved.
+        try {
+          const [retEntries] = await connection.query(
+            `SELECT id FROM money_journal_entries
+              WHERE tenant_id = ? AND source_type = 'sale_return' AND source_id = ? AND status = 'posted'`,
+            [tenant_id, id]
+          );
+          for (const e of retEntries) {
+            await moneyPosting.reverseEntry(e.id, {
+              tenantId: tenant_id, memo: `Return ${salesReturn.return_number || id} cancelled`, createdBy: userId,
+            }, connection);
+          }
+          // A cancelled store_credit/exchange refund also restores the
+          // customer's running balance (the AR credit is taken back).
+          if (['store_credit', 'exchange'].includes(String(salesReturn.refund_method || '').toLowerCase())
+              && salesReturn.customer_id) {
+            await connection.query(
+              'UPDATE customers SET outstanding_credit = outstanding_credit + ? WHERE id = ? AND tenant_id = ?',
+              [Math.round(Number(salesReturn.total_return_amount || 0) * 100) / 100, salesReturn.customer_id, tenant_id]
+            );
+          }
+        } catch (journalErr) {
+          if (journalErr.code !== 'ER_NO_SUCH_TABLE') throw journalErr;
         }
     }
 

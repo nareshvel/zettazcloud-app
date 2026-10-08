@@ -67,13 +67,14 @@ const round2 = (n) => Math.round(n * 100) / 100;
  * Ledger hooks for outgoing payments. Both run on the caller's transaction
  * so the payment row and its journal entry commit/roll back together.
  *
- * Posting model is cash-basis: Dr purchases (supplier) or operating expense
- * (expense/other), Cr the tender account the payment left from. The debit
- * side resolves through event:mappings so a tenant can point supplier
- * payments at Accounts Payable instead if they keep accrual books.
+ * Posting model: supplier payments settle Accounts Payable (event:payable →
+ * AP) — the payable was accrued by the GRN receipt entry, so cash out clears
+ * the liability instead of hitting an expense line. Tenants preferring
+ * cash-basis books can remap event:payable → PURCH; expense/other payments
+ * keep posting Dr event:expense (OPEXP) / Cr tender.
  */
 async function postOutgoingPaymentEntry(conn, tenantId, payment, userId) {
-  const eventKey = payment.payee_type === 'supplier' ? 'event:purchases' : 'event:expense';
+  const eventKey = payment.payee_type === 'supplier' ? 'event:payable' : 'event:expense';
   const debitAcctId = await moneyPosting.resolveAccountId(tenantId, eventKey, conn);
   const creditAcctId = await moneyPosting.tenderAccountId(conn, tenantId, payment.payment_method, 'out');
   if (!debitAcctId || !creditAcctId) {
@@ -2121,6 +2122,416 @@ router.get('/ledger/export.csv', requirePermission('finance.view'), async (req, 
   } catch (err) {
     console.error('[finance] GET /ledger/export.csv failed:', err);
     res.status(500).json({ message: 'Failed to export journal.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Accounting period lock — one row per tenant; postEntry rejects any journal
+// dated on/before locked_through (the guard lives in insertEntry, so manual
+// journals, automatic hooks, and reversals are all covered).
+// ---------------------------------------------------------------------------
+
+// GET /api/finance/period-lock
+router.get('/period-lock', requirePermission('finance.view'), async (req, res) => {
+  try {
+    const [[row]] = await pool.query(
+      `SELECT l.locked_through, l.locked_at, l.notes, u.name AS locked_by_name
+         FROM accounting_period_locks l
+         LEFT JOIN users u ON u.id = l.locked_by
+        WHERE l.tenant_id = ?`,
+      [req.user.tenant_id]
+    );
+    res.json({ status: 'success', data: { lock: row || null } });
+  } catch (err) {
+    if (err.code === 'ER_NO_SUCH_TABLE') return res.json({ status: 'success', data: { lock: null } });
+    console.error('[finance] GET /period-lock failed:', err);
+    res.status(500).json({ message: 'Failed to load period lock.' });
+  }
+});
+
+// PUT /api/finance/period-lock — { lockedThrough: 'YYYY-MM-DD' | null, notes? }
+router.put('/period-lock', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const lockedThrough = req.body?.lockedThrough || req.body?.locked_through || null;
+  try {
+    if (lockedThrough === null) {
+      await pool.query('DELETE FROM accounting_period_locks WHERE tenant_id = ?', [tenantId]);
+      return res.json({ status: 'success', data: { lock: null } });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lockedThrough)) {
+      return res.status(400).json({ message: 'lockedThrough must be a YYYY-MM-DD date (or null to unlock).' });
+    }
+    await pool.query(
+      `INSERT INTO accounting_period_locks (tenant_id, locked_through, locked_by, notes)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE locked_through = VALUES(locked_through),
+                               locked_by = VALUES(locked_by),
+                               locked_at = CURRENT_TIMESTAMP,
+                               notes = VALUES(notes)`,
+      [tenantId, lockedThrough, req.user?.id || null, req.body?.notes || null]
+    );
+    res.json({ status: 'success', data: { lock: { locked_through: lockedThrough } } });
+  } catch (err) {
+    console.error('[finance] PUT /period-lock failed:', err);
+    res.status(500).json({ message: 'Failed to update period lock.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Tax remittance — TAXPAY accrues credits on sales and debits on returns;
+// this settles the accrued balance out through a chosen tender account.
+// ---------------------------------------------------------------------------
+
+// GET /api/finance/tax-payable — current accrued liability on the tax account.
+router.get('/tax-payable', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  try {
+    const acctId = await moneyPosting.resolveAccountId(tenantId, 'event:tax');
+    if (!acctId) return res.json({ status: 'success', data: { accountId: null, balance: 0 } });
+    const [[row]] = await pool.query(
+      `SELECT COALESCE(SUM(l.credit - l.debit), 0) AS accrued
+         FROM money_journal_lines l
+         JOIN money_journal_entries e ON e.id = l.entry_id
+        WHERE l.tenant_id = ? AND l.account_id = ?`,
+      [tenantId, acctId]
+    );
+    const [[remits]] = await pool.query(
+      'SELECT COALESCE(SUM(amount),0) AS total FROM tax_remissions WHERE tenant_id = ?',
+      [tenantId]
+    ).catch((e) => e.code === 'ER_NO_SUCH_TABLE' ? [[{ total: 0 }]] : Promise.reject(e));
+    res.json({ status: 'success', data: {
+      accountId: acctId,
+      balance: round2(Number(row.accrued) || 0),
+      remittedTotal: round2(Number(remits?.total) || 0),
+    } });
+  } catch (err) {
+    console.error('[finance] GET /tax-payable failed:', err);
+    res.status(500).json({ message: 'Failed to load tax payable balance.' });
+  }
+});
+
+// POST /api/finance/tax-remittance — { amount, paymentMethod|paidFromAccountId,
+//   periodFrom?, periodTo?, reference?, notes? }
+router.post('/tax-remittance', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const amount = round2(Number(req.body?.amount));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ message: 'amount must be a positive number.' });
+  }
+  const conn = await getConnectionWithTimeZone();
+  try {
+    await conn.beginTransaction();
+    const taxAcctId = await moneyPosting.resolveAccountId(tenantId, 'event:tax', conn);
+    const paidFromId = req.body?.paidFromAccountId ||
+      await moneyPosting.tenderAccountId(conn, tenantId, req.body?.paymentMethod || 'bank_transfer', 'out');
+    if (!taxAcctId || !paidFromId) {
+      await conn.rollback();
+      return res.status(500).json({ message: 'Ledger posting failed: money account(s) missing.' });
+    }
+    const remissionId = uuidv4();
+    const entry = await moneyPosting.postEntry({
+      tenantId,
+      storeId: req.body?.storeId || req.storeId || null,
+      sourceType: 'tax_remittance', sourceId: remissionId,
+      memo: `Tax remittance${req.body?.reference ? ` — ${req.body.reference}` : ''}`,
+      createdBy: req.user?.id || null,
+      lines: [
+        { accountId: taxAcctId, debit: amount, credit: 0, memo: 'Tax authority settlement' },
+        { accountId: paidFromId, debit: 0, credit: amount, memo: `Remitted via ${req.body?.paymentMethod || 'account'}` },
+      ],
+    }, conn);
+    await conn.query(
+      `INSERT INTO tax_remissions
+         (id, tenant_id, period_from, period_to, amount, paid_from_account_id, journal_entry_id, reference, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [remissionId, tenantId, req.body?.periodFrom || null, req.body?.periodTo || null,
+       amount, paidFromId, entry.entryId, req.body?.reference || null, req.body?.notes || null, req.user?.id || null]
+    );
+    await conn.commit();
+    res.status(201).json({ status: 'success', data: { id: remissionId, entryNumber: entry.entryNumber } });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[finance] POST /tax-remittance failed:', err);
+    res.status(500).json({ message: 'Failed to record tax remittance.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// GET /api/finance/tax-remissions — remittance history.
+router.get('/tax-remissions', requirePermission('finance.view'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT t.*, e.entry_number, a.code AS paid_from_code, u.name AS created_by_name
+         FROM tax_remissions t
+         LEFT JOIN money_journal_entries e ON e.id = t.journal_entry_id
+         LEFT JOIN money_accounts a ON a.id = t.paid_from_account_id
+         LEFT JOIN users u ON u.id = t.created_by
+        WHERE t.tenant_id = ?
+        ORDER BY t.created_at DESC
+        LIMIT 200`,
+      [req.user.tenant_id]
+    );
+    res.json({ status: 'success', data: { remissions: rows } });
+  } catch (err) {
+    if (err.code === 'ER_NO_SUCH_TABLE') return res.json({ status: 'success', data: { remissions: [] } });
+    console.error('[finance] GET /tax-remissions failed:', err);
+    res.status(500).json({ message: 'Failed to load tax remissions.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Account reconciliation — match ledger lines against a statement. A session
+// picks an account + statement date/balance, clears lines, and completes only
+// when cleared lines + any booked adjustment equal the statement.
+// ---------------------------------------------------------------------------
+
+const roundAmt = (n) => Math.round(Number(n) * 100) / 100;
+
+// GET /api/finance/reconciliations?account_id=&status=
+router.get('/reconciliations', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  try {
+    const where = ['r.tenant_id = ?'];
+    const params = [tenantId];
+    if (req.query.account_id) { where.push('r.account_id = ?'); params.push(req.query.account_id); }
+    if (req.query.status) { where.push('r.status = ?'); params.push(req.query.status); }
+    const [rows] = await pool.query(
+      `SELECT r.*, a.code AS account_code, a.name AS account_name, u.name AS created_by_name
+         FROM money_reconciliations r
+         JOIN money_accounts a ON a.id = r.account_id
+         LEFT JOIN users u ON u.id = r.created_by
+        WHERE ${where.join(' AND ')}
+        ORDER BY r.created_at DESC
+        LIMIT 100`,
+      params
+    );
+    res.json({ status: 'success', data: { reconciliations: rows } });
+  } catch (err) {
+    if (err.code === 'ER_NO_SUCH_TABLE') return res.json({ status: 'success', data: { reconciliations: [] } });
+    console.error('[finance] GET /reconciliations failed:', err);
+    res.status(500).json({ message: 'Failed to load reconciliations.' });
+  }
+});
+
+// POST /api/finance/reconciliations — { accountId, statementDate, statementBalance }
+router.post('/reconciliations', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { accountId, statementDate } = req.body || {};
+  const statementBalance = roundAmt(req.body?.statementBalance);
+  if (!accountId) return res.status(400).json({ message: 'accountId is required.' });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(statementDate || ''))) {
+    return res.status(400).json({ message: 'statementDate must be YYYY-MM-DD.' });
+  }
+  if (!Number.isFinite(statementBalance)) {
+    return res.status(400).json({ message: 'statementBalance must be a number.' });
+  }
+  try {
+    const [[acct]] = await pool.query(
+      'SELECT id FROM money_accounts WHERE id = ? AND tenant_id = ? AND is_active = 1',
+      [accountId, tenantId]
+    );
+    if (!acct) return res.status(404).json({ message: 'Account not found.' });
+    const id = uuidv4();
+    await pool.query(
+      `INSERT INTO money_reconciliations (id, tenant_id, account_id, statement_date, statement_balance, created_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, tenantId, accountId, statementDate, statementBalance, req.user?.id || null]
+    );
+    res.status(201).json({ status: 'success', data: { id } });
+  } catch (err) {
+    console.error('[finance] POST /reconciliations failed:', err);
+    res.status(500).json({ message: 'Failed to start reconciliation.' });
+  }
+});
+
+// GET /api/finance/reconciliations/:id — session + every ledger line on the
+// account up to the statement date, flagged cleared/uncleared, plus the live
+// cleared-balance and difference.
+router.get('/reconciliations/:id', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  try {
+    const [[recon]] = await pool.query(
+      `SELECT r.*, a.code AS account_code, a.name AS account_name, a.account_type,
+              a.opening_balance, u.name AS created_by_name
+         FROM money_reconciliations r
+         JOIN money_accounts a ON a.id = r.account_id
+         LEFT JOIN users u ON u.id = r.created_by
+        WHERE r.id = ? AND r.tenant_id = ?`,
+      [req.params.id, tenantId]
+    );
+    if (!recon) return res.status(404).json({ message: 'Reconciliation not found.' });
+
+    const [lines] = await pool.query(
+      `SELECT l.id, l.entry_id, l.debit, l.credit, l.memo AS line_memo, l.reconciliation_id,
+              e.entry_number, e.entry_date, e.source_type, e.status AS entry_status, e.memo AS entry_memo
+         FROM money_journal_lines l
+         JOIN money_journal_entries e ON e.id = l.entry_id AND e.tenant_id = l.tenant_id
+        WHERE l.tenant_id = ? AND l.account_id = ?
+          AND e.entry_date <= ?
+        ORDER BY e.entry_date, e.entry_number, l.line_no`,
+      [tenantId, recon.account_id, recon.statement_date]
+    );
+
+    // Cleared balance = opening + Σ(cleared lines) — sign via normal side.
+    const debitNormal = ['asset', 'expense'].includes(recon.account_type);
+    let cleared = Number(recon.opening_balance) || 0;
+    for (const l of lines) {
+      if (!l.reconciliation_id) continue;
+      cleared += (Number(l.debit) - Number(l.credit)) * (debitNormal ? 1 : -1);
+    }
+    cleared = roundAmt(cleared);
+
+    res.json({ status: 'success', data: {
+      reconciliation: recon,
+      lines,
+      clearedBalance: cleared,
+      difference: roundAmt(Number(recon.statement_balance) - cleared),
+    } });
+  } catch (err) {
+    console.error('[finance] GET /reconciliations/:id failed:', err);
+    res.status(500).json({ message: 'Failed to load reconciliation.' });
+  }
+});
+
+// POST /api/finance/reconciliations/:id/lines — { lineIds: [...], cleared: bool }
+router.post('/reconciliations/:id/lines', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const lineIds = Array.isArray(req.body?.lineIds) ? req.body.lineIds : [];
+  const cleared = req.body?.cleared !== false;
+  if (!lineIds.length) return res.status(400).json({ message: 'lineIds is required.' });
+  const conn = await getConnectionWithTimeZone();
+  try {
+    await conn.beginTransaction();
+    const [[recon]] = await conn.query(
+      'SELECT * FROM money_reconciliations WHERE id = ? AND tenant_id = ? FOR UPDATE',
+      [req.params.id, tenantId]
+    );
+    if (!recon) { await conn.rollback(); return res.status(404).json({ message: 'Reconciliation not found.' }); }
+    if (recon.status !== 'in_progress') { await conn.rollback(); return res.status(400).json({ message: 'Reconciliation is already completed.' }); }
+
+    const placeholders = lineIds.map(() => '?').join(',');
+    if (cleared) {
+      // Only lines on this account, in-range, and not already claimed by a
+      // DIFFERENT session can be cleared into this one.
+      await conn.query(
+        `UPDATE money_journal_lines l
+           JOIN money_journal_entries e ON e.id = l.entry_id
+            SET l.reconciliation_id = ?
+          WHERE l.tenant_id = ? AND l.account_id = ? AND e.entry_date <= ?
+            AND l.id IN (${placeholders})
+            AND (l.reconciliation_id IS NULL OR l.reconciliation_id = ?)`,
+        [recon.id, tenantId, recon.account_id, recon.statement_date, ...lineIds, recon.id]
+      );
+    } else {
+      await conn.query(
+        `UPDATE money_journal_lines
+            SET reconciliation_id = NULL
+          WHERE tenant_id = ? AND reconciliation_id = ?
+            AND id IN (${placeholders})`,
+        [tenantId, recon.id, ...lineIds]
+      );
+    }
+    await conn.commit();
+    res.json({ status: 'success' });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[finance] POST /reconciliations/:id/lines failed:', err);
+    res.status(500).json({ message: 'Failed to update cleared lines.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// POST /api/finance/reconciliations/:id/complete — close the session. When the
+// cleared balance doesn't reach the statement balance, body.adjustmentAccountId
+// books the residual (e.g. bank fees → OPEXP) with its own journal entry whose
+// account-side line is immediately marked cleared in this session.
+router.post('/reconciliations/:id/complete', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const conn = await getConnectionWithTimeZone();
+  try {
+    await conn.beginTransaction();
+    const [[recon]] = await conn.query(
+      `SELECT r.*, a.account_type, a.opening_balance
+         FROM money_reconciliations r JOIN money_accounts a ON a.id = r.account_id
+        WHERE r.id = ? AND r.tenant_id = ? FOR UPDATE`,
+      [req.params.id, tenantId]
+    );
+    if (!recon) { await conn.rollback(); return res.status(404).json({ message: 'Reconciliation not found.' }); }
+    if (recon.status !== 'in_progress') { await conn.rollback(); return res.status(400).json({ message: 'Reconciliation is already completed.' }); }
+
+    const debitNormal = ['asset', 'expense'].includes(recon.account_type);
+    const [[sum]] = await conn.query(
+      `SELECT COALESCE(SUM((l.debit - l.credit) * ?), 0) AS cleared
+         FROM money_journal_lines l
+         JOIN money_journal_entries e ON e.id = l.entry_id
+        WHERE l.tenant_id = ? AND l.account_id = ?
+          AND e.entry_date <= ? AND l.reconciliation_id IS NOT NULL`,
+      [debitNormal ? 1 : -1, tenantId, recon.account_id, recon.statement_date]
+    );
+    let cleared = roundAmt((Number(recon.opening_balance) || 0) + (Number(sum.cleared) || 0));
+    let difference = roundAmt(Number(recon.statement_balance) - cleared);
+    let adjustmentEntryId = null;
+
+    if (Math.abs(difference) > 0.005) {
+      const adjustmentAccountId = req.body?.adjustmentAccountId;
+      if (!adjustmentAccountId) {
+        await conn.rollback();
+        return res.status(400).json({
+          message: `Cleared balance differs from the statement by ${difference.toFixed(2)} — provide adjustmentAccountId to book the residual, or review the cleared lines.`,
+          difference,
+          clearedBalance: cleared,
+        });
+      }
+      // statement < cleared → too much money in the books → Cr the account,
+      // Dr the adjustment (expense). statement > cleared → the reverse.
+      const adjAmt = Math.abs(difference);
+      const lines = difference < 0
+        ? [
+            { accountId: adjustmentAccountId, debit: adjAmt, credit: 0, memo: 'Reconciliation adjustment' },
+            { accountId: recon.account_id, debit: 0, credit: adjAmt, memo: 'Statement adjustment' },
+          ]
+        : [
+            { accountId: recon.account_id, debit: adjAmt, credit: 0, memo: 'Statement adjustment' },
+            { accountId: adjustmentAccountId, debit: 0, credit: adjAmt, memo: 'Reconciliation adjustment' },
+          ];
+      const entry = await moneyPosting.postEntry({
+        tenantId, storeId: null,
+        entryDate: recon.statement_date instanceof Date
+          ? recon.statement_date.toISOString().slice(0, 10) : recon.statement_date,
+        sourceType: 'reconciliation', sourceId: recon.id,
+        memo: `Reconciliation adjustment — account ${recon.account_id}`,
+        createdBy: req.user?.id || null,
+        lines,
+      }, conn);
+      adjustmentEntryId = entry.entryId;
+      // Mark the adjustment's own account-side line cleared so the statement
+      // and ledger agree going forward.
+      await conn.query(
+        `UPDATE money_journal_lines SET reconciliation_id = ?
+          WHERE entry_id = ? AND account_id = ?`,
+        [recon.id, entry.entryId, recon.account_id]
+      );
+      cleared = roundAmt(cleared + difference);
+      difference = 0;
+    }
+
+    await conn.query(
+      `UPDATE money_reconciliations
+          SET status = 'completed', cleared_balance = ?, difference = ?,
+              adjustment_entry_id = ?, completed_at = NOW()
+        WHERE id = ?`,
+      [cleared, difference, adjustmentEntryId, recon.id]
+    );
+    await conn.commit();
+    res.json({ status: 'success', data: { clearedBalance: cleared, difference, adjustmentEntryId } });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[finance] POST /reconciliations/:id/complete failed:', err);
+    res.status(500).json({ message: err.message || 'Failed to complete reconciliation.' });
+  } finally {
+    conn.release();
   }
 });
 

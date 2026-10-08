@@ -23,6 +23,28 @@ const debugLog = (...args) => {
   }
 };
 
+// Tender resolution for split payments — same rules as the single-method
+// path below: system code → used directly; otherwise the tenant's active
+// payment_methods row supplies its code. Returns null when nothing resolves.
+const SYSTEM_TENDER_CODES = new Set(['cash', 'card', 'phone', 'on_account', 'none', 'stripe', 'paypal']);
+const TENDER_CODE_MAPPING = { cash: 'cash', card: 'card', phone: 'phone', upi: 'phone', on_account: 'on_account', '': 'none', none: 'none' };
+
+async function resolveTenderCode(rawId, tenantId) {
+  const raw = String(rawId || '');
+  if (SYSTEM_TENDER_CODES.has(raw.toLowerCase())) return raw.toLowerCase();
+  try {
+    const [rows] = await pool.query(
+      'SELECT code FROM payment_methods WHERE id = ? AND tenant_id = ? AND is_active = 1',
+      [raw, tenantId]
+    );
+    if (!rows.length) return null;
+    const dbCode = String(rows[0].code || '').toLowerCase();
+    return TENDER_CODE_MAPPING[dbCode] || dbCode || raw;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Create a new sale
  * @route POST /api/sales
@@ -95,7 +117,11 @@ exports.createSale = async (req, res) => {
     // Log if provided tenantId from body mismatches token, but use token's tenantId
     console.warn(`Request body tenantId ${tenantId} mismatches authenticated user tenant ${actualTenantId}. Using authenticated user's tenantId. User ID: ${currentUser.id}`);
   }
-  if (!payment_method_id) {
+  // Split tender: `tenders: [{ method_id|method, amount }]` supersedes the
+  // single payment_method_id — one Dr leg per tender in the journal, one
+  // payment_transactions row per leg, sales.payment_method = 'split'.
+  const rawTenders = Array.isArray(req.body.tenders) && req.body.tenders.length ? req.body.tenders : null;
+  if (!payment_method_id && !rawTenders) {
     return res.status(400).json({ message: 'Payment method ID is required.' });
   }
 
@@ -359,7 +385,7 @@ exports.createSale = async (req, res) => {
   let validationPaymentMethodId = payment_method_id; // Drives the "none"/$0 special case below.
   let paymentMethod = null; // Set once we've confirmed a usable payment method, from either source.
 
-  if (!isSystemCode) {
+  if (!isSystemCode && !rawTenders) {
     try {
       const [paymentMethodRows] = await pool.query(
         'SELECT code, name FROM payment_methods WHERE id = ? AND tenant_id = ? AND is_active = 1',
@@ -397,7 +423,7 @@ exports.createSale = async (req, res) => {
     paymentMethod = VALID_PAYMENT_METHODS[validationPaymentMethodId] || null;
   }
 
-  if (!paymentMethod) {
+  if (!paymentMethod && !rawTenders) {
     console.log(`[SALES] Invalid payment method ID received: ${payment_method_id}`);
     console.log(`[SALES] Valid system payment methods: ${Object.keys(VALID_PAYMENT_METHODS).join(', ')}`);
     return res.status(400).json({
@@ -408,8 +434,37 @@ exports.createSale = async (req, res) => {
 
   // Charge-account sales create a receivable — they must carry a customer or
   // the AR entry (and outstanding_credit bump) has nowhere to land.
-  if (validationPaymentMethodId === 'on_account' && !actualCustomerId) {
+  if (!rawTenders && validationPaymentMethodId === 'on_account' && !actualCustomerId) {
     return res.status(400).json({ message: 'Charge-account sales require a customer on the ticket.' });
+  }
+
+  // Split tender — normalize each leg's method the same way the single-method
+  // path does (system code or tenant payment_methods row) and prove the legs
+  // add up to the sale total to the cent before anything is written.
+  let tenderLegs = null;
+  if (rawTenders && finalCalculatedTotalAmount > 0) {
+    tenderLegs = [];
+    let legsTotal = 0;
+    for (const t of rawTenders) {
+      const legAmount = Math.round(Number(t.amount) * 100) / 100;
+      if (!Number.isFinite(legAmount) || legAmount <= 0) {
+        return res.status(400).json({ message: 'Each split tender needs a positive amount.' });
+      }
+      const rawId = t.method_id || t.method || t.payment_method_id;
+      const code = await resolveTenderCode(rawId, actualTenantId);
+      if (!code || code === 'none') {
+        return res.status(400).json({ message: `Invalid payment method in split tender: ${rawId}` });
+      }
+      tenderLegs.push({ rawId, code, amount: legAmount });
+      legsTotal = Math.round((legsTotal + legAmount) * 100) / 100;
+    }
+    const expected = Math.round(finalCalculatedTotalAmount * 100) / 100;
+    if (legsTotal !== expected) {
+      return res.status(400).json({ message: `Split tenders (${legsTotal.toFixed(2)}) must equal the sale total (${expected.toFixed(2)}).` });
+    }
+    if (tenderLegs.some((l) => l.code === 'on_account') && !actualCustomerId) {
+      return res.status(400).json({ message: 'Charge-account tenders require a customer on the ticket.' });
+    }
   }
 
   debugLog(`Using payment method: ${paymentMethod.name} (${validationPaymentMethodId})`);
@@ -494,7 +549,7 @@ exports.createSale = async (req, res) => {
       calculatedSubtotal,
       taxFromRequest,
       finalCalculatedTotalAmount,
-      payment_method_id,
+      tenderLegs && tenderLegs.length > 1 ? 'split' : (tenderLegs ? tenderLegs[0].rawId : payment_method_id),
       'completed', // Assuming 'completed' and 'PAID' for now
       'PAID',
       discount_type || null,
@@ -596,26 +651,41 @@ exports.createSale = async (req, res) => {
     // Jewelry weight-pricing fields (purity/weight/making/wastage/hsn/snapshot)
     // are optional and only present when the cart's JewelryPricingModal captured
     // them for that line — see 2026-09-03_jewelry_weight_pricing_checkout_capture.sql.
-    const saleItemRecords = items.map((item) => ({
-      id: uuidv4(),
-      sale_id: saleId,
-      product_id: item.productId || item.product_id,
-      quantity: item.quantity,
-      price: item.price,
-      purity: item.purity ?? null,
-      gross_weight: item.grossWeight ?? item.gross_weight ?? null,
-      net_weight: item.netWeight ?? item.net_weight ?? null,
-      making_charge: item.makingCharge ?? item.making_charge ?? null,
-      wastage_value: item.wastageValue ?? item.wastage_value ?? null,
-      metal_value: item.metalValue ?? item.metal_value ?? null,
-      hsn_code: item.hsnCode ?? item.hsn_code ?? null,
-      pricing_snapshot: (item.pricingSnapshot ?? item.pricing_snapshot)
-        ? JSON.stringify(item.pricingSnapshot ?? item.pricing_snapshot)
-        : null,
-    }));
+    // unit_cost freezes the inventory valuation at sale time so the COGS leg and
+    // any later sales-return restore share the same basis.
+    const saleItemRecords = [];
+    for (const item of items) {
+      const productId = item.productId || item.product_id;
+      const pieceId = item.pieceId || item.piece_id || null;
+      let unitCost = null;
+      try {
+        const c = await moneyPosting.unitCost(connection, actualTenantId, {
+          productId, pieceId, storeId: store_id,
+        });
+        unitCost = c > 0 ? Math.round(c * 100) / 100 : null;
+      } catch { unitCost = null; }
+      saleItemRecords.push({
+        id: uuidv4(),
+        sale_id: saleId,
+        product_id: productId,
+        quantity: item.quantity,
+        price: item.price,
+        unit_cost: unitCost,
+        purity: item.purity ?? null,
+        gross_weight: item.grossWeight ?? item.gross_weight ?? null,
+        net_weight: item.netWeight ?? item.net_weight ?? null,
+        making_charge: item.makingCharge ?? item.making_charge ?? null,
+        wastage_value: item.wastageValue ?? item.wastage_value ?? null,
+        metal_value: item.metalValue ?? item.metal_value ?? null,
+        hsn_code: item.hsnCode ?? item.hsn_code ?? null,
+        pricing_snapshot: (item.pricingSnapshot ?? item.pricing_snapshot)
+          ? JSON.stringify(item.pricingSnapshot ?? item.pricing_snapshot)
+          : null,
+      });
+    }
 
     const saleItemQuery = `INSERT INTO sale_items
-      (id, sale_id, product_id, quantity, price, purity, gross_weight, net_weight, making_charge, wastage_value, metal_value, hsn_code, pricing_snapshot)
+      (id, sale_id, product_id, quantity, price, unit_cost, purity, gross_weight, net_weight, making_charge, wastage_value, metal_value, hsn_code, pricing_snapshot)
       VALUES ?`;
     const saleItemValues = saleItemRecords.map(r => [
       r.id,
@@ -623,6 +693,7 @@ exports.createSale = async (req, res) => {
       r.product_id,
       r.quantity,
       r.price,
+      r.unit_cost,
       r.purity,
       r.gross_weight,
       r.net_weight,
@@ -881,22 +952,52 @@ exports.createSale = async (req, res) => {
       const saleTax = Math.round(Number(taxFromRequest) * 100) / 100 || 0;
       const netRevenue = Math.round((saleTotal - saleTax) * 100) / 100;
 
-      const tenderAcctId = await moneyPosting.tenderAccountId(connection, actualTenantId, validationPaymentMethodId, 'in');
+      // One debit leg per tender — single-method sales behave exactly as
+      // before; split tenders land each leg on its own mapped account
+      // (tender:<code> per leg, so a card+cash split posts Dr CARDCLR x +
+      // Dr CASH y). 'on_account' legs resolve to AR through the same mapping.
+      const legs = tenderLegs || [{ code: validationPaymentMethodId, amount: saleTotal }];
+      const journalLines = [];
+      for (const leg of legs) {
+        const acct = await moneyPosting.tenderAccountId(connection, actualTenantId, leg.code, 'in');
+        if (!acct) throw new Error('Ledger posting failed: required money account(s) are missing or inactive');
+        journalLines.push({ accountId: acct, debit: leg.amount, credit: 0, memo: `Tender — ${leg.code}`, customerId: actualCustomerId || null });
+      }
+
       const revenueAcctId = await moneyPosting.resolveAccountId(actualTenantId, 'event:revenue', connection);
       const taxAcctId = saleTax > 0 ? await moneyPosting.resolveAccountId(actualTenantId, 'event:tax', connection) : null;
-      if (!tenderAcctId || !revenueAcctId || (saleTax > 0 && !taxAcctId)) {
+      if (!revenueAcctId || (saleTax > 0 && !taxAcctId)) {
         throw new Error('Ledger posting failed: required money account(s) are missing or inactive');
       }
 
-      const journalLines = [
-        { accountId: tenderAcctId, debit: saleTotal, credit: 0, memo: `Tender — ${validationPaymentMethodId}`, customerId: actualCustomerId || null },
-      ];
       if (netRevenue > 0) {
         journalLines.push({ accountId: revenueAcctId, debit: 0, credit: netRevenue, memo: 'Sales revenue', customerId: actualCustomerId || null });
       }
       if (saleTax > 0) {
         journalLines.push({ accountId: taxAcctId, debit: 0, credit: saleTax, memo: 'Tax payable', customerId: actualCustomerId || null });
       }
+
+      // Accrual COGS — the goods leaving the shelf relieve the inventory
+      // asset and recognize cost of goods sold in the same entry. Cost comes
+      // from the unit_cost snapshot captured on the sale_items above (store
+      // listing WAC → product WAC → cost fallbacks at sale time); lines with
+      // no cost basis contribute 0.
+      let cogsTotal = 0;
+      for (const rec of saleItemRecords) {
+        const qty = Number(rec.quantity) || 0;
+        if (qty <= 0 || !rec.unit_cost) continue;
+        cogsTotal += qty * Number(rec.unit_cost);
+      }
+      cogsTotal = Math.round(cogsTotal * 100) / 100;
+      if (cogsTotal > 0) {
+        const cogsAcctId = await moneyPosting.resolveAccountId(actualTenantId, 'event:cogs', connection);
+        const invAcctId = await moneyPosting.resolveAccountId(actualTenantId, 'event:inventory', connection);
+        if (cogsAcctId && invAcctId) {
+          journalLines.push({ accountId: cogsAcctId, debit: cogsTotal, credit: 0, memo: 'Cost of goods sold' });
+          journalLines.push({ accountId: invAcctId, debit: 0, credit: cogsTotal, memo: 'Inventory relieved' });
+        }
+      }
+
       await moneyPosting.postEntry({
         tenantId: actualTenantId,
         storeId: store_id,
@@ -907,27 +1008,32 @@ exports.createSale = async (req, res) => {
         lines: journalLines,
       }, connection);
 
-      // Charge-account sales grow the customer's running balance — the
+      // Charge-account legs grow the customer's running balance — the
       // debit lands on AR in the journal above; this mirrors it onto
       // customers.outstanding_credit inside the same transaction so the
-      // Charge Account report and the ledger never diverge.
-      if (validationPaymentMethodId === 'on_account' && actualCustomerId) {
+      // Charge Account report and the ledger never diverge. Only the
+      // on_account portion of a split counts.
+      const onAccountAmount = Math.round(legs.filter((l) => l.code === 'on_account')
+        .reduce((s, l) => s + l.amount, 0) * 100) / 100;
+      if (onAccountAmount > 0 && actualCustomerId) {
         await connection.query(
           'UPDATE customers SET outstanding_credit = outstanding_credit + ? WHERE id = ? AND tenant_id = ?',
-          [saleTotal, actualCustomerId, actualTenantId]
+          [onAccountAmount, actualCustomerId, actualTenantId]
         );
       }
     }
 
-    // Tender record — one row per tender on the sale. The current checkout
-    // sends a single payment_method_id; when split tender lands, loop over
-    // the tender array here instead (each leg posts its own journal line too).
-    await connection.query(
-      `INSERT INTO payment_transactions
-         (id, tenant_id, sale_id, payment_method_id, amount, status)
-       VALUES (?, ?, ?, ?, ?, 'COMPLETED')`,
-      [uuidv4(), actualTenantId, saleId, payment_method_id, Math.round(adjustedTotal * 100) / 100]
-    );
+    // Tender records — one row per tender on the sale (single-method sales
+    // write exactly the row they always did; splits write one per leg).
+    const tenderRows = tenderLegs || [{ rawId: payment_method_id, amount: Math.round(adjustedTotal * 100) / 100 }];
+    for (const leg of tenderRows) {
+      await connection.query(
+        `INSERT INTO payment_transactions
+           (id, tenant_id, sale_id, payment_method_id, amount, status)
+         VALUES (?, ?, ?, ?, ?, 'COMPLETED')`,
+        [uuidv4(), actualTenantId, saleId, leg.rawId || payment_method_id, leg.amount]
+      );
+    }
 
     await connection.commit();
 

@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-toastify';
-import { 
-  Banknote, 
-  CreditCard, 
-  Smartphone, 
-  Landmark, 
-  Gift, 
-  Wallet, 
+import {
+  Banknote,
+  CreditCard,
+  Smartphone,
+  Landmark,
+  Gift,
+  Wallet,
   CheckCircle,
   X as IconX, // Renamed X to IconX to avoid conflict if X is a type
-  Loader
+  Loader,
+  Plus,
+  Trash2,
+  Split,
 } from 'lucide-react';
 import { PaymentMethod as ApiPaymentMethod } from '../../services/api';
 import { Customer } from '@/types';
@@ -32,12 +35,17 @@ const noPaymentRequiredMethod: DisplayPaymentMethod = {
   sort_order: 999,
 };
 
+export interface TenderLegSelection {
+  methodId: string;
+  amount: number;
+}
+
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   totalAmount: number;
   availablePaymentMethods: DisplayPaymentMethod[];
-  onConfirmPayment: (finalPaymentMethod: DisplayPaymentMethod) => Promise<void>; // Modified to take final method
+  onConfirmPayment: (finalPaymentMethod: DisplayPaymentMethod, tenders?: TenderLegSelection[]) => Promise<void>; // tenders set only in split mode
   selectedCustomer: Customer | null; // Added selectedCustomer prop
   canChargeToAccount: boolean; // To determine if charge is generally allowed
   currencyCode?: string; // For formatting currency based on store settings
@@ -61,6 +69,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [disableConfirmButton, setDisableConfirmButton] = useState(false);
   const [chargeEligibilityMessage, setChargeEligibilityMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false); // RE-ADD isProcessing state
+  // Split tender — off by default so the common single-tender checkout stays
+  // one tap. Each leg = {methodId, amountText}; backend requires the legs to
+  // equal the sale total exactly.
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitLegs, setSplitLegs] = useState<{ methodId: string; amountText: string }[]>([]);
 
   // Determine active selectable payment methods for tabs
   const activeSelectablePaymentMethods = useMemo(() => {
@@ -102,6 +115,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     setAmountTendered('');
     setChangeDue(0);
     setChargeEligibilityMessage(null);
+    setSplitMode(false);
+    setSplitLegs([]);
     setDisableConfirmButton(false); // Default to enabled, specific conditions below will disable
 
     if (!selectedMethodInModal) return;
@@ -234,8 +249,61 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   };
 
+  // Split tender helpers — legs must total the sale amount exactly; the
+  // backend re-validates. The last leg's "Remaining" shortcut keeps the
+  // cashier from having to do change math by hand.
+  const splitTotal = useMemo(
+    () => Math.round(splitLegs.reduce((s, l) => s + (parseFloat(l.amountText) || 0), 0) * 100) / 100,
+    [splitLegs],
+  );
+  const splitRemaining = useMemo(
+    () => Math.round((totalAmount - splitTotal) * 100) / 100,
+    [totalAmount, splitTotal],
+  );
+  const splitValid = splitMode
+    && splitLegs.length > 1
+    && splitLegs.every((l) => l.methodId && (parseFloat(l.amountText) || 0) > 0)
+    && Math.abs(splitRemaining) < 0.005;
+  const splitHasOnAccount = splitLegs.some(
+    (l) => activeSelectablePaymentMethods.find((m) => m.id === l.methodId)?.code === 'on_account',
+  );
+
+  const enterSplitMode = () => {
+    const first = selectedMethodInModal && selectedMethodInModal.code !== 'NO_PAYMENT'
+      ? selectedMethodInModal
+      : activeSelectablePaymentMethods[0];
+    if (!first) return;
+    setSplitLegs([{ methodId: first.id, amountText: totalAmount.toFixed(2) }]);
+    setSplitMode(true);
+  };
+  const exitSplitMode = () => { setSplitMode(false); setSplitLegs([]); };
+  const updateSplitLeg = (i: number, patch: Partial<{ methodId: string; amountText: string }>) => {
+    setSplitLegs((legs) => legs.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  };
+  const addSplitLeg = () => {
+    const remaining = Math.round((totalAmount - splitTotal) * 100) / 100;
+    const unused = activeSelectablePaymentMethods.find((m) => !splitLegs.some((l) => l.methodId === m.id));
+    setSplitLegs((legs) => [...legs, { methodId: (unused || activeSelectablePaymentMethods[0]).id, amountText: remaining > 0 ? remaining.toFixed(2) : '' }]);
+  };
+  const removeSplitLeg = (i: number) => setSplitLegs((legs) => legs.filter((_, idx) => idx !== i));
+
   const handleConfirm = async () => {
     if (disableConfirmButton || isProcessing) return;
+    if (splitMode) {
+      if (!splitValid || isProcessing) return;
+      setIsProcessing(true);
+      try {
+        const firstMethod = activeSelectablePaymentMethods.find((m) => m.id === splitLegs[0].methodId);
+        if (!firstMethod) { toast.error('Invalid split tender.'); return; }
+        await onConfirmPayment(firstMethod, splitLegs.map((l) => ({
+          methodId: l.methodId,
+          amount: Math.round(parseFloat(l.amountText) * 100) / 100,
+        })));
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
     if (selectedMethodInModal) {
       setIsProcessing(true);
       try {
@@ -351,19 +419,98 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               </div>
 
               {/* Instructions / eligibility messages */}
-              <div className="mb-3 text-sm min-h-[36px]">
-                {selectedMethodInModal.code === 'cash' && (
-                  <p className="text-gray-500 dark:text-muted-foreground">Enter the amount tendered by the customer.</p>
-                )}
-                {selectedMethodInModal.code === 'on_account' && chargeEligibilityMessage && (
-                  <p className={`font-medium ${disableConfirmButton ? 'text-red-500 dark:text-red-400' : 'text-gray-700 dark:text-foreground'}`}>
-                    {chargeEligibilityMessage}
-                  </p>
+              <div className="mb-3 text-sm min-h-[36px] flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  {!splitMode && selectedMethodInModal.code === 'cash' && (
+                    <p className="text-gray-500 dark:text-muted-foreground">Enter the amount tendered by the customer.</p>
+                  )}
+                  {!splitMode && selectedMethodInModal.code === 'on_account' && chargeEligibilityMessage && (
+                    <p className={`font-medium ${disableConfirmButton ? 'text-red-500 dark:text-red-400' : 'text-gray-700 dark:text-foreground'}`}>
+                      {chargeEligibilityMessage}
+                    </p>
+                  )}
+                </div>
+                {totalAmount > 0 && (
+                  <button
+                    onClick={splitMode ? exitSplitMode : enterSplitMode}
+                    disabled={isProcessing}
+                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50"
+                  >
+                    <Split size={13} />
+                    {splitMode ? 'Single payment' : 'Split payment'}
+                  </button>
                 )}
               </div>
 
+              {/* Split tender editor — replaces the single-method card. */}
+              {splitMode && (
+                <div className="rounded-xl border border-gray-200 dark:border-border bg-gray-50 dark:bg-muted/40 p-4 mb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-600 dark:text-muted-foreground">Split across {splitLegs.length} methods</span>
+                    <span className="text-xl font-bold text-gray-900 dark:text-foreground">{formatCurrency(totalAmount, currencyCode)}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {splitLegs.map((leg, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <select
+                          value={leg.methodId}
+                          onChange={(e) => updateSplitLeg(i, { methodId: e.target.value })}
+                          disabled={isProcessing}
+                          className="flex-1 min-w-0 px-2.5 py-2 border border-gray-300 dark:border-border rounded-lg text-sm bg-white dark:bg-background text-gray-900 dark:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        >
+                          {activeSelectablePaymentMethods.map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={leg.amountText}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (/^\d*\.?\d{0,2}$/.test(v) || v === '') updateSplitLeg(i, { amountText: v });
+                          }}
+                          placeholder="0.00"
+                          disabled={isProcessing}
+                          className="w-24 px-2.5 py-2 border border-gray-300 dark:border-border rounded-lg text-sm text-right font-semibold bg-white dark:bg-background text-gray-900 dark:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                        <button
+                          onClick={() => removeSplitLeg(i)}
+                          disabled={isProcessing || splitLegs.length <= 1}
+                          className="p-1.5 text-gray-400 hover:text-red-500 disabled:opacity-30 transition-colors"
+                          title="Remove tender"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {splitHasOnAccount && !selectedCustomer && (
+                    <p className="mt-2 text-xs font-medium text-red-500 dark:text-red-400">
+                      Charge to Account requires a customer on the ticket.
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between mt-3">
+                    <button
+                      onClick={addSplitLeg}
+                      disabled={isProcessing || splitLegs.length >= activeSelectablePaymentMethods.length}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-40"
+                    >
+                      <Plus size={13} /> Add tender
+                    </button>
+                    <div className={`text-sm font-semibold ${Math.abs(splitRemaining) < 0.005 ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {Math.abs(splitRemaining) < 0.005
+                        ? 'Balanced'
+                        : splitRemaining > 0
+                          ? `${formatCurrency(splitRemaining, currencyCode)} remaining`
+                          : `${formatCurrency(-splitRemaining, currencyCode)} over`}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Paying with card */}
-              {selectedMethodInModal.id !== noPaymentRequiredMethod.id && (
+              {!splitMode && selectedMethodInModal.id !== noPaymentRequiredMethod.id && (
                 <div className="rounded-xl border border-gray-200 dark:border-border bg-gray-50 dark:bg-muted/40 p-4 mb-4">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-sm font-medium text-gray-600 dark:text-muted-foreground flex items-center gap-1.5">
@@ -448,7 +595,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         <div className="px-6 py-4 border-t border-gray-200 dark:border-border">
           <button
             onClick={handleConfirm}
-            disabled={isProcessing || disableConfirmButton}
+            disabled={isProcessing || (splitMode ? !splitValid : disableConfirmButton)}
             className="w-full flex items-center justify-center bg-primary hover:bg-primary/90 text-white font-semibold py-3 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isProcessing ? (

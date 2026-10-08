@@ -223,31 +223,6 @@ class PaymentService {
     }
   }
 
-  /**
-   * Refund a payment transaction
-   */
-  async refundTransaction(transactionId: string, amount?: number, reason?: string): Promise<{
-    success: boolean;
-    refundId?: string;
-    message?: string;
-  }> {
-    try {
-      const response = await fetchApi<{
-        success: boolean;
-        refundId?: string;
-        message?: string;
-      }>(`/payments/transactions/${transactionId}/refund`, {
-        method: 'POST',
-        body: JSON.stringify({ amount, reason }),
-        headers: { 'Content-Type': 'application/json' }
-      });
-      return response;
-    } catch (error) {
-      console.error('Error refunding transaction:', error);
-      throw error;
-    }
-  }
-
   // === TERMINAL MANAGEMENT ===
 
   /**

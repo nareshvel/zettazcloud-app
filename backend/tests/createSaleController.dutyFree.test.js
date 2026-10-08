@@ -97,6 +97,7 @@ function loadController({ jurisdiction, verifyTaxResult, queryLog = [], paymentM
     stubModule('../services/moneyPostingService', {
       tenderAccountId: async () => 'acct-tender',
       resolveAccountId: async () => 'acct-resolved',
+      unitCost: async () => 0,
       postEntry: async () => ({ entryId: 'je-1', entryNumber: 'JE-2026-000001' }),
     }),
   ];
@@ -266,6 +267,7 @@ describe('createSaleController — duty-free zero-rating', function () {
       stubModule('../services/moneyPostingService', {
         tenderAccountId: async () => 'acct-tender',
         resolveAccountId: async () => 'acct-resolved',
+        unitCost: async () => 0,
         postEntry: async () => ({ entryId: 'je-1', entryNumber: 'JE-2026-000001' }),
       }),
     ];

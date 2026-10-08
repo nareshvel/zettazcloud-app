@@ -40,6 +40,7 @@ import {
   Landmark,
   BookOpen,
   Vault,
+  Scale,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
@@ -112,7 +113,7 @@ const NAV_FALLBACK: Record<string, string> = {
   catalog_channels: 'Sales Channels', reports: 'Reports', settings: 'Settings',
   team: 'Team & Access', print_jobs: 'Print Jobs', print_templates: 'Print Templates',
   sales_management: 'Sales Management', services: 'Services',
-  expenses: 'Expenses', payments: 'Payments', accounts: 'Money Accounts', ledger: 'Ledger', drawer: 'Cash Drawer', procurement: 'Procurement',
+  expenses: 'Expenses', payments: 'Payments', accounts: 'Money Accounts', ledger: 'Ledger', drawer: 'Cash Drawer', reconciliation: 'Reconciliation', procurement: 'Procurement',
 };
 
 const SECTION_FALLBACK: Record<string, string> = {
@@ -197,6 +198,7 @@ const NAV_TREE: NavigationSectionRaw[] = [
       { nameKey: 'accounts', icon: Landmark, path: '/accounts', permissions: ['finance.view'] },
       { nameKey: 'ledger', icon: BookOpen, path: '/ledger', permissions: ['finance.view'] },
       { nameKey: 'drawer', icon: Vault, path: '/drawer', permissions: ['finance.view'] },
+      { nameKey: 'reconciliation', icon: Scale, path: '/reconciliation', permissions: ['finance.view'] },
     ],
   },
   {

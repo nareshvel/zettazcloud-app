@@ -241,114 +241,6 @@ const getTransaction = async (req, res) => {
 };
 
 /**
- * Refund a transaction
- */
-const refundTransaction = async (req, res) => {
-  const { transactionId, amount, reason } = req.body;
-  const refundId = `ref_${uuidv4().replace(/-/g, '')}`;
-  
-  try {
-    // Start a transaction
-    await db.beginTransaction();
-    
-    // 1. Get the original transaction
-    const originalTx = await withTransaction(async (trx) => {
-      const [tx] = await trx.query(
-        'SELECT id, amount, status, sale_id as saleId FROM payment_transactions WHERE id = ? AND tenant_id = ? FOR UPDATE',
-        [transactionId, req.user.tenant_id]
-      );
-      
-      if (!tx) {
-        throw new Error('Transaction not found');
-      }
-      
-      return tx;
-    });
-    
-    if (!originalTx) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Transaction not found'
-      });
-    }
-    
-    // 2. Verify the transaction can be refunded
-    if (originalTx.status !== 'completed') {
-      await db.rollback();
-      return res.status(400).json({
-        status: 'error',
-        message: 'Only completed transactions can be refunded'
-      });
-    }
-    
-    // 3. Process refund within a transaction
-    await withTransaction(async (trx) => {
-      // Create refund transaction
-      await trx.query(
-        `INSERT INTO payment_transactions 
-         (id, tenant_id, sale_id, original_transaction_id, amount, 
-          currency, status, transaction_id, reference_id, metadata, type, created_by)
-         VALUES (?, ?, ?, ?, -?, 'USD', 'completed', ?, ?, ?, 'refund', ?)`,
-        [
-          uuidv4(),
-          req.user.tenant_id,
-          originalTx.saleId,
-          originalTx.id,
-          amount,
-          refundId,
-          `REFUND_${Date.now()}`,
-          JSON.stringify({ reason, originalTransactionId: transactionId }),
-          req.user.id
-        ]
-      );
-      
-      // 4. Update the original transaction status if full refund
-      const newAmount = parseFloat(originalTx.amount) - parseFloat(amount);
-      if (Math.abs(newAmount) < 0.01) { // Full refund
-        await trx.query(
-          'UPDATE payment_transactions SET status = ? WHERE id = ?',
-          ['refunded', transactionId]
-        );
-        
-        // Update sale status if needed
-        await trx.query(
-          'UPDATE sales SET payment_status = ? WHERE id = ?',
-          ['refunded', originalTx.saleId]
-        );
-      } else {
-        // For partial refund, update the status to 'partially_refunded'
-        await trx.query(
-          'UPDATE payment_transactions SET status = ? WHERE id = ?',
-          ['partially_refunded', transactionId]
-        );
-      }
-    });
-    
-    // 5. Return the refund confirmation
-    res.json({
-      status: 'success',
-      data: {
-        id: refundId,
-        originalTransactionId: transactionId,
-        amount: parseFloat(amount),
-        status: 'completed',
-        referenceId: `REFUND_${Date.now()}`,
-        processedAt: new Date().toISOString()
-      }
-    });
-    
-  } catch (error) {
-    console.error('Error processing refund:', error);
-    const statusCode = error.message === 'Transaction not found' ? 404 : 500;
-    res.status(statusCode).json({
-      status: 'error',
-      message: error.message || 'Failed to process refund',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-};
-
-/**
  * Get payment settings for the current tenant
  */
 const getPaymentSettings = async (req, res) => {
@@ -576,7 +468,6 @@ module.exports = {
   getPaymentMethods,
   processPayment,
   getTransaction,
-  refundTransaction,
   getPaymentSettings,
   updatePaymentSettings
 };

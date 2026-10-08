@@ -20,13 +20,6 @@ const validatePaymentProcess = [
   validateRequest
 ];
 
-const validateRefund = [
-  body('transactionId').isUUID().withMessage('Invalid transaction ID'),
-  body('amount').isFloat({ gt: 0 }).withMessage('Amount must be greater than 0'),
-  body('reason').optional().isString().trim().notEmpty(),
-  validateRequest
-];
-
 const validatePaymentSettings = [
   body('defaultCurrency').isString().isLength({ min: 3, max: 3 }).toUpperCase(),
   body('allowPartialPayments').isBoolean(),
@@ -170,71 +163,6 @@ router.get(
   validateRequest,
   paymentController.getTransaction
 );
-
-/**
- * @swagger
- * /api/payment/refund:
- *   post:
- *     summary: Process a refund
- *     tags: [Payments]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - transactionId
- *               - amount
- *             properties:
- *               transactionId:
- *                 type: string
- *                 format: uuid
- *               amount:
- *                 type: number
- *                 format: float
- *               reason:
- *                 type: string
- *     responses:
- *       200:
- *         description: Refund processed successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 data:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: string
- *                       format: uuid
- *                     originalTransactionId:
- *                       type: string
- *                       format: uuid
- *                     amount:
- *                       type: number
- *                       format: float
- *                     status:
- *                       type: string
- *                       enum: [completed, pending, failed]
- *                     referenceId:
- *                       type: string
- *                     processedAt:
- *                       type: string
- *                       format: date-time
- */
-/**
- * @route   POST /api/payment/refund
- * @desc    Process a refund
- * @access  Private (requires payments.refund permission)
- */
-router.post('/refund', requirePermission('payments.refund'), validateRefund, paymentController.refundTransaction);
 
 /**
  * @swagger

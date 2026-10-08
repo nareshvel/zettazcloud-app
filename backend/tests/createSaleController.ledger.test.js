@@ -33,6 +33,7 @@ function loadController({
   tenderCalls = [],
   postEntryError = null,
   resolveMap = {},
+  unitCostValue = 0,
 }) {
   const controllerPath = require.resolve('../controllers/createSaleController');
   const flags = { rolledBack: false, committed: false };
@@ -77,6 +78,7 @@ function loadController({
         return 'acct-tender';
       },
       resolveAccountId: async (tenantId, mappingKey) => resolveMap[mappingKey] ?? `acct-${mappingKey}`,
+      unitCost: async () => unitCostValue,
       postEntry: async (input) => {
         if (postEntryError) throw postEntryError;
         posted.push(input);
@@ -261,6 +263,96 @@ describe('createSaleController — ledger posting', function () {
       assert.strictEqual(flags.rolledBack, true);
       assert.strictEqual(flags.committed, false);
       assert.strictEqual(posted.length, 0);
+    } finally { restore(); }
+  });
+
+  it('split tenders produce one debit leg per method and a payment row per leg', async function () {
+    const { controller, posted, tenderCalls, queryLog, restore } = loadController({ jurisdiction: DOMESTIC });
+    try {
+      const res = fakeRes();
+      await controller.createSale(fakeReq({
+        ...BASE_BODY,
+        tax: 0,
+        tenders: [{ method: 'cash', amount: 60 }, { method: 'card', amount: 40 }],
+      }), res);
+      assert.strictEqual(res.statusCode, 201, JSON.stringify(res.body));
+      assert.strictEqual(posted.length, 1);
+      const debits = posted[0].lines.filter((l) => l.debit > 0);
+      assert.strictEqual(debits.length, 2, 'one tender debit per leg');
+      assert.deepStrictEqual(tenderCalls.map((t) => t.code), ['cash', 'card']);
+      assert.strictEqual(sum(posted[0].lines, 'debit'), sum(posted[0].lines, 'credit'));
+      const pt = queryLog.filter((q) => /INSERT INTO payment_transactions/.test(q.sql));
+      assert.strictEqual(pt.length, 2, 'one payment_transactions row per leg');
+      const saleInsert = queryLog.find((q) => /INSERT INTO sales\b/.test(q.sql));
+      assert.ok(saleInsert, 'sales row written');
+    } finally { restore(); }
+  });
+
+  it('rejects split tenders that do not sum to the sale total', async function () {
+    const { controller, posted, restore } = loadController({ jurisdiction: DOMESTIC });
+    try {
+      const res = fakeRes();
+      await controller.createSale(fakeReq({
+        ...BASE_BODY,
+        tax: 0,
+        tenders: [{ method: 'cash', amount: 60 }, { method: 'card', amount: 30 }],
+      }), res);
+      assert.strictEqual(res.statusCode, 400, JSON.stringify(res.body));
+      assert.match(res.body.message, /equal the sale total/i);
+      assert.strictEqual(posted.length, 0);
+    } finally { restore(); }
+  });
+
+  it('rejects a split tender with an on_account leg and no customer', async function () {
+    const { controller, restore } = loadController({ jurisdiction: DOMESTIC });
+    try {
+      const res = fakeRes();
+      await controller.createSale(fakeReq({
+        ...BASE_BODY,
+        tax: 0,
+        tenders: [{ method: 'cash', amount: 60 }, { method: 'on_account', amount: 40 }],
+      }), res);
+      assert.strictEqual(res.statusCode, 400, JSON.stringify(res.body));
+      assert.match(res.body.message, /customer/i);
+    } finally { restore(); }
+  });
+
+  it('only the on_account leg of a split bumps outstanding_credit', async function () {
+    const { controller, queryLog, restore } = loadController({ jurisdiction: DOMESTIC });
+    try {
+      const res = fakeRes();
+      await controller.createSale(fakeReq({
+        ...BASE_BODY,
+        tax: 0,
+        customerId: 'cust-7',
+        tenders: [{ method: 'cash', amount: 60 }, { method: 'on_account', amount: 40 }],
+      }), res);
+      assert.strictEqual(res.statusCode, 201, JSON.stringify(res.body));
+      const bump = queryLog.find((q) => /UPDATE customers SET outstanding_credit = outstanding_credit \+/.test(q.sql));
+      assert.ok(bump, 'expected an outstanding_credit increment');
+      assert.strictEqual(bump.values[0], 40, 'only the on-account leg accrues');
+      assert.strictEqual(bump.values[1], 'cust-7');
+    } finally { restore(); }
+  });
+
+  it('adds COGS and inventory legs valued from the unit cost snapshot', async function () {
+    const { controller, posted, queryLog, restore } = loadController({
+      jurisdiction: DOMESTIC,
+      unitCostValue: 42.50,
+    });
+    try {
+      const res = fakeRes();
+      await controller.createSale(fakeReq({ ...BASE_BODY, tax: 0 }), res);
+      assert.strictEqual(res.statusCode, 201, JSON.stringify(res.body));
+      const entry = posted[0];
+      const cogs = entry.lines.find((l) => l.accountId === 'acct-event:cogs');
+      const inv = entry.lines.find((l) => l.accountId === 'acct-event:inventory');
+      assert.ok(cogs && inv, 'COGS + inventory legs present');
+      assert.strictEqual(cogs.debit, 42.50);
+      assert.strictEqual(inv.credit, 42.50);
+      assert.strictEqual(sum(entry.lines, 'debit'), sum(entry.lines, 'credit'));
+      const itemInsert = queryLog.find((q) => /INSERT INTO sale_items/.test(q.sql));
+      assert.ok(itemInsert, 'sale_items written with the unit_cost snapshot');
     } finally { restore(); }
   });
 

@@ -40,6 +40,11 @@ interface TaxConfigState {
   effectiveRate: number;
 }
 
+export interface CheckoutTenderLeg {
+  methodId: string;
+  amount: number;
+}
+
 interface CartContextType {
   items: EnhancedCartItem[];
   addToCart: (product: Product, quantity?: number) => void;
@@ -50,7 +55,7 @@ interface CartContextType {
   calculateSubtotal: () => number;
   calculateTax: () => number;
   getTaxBreakdown: () => AppliedTaxDetail[];
-  checkout: (paymentMethodId: string, customerId?: string | null) => Promise<{ id: string } | null>;
+  checkout: (paymentMethodId: string, customerId?: string | null, tenderLegs?: CheckoutTenderLeg[]) => Promise<{ id: string } | null>;
   isProcessing: boolean;
   discount: DiscountState;
   setDiscount: (value: number, type: DiscountType) => void;
@@ -1322,7 +1327,7 @@ export const CartProvider = ({ children }: CartProviderProps): JSX.Element => {
     return appliedTaxDetails;
   }, [isCustomerTaxExempt, appliedTaxDetails]);
 
-  const checkout = useCallback(async (paymentMethodId: string, customerId?: string | null) => {
+  const checkout = useCallback(async (paymentMethodId: string, customerId?: string | null, tenderLegs?: CheckoutTenderLeg[]) => {
     // Fixed UUID to code mapping - these UUIDs match the current database records
     const fixedUuidMapping: { [key: string]: string } = {
       'e9ca7524-35f4-11f0-8297-525400144492': 'cash',
@@ -1332,25 +1337,29 @@ export const CartProvider = ({ children }: CartProviderProps): JSX.Element => {
       '00000000-0000-0000-0000-0000000044492': 'none'
     };
 
-    // Standardized payment method handling - support both new codes and UUIDs
-    let paymentMethodCode = paymentMethodId;
-    
-    // Check if it's already a valid code (lowercase)
-    const validCodes = ['cash', 'card', 'phone', 'on_account', 'none'];
-    if (validCodes.includes(paymentMethodId.toLowerCase())) {
-      paymentMethodCode = paymentMethodId.toLowerCase();
-    }
-    // Check if it's a UUID format - send as-is for backend lookup
-    else if (paymentMethodId.length === 36 && paymentMethodId.includes('-')) {
-      paymentMethodCode = paymentMethodId; // Send UUID as-is
-    }
-    // Fallback for fixed UUID mapping (if needed)
-    else if (fixedUuidMapping[paymentMethodId]) {
-      paymentMethodCode = fixedUuidMapping[paymentMethodId];
+    const normalizeMethod = (id: string) => {
+      const validCodes = ['cash', 'card', 'phone', 'on_account', 'none'];
+      if (validCodes.includes(id.toLowerCase())) return id.toLowerCase();
+      if (id.length === 36 && id.includes('-')) return fixedUuidMapping[id] || id;
+      return fixedUuidMapping[id] || id;
+    };
+
+    let paymentMethodCode = normalizeMethod(paymentMethodId);
+
+    // Split tender — each leg carries its own method + amount; the backend
+    // re-validates the sum against the sale total to the cent.
+    const normalizedTenders = Array.isArray(tenderLegs) && tenderLegs.length > 1
+      ? tenderLegs.map((t) => ({ method: normalizeMethod(t.methodId), amount: Math.round(Number(t.amount) * 100) / 100 }))
+      : null;
+    if (normalizedTenders) {
+      paymentMethodCode = normalizedTenders[0].method;
     }
 
     // Validate customer selection for charge account payments
-    if (paymentMethodCode === 'on_account' || paymentMethodId === 'e9ca75b4-35f4-11f0-8297-525400148990') {
+    const hasOnAccountLeg = paymentMethodCode === 'on_account'
+      || paymentMethodId === 'e9ca75b4-35f4-11f0-8297-525400148990'
+      || (normalizedTenders?.some((t) => t.method === 'on_account' || t.method === 'e9ca75b4-35f4-11f0-8297-525400148990') ?? false);
+    if (hasOnAccountLeg) {
       if (!selectedCustomerState || selectedCustomerState.id === undefined) {
         toast.error('Charge account payments require a customer to be selected. Walk-in customers cannot use charge accounts.');
         return null;
@@ -1453,6 +1462,7 @@ export const CartProvider = ({ children }: CartProviderProps): JSX.Element => {
         storeId: userInfo?.storeId || undefined,
         cashierId: userInfo?.id || undefined,
         paymentMethodId: paymentMethodCode,
+        ...(normalizedTenders ? { tenders: normalizedTenders } : {}),
         customerId: customerId || selectedCustomerState?.id || undefined,
         employeeId: selectedEmployeeId || undefined,
         // Send structured promotions data

@@ -35,6 +35,62 @@ async function postLayawayPaymentEntry(conn, tenantId, { id, planNo, amount, met
   }, conn);
 }
 
+/**
+ * Completion relief — a completed plan converts the collected deposits into
+ * recognized revenue: Dr LAYDEF / Cr event:revenue for everything paid, plus
+ * Dr COGS / Cr INVENTORY for the goods leaving the shelf (pieces are flipped
+ * to 'sold' by the caller). One entry per plan (source_type='layaway_complete',
+ * source_id=plan.id is the idempotency key) — the payments path and a manual
+ * status flip can both reach completion, whichever lands first posts it.
+ */
+async function postLayawayCompletionEntry(conn, tenantId, plan, userId) {
+  const paid = Math.round(Number(plan.paid_amount || 0) * 100) / 100;
+  if (paid <= 0) return;
+  const [[existing]] = await conn.query(
+    "SELECT id FROM money_journal_entries WHERE tenant_id = ? AND source_type = 'layaway_complete' AND source_id = ?",
+    [tenantId, plan.id]
+  );
+  if (existing) return;
+
+  const dr = await moneyPosting.resolveAccountId(tenantId, 'event:layaway_liability', conn);
+  const cr = await moneyPosting.resolveAccountId(tenantId, 'event:revenue', conn);
+  if (!dr || !cr) throw new Error('Ledger posting failed: required money account(s) are missing or inactive');
+
+  const lines = [
+    { accountId: dr, debit: paid, credit: 0, memo: 'Deferred deposits applied to completed plan', customerId: plan.customer_id || null },
+    { accountId: cr, debit: 0, credit: paid, memo: 'Layaway revenue recognized', customerId: plan.customer_id || null },
+  ];
+
+  // COGS relief — value the outgoing goods at their current cost basis.
+  const [items] = await conn.query(
+    'SELECT product_id, piece_id, quantity FROM layaway_items WHERE layaway_id = ? AND tenant_id = ?',
+    [plan.id, tenantId]
+  );
+  let cogs = 0;
+  for (const it of items) {
+    const uc = await moneyPosting.unitCost(conn, tenantId, {
+      productId: it.product_id, pieceId: it.piece_id, storeId: plan.store_id,
+    });
+    cogs += (Number(it.quantity) || 1) * uc;
+  }
+  cogs = Math.round(cogs * 100) / 100;
+  if (cogs > 0) {
+    const cogsAcct = await moneyPosting.resolveAccountId(tenantId, 'event:cogs', conn);
+    const invAcct = await moneyPosting.resolveAccountId(tenantId, 'event:inventory', conn);
+    if (cogsAcct && invAcct) {
+      lines.push({ accountId: cogsAcct, debit: cogs, credit: 0, memo: 'Cost of goods delivered' });
+      lines.push({ accountId: invAcct, debit: 0, credit: cogs, memo: 'Inventory relieved' });
+    }
+  }
+
+  await moneyPosting.postEntry({
+    tenantId, storeId: plan.store_id || null,
+    sourceType: 'layaway_complete', sourceId: plan.id,
+    memo: `Layaway ${plan.plan_no} completed — deposits applied`, createdBy: userId,
+    lines,
+  }, conn);
+}
+
 // Email service — gracefully skip if not configured
 let emailService = null;
 try { emailService = require('../services/emailService'); } catch {}
@@ -287,7 +343,8 @@ router.post('/:id/payments', async (req, res) => {
     const newStatus = st.isComplete ? 'completed' : plan.status;
     await conn.query('UPDATE layaway_plans SET paid_amount = ?, status = ? WHERE id = ?', [newPaid, newStatus, req.params.id]);
 
-    // On completion, release reserved pieces as sold.
+    // On completion, release reserved pieces as sold and recognize the
+    // collected deposits as revenue (LAYDEF → SALES + COGS relief).
     if (st.isComplete) {
       await conn.query(
         `UPDATE product_pieces p
@@ -296,6 +353,7 @@ router.post('/:id/payments', async (req, res) => {
           WHERE li.layaway_id = ? AND p.tenant_id = ?`,
         [req.params.id, tid(req)]
       );
+      await postLayawayCompletionEntry(conn, tid(req), { ...plan, paid_amount: newPaid }, uid(req));
     }
 
     await conn.commit();
@@ -320,6 +378,19 @@ router.post('/:id/status', async (req, res) => {
     const [r] = await conn.query('UPDATE layaway_plans SET status = ? WHERE id = ? AND tenant_id = ?',
       [req.body.status, req.params.id, tid(req)]);
     if (!r.affectedRows) { await conn.rollback(); return res.status(404).json({ status: 'error', message: 'not found' }); }
+    // Manual completion gets the same treatment as payment-driven completion:
+    // reserved pieces go 'sold' and the deposits are recognized as revenue
+    // (the helper is a no-op if the entry already exists).
+    if (req.body.status === 'completed') {
+      await conn.query(
+        `UPDATE product_pieces p
+           JOIN layaway_items li ON li.piece_id = p.id
+            SET p.status = 'sold'
+          WHERE li.layaway_id = ? AND p.tenant_id = ? AND p.status = 'hold'`,
+        [req.params.id, tid(req)]
+      );
+      await postLayawayCompletionEntry(conn, tid(req), plan, uid(req));
+    }
     // Cancelling/defaulting frees any reserved pieces.
     if (['cancelled', 'defaulted'].includes(req.body.status)) {
       await conn.query(

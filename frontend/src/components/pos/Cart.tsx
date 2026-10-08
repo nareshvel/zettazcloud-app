@@ -24,7 +24,7 @@ import { Customer } from '@/types';
 import { paymentService, PaymentMethod as ApiPaymentMethod } from '../../services/paymentService';
 import toast from 'react-hot-toast';
 import PaymentModal from './PaymentModal.tsx';
-import type { DisplayPaymentMethod } from './PaymentModal.tsx';
+import type { DisplayPaymentMethod, TenderLegSelection } from './PaymentModal.tsx';
 import DiscountModal from './DiscountModal.tsx';
 import NameInputModal from './NameInputModal.tsx';
 import ConfirmationModal from '../../components/modals/POSConfirmationModal';
@@ -241,7 +241,8 @@ const Cart: React.FC<CartProps> = memo(({
   };
 
   const handlePaymentSubmit = async (
-    paymentDataFromModal: DisplayPaymentMethod 
+    paymentDataFromModal: DisplayPaymentMethod,
+    tenders?: TenderLegSelection[]
   ) => {
     setIsPaymentModalOpen(false);
     if (!user || !user.id || !user.tenantId || !user.storeId) {
@@ -260,7 +261,7 @@ const Cart: React.FC<CartProps> = memo(({
 
     try {
       // Assuming checkout now returns the sale object on success, or null/undefined on failure
-      const newSale = await checkout(finalPaymentMethodId, selectedCustomer?.id);
+      const newSale = await checkout(finalPaymentMethodId, selectedCustomer?.id, tenders);
 
       if (newSale && typeof newSale === 'object') { // Check if newSale is a valid sale object
         // CartContext.checkout() might still show its own success toast.
@@ -305,8 +306,8 @@ const Cart: React.FC<CartProps> = memo(({
     }
   };
 
-  const handlePaymentSubmitWrapper = async (methodFromModal: DisplayPaymentMethod) => {
-    await handlePaymentSubmit(methodFromModal);
+  const handlePaymentSubmitWrapper = async (methodFromModal: DisplayPaymentMethod, tenders?: TenderLegSelection[]) => {
+    await handlePaymentSubmit(methodFromModal, tenders);
   };
 
   const handleHoldOrder = () => { 

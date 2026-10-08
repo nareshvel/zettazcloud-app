@@ -47,6 +47,7 @@ const PaymentsPage = React.lazy(() => import('./pages/PaymentsPage'));
 const AccountsPage = React.lazy(() => import('./pages/AccountsPage'));
 const LedgerPage = React.lazy(() => import('./pages/LedgerPage'));
 const DrawerPage = React.lazy(() => import('./pages/DrawerPage'));
+const ReconciliationPage = React.lazy(() => import('./pages/ReconciliationPage'));
 const PrintJobHistory = React.lazy(() => import('./pages/PrintJobHistory'));
 const PrintTemplateDesigner = React.lazy(() => import('./pages/PrintTemplateDesigner'));
 const CustomerDetailsPage = React.lazy(() => import('./pages/CustomerDetailsPage'));
@@ -160,6 +161,7 @@ const AppRoutes: React.FC = () => {
         <Route path="accounts" element={<AccountsPage />} />
         <Route path="ledger" element={<LedgerPage />} />
         <Route path="drawer" element={<DrawerPage />} />
+        <Route path="reconciliation" element={<ReconciliationPage />} />
         <Route path="catalog-channels" element={<CatalogSyncPage />} />
         <Route path="metal-rates" element={
           <IndustryRoute allow={['jewelry']}><MetalRatesPage /></IndustryRoute>
