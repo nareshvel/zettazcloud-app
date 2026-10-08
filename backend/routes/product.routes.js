@@ -359,6 +359,11 @@ router.get('/:id', requirePermission('products.view'), async (req, res) => {
             promotionalOfferEndDate: dbProduct.promotional_offer_end_date, // From JOIN
             categoryName: dbProduct.category_name, // From JOIN
             taxClassName: dbProduct.tax_class_name,   // From JOIN
+            isSerialized: Boolean(dbProduct.is_serialized),
+            weightedAverageCost: parseFloatSafely(dbProduct.weighted_average_cost, null),
+            totalQuantityReceived: parseIntSafely(dbProduct.total_quantity_received, null),
+            lastReceivedCostPrice: parseFloatSafely(dbProduct.last_received_cost_price, null),
+            lastReceivedDate: dbProduct.last_received_date || null,
             // Note: weight_kg was present in original but not in frontend Product type. Add if needed.
             // Jewelry weight-pricing defaults (2026-09-03_jewelry_weight_pricing_checkout_capture.sql)
             purity: dbProduct.purity || null,
@@ -376,6 +381,181 @@ router.get('/:id', requirePermission('products.view'), async (req, res) => {
     } catch (error) {
         console.error(`[Products API Router] Error fetching product ${id}:`, error);
         res.status(500).json({ message: 'Error fetching product', error: error.message });
+    }
+});
+
+// GET a product's 360 view: KPIs + recent records across all product-linked modules
+router.get('/:id/360', requirePermission('products.view'), async (req, res) => {
+    const { id } = req.params;
+    const tenant_id = req.user?.tenant_id || req.query?.tenant_id || req.headers["x-tenant-id"];
+
+    if (!tenant_id) {
+        return res.status(403).json({ message: 'Tenant ID not found for user.' });
+    }
+
+    try {
+        const [prod] = await pool.execute(
+            'SELECT id, is_serialized FROM products WHERE id = ? AND tenant_id = ?',
+            [id, tenant_id]
+        );
+        if (prod.length === 0) {
+            return res.status(404).json({ message: 'Product not found or not owned by tenant.' });
+        }
+
+        const LIMIT = 25;
+        const [
+            [sales], [salesAgg],
+            [returns],
+            [receipts],
+            [poItems], [poAgg],
+            [memos], [memoAgg],
+            [layaways],
+            [adjustments],
+            [logs],
+            [pieces], [pieceAgg],
+        ] = await Promise.all([
+            pool.execute(
+                `SELECT si.id, s.document_number, s.status AS sale_status, s.created_at,
+                        si.quantity, si.final_unit_price, si.purity, si.gross_weight, si.net_weight
+                   FROM sale_items si
+                   JOIN sales s ON s.id = si.sale_id AND s.tenant_id = ?
+                  WHERE si.product_id = ?
+                  ORDER BY s.created_at DESC LIMIT ${LIMIT}`,
+                [tenant_id, id]
+            ),
+            pool.execute(
+                `SELECT COALESCE(SUM(si.quantity), 0) AS units_sold,
+                        COALESCE(SUM(si.quantity * si.final_unit_price), 0) AS revenue,
+                        COUNT(DISTINCT si.sale_id) AS sale_count,
+                        MAX(s.created_at) AS last_sold_at
+                   FROM sale_items si
+                   JOIN sales s ON s.id = si.sale_id AND s.tenant_id = ?
+                  WHERE si.product_id = ? AND s.status = 'completed'`,
+                [tenant_id, id]
+            ),
+            pool.execute(
+                `SELECT ri.id, sr.return_number, sr.status, sr.return_date, sr.created_at,
+                        ri.quantity_returned, ri.total_amount
+                   FROM sales_return_items ri
+                   JOIN sales_returns sr ON sr.id = ri.sales_return_id AND sr.tenant_id = ?
+                  WHERE ri.product_id = ?
+                  ORDER BY sr.created_at DESC LIMIT ${LIMIT}`,
+                [tenant_id, id]
+            ),
+            pool.execute(
+                `SELECT gi.id, g.grn_number, g.received_date, g.status,
+                        gi.quantity_received, gi.unit_cost_price
+                   FROM grn_items gi
+                   JOIN goods_received_notes g ON g.id = gi.grn_id AND g.tenant_id = ?
+                  WHERE gi.product_id = ?
+                  ORDER BY g.received_date DESC LIMIT ${LIMIT}`,
+                [tenant_id, id]
+            ),
+            pool.execute(
+                `SELECT pi.id, po.purchase_order_number, po.order_date, po.status,
+                        pi.quantity_ordered, pi.quantity_received, pi.cost_price
+                   FROM purchase_order_items pi
+                   JOIN purchase_orders po ON po.id = pi.purchase_order_id AND po.tenant_id = ?
+                  WHERE pi.product_id = ?
+                  ORDER BY po.order_date DESC LIMIT ${LIMIT}`,
+                [tenant_id, id]
+            ),
+            pool.execute(
+                `SELECT COALESCE(SUM(pi.quantity_ordered - pi.quantity_received), 0) AS open_qty
+                   FROM purchase_order_items pi
+                   JOIN purchase_orders po ON po.id = pi.purchase_order_id AND po.tenant_id = ?
+                  WHERE pi.product_id = ?
+                    AND po.status IN ('ordered','partially_received','sent','confirmed')`,
+                [tenant_id, id]
+            ),
+            pool.execute(
+                `SELECT mi.id, m.memo_no, m.direction, m.status, m.issue_date, m.due_date,
+                        mi.quantity, mi.returned_quantity, mi.unit_value
+                   FROM memo_items mi
+                   JOIN memo_transactions m ON m.id = mi.memo_id AND m.tenant_id = mi.tenant_id
+                  WHERE mi.tenant_id = ? AND mi.product_id = ?
+                  ORDER BY m.issue_date DESC LIMIT ${LIMIT}`,
+                [tenant_id, id]
+            ),
+            pool.execute(
+                `SELECT COALESCE(SUM(mi.quantity - COALESCE(mi.returned_quantity, 0)), 0) AS open_qty
+                   FROM memo_items mi
+                   JOIN memo_transactions m ON m.id = mi.memo_id AND m.tenant_id = mi.tenant_id
+                  WHERE mi.tenant_id = ? AND mi.product_id = ? AND m.direction = 'out'
+                    AND m.status IN ('open','partially_returned')`,
+                [tenant_id, id]
+            ),
+            pool.execute(
+                `SELECT li.id, l.plan_no, l.status, l.due_date, l.created_at,
+                        li.quantity, li.unit_price
+                   FROM layaway_items li
+                   JOIN layaway_plans l ON l.id = li.layaway_id AND l.tenant_id = li.tenant_id
+                  WHERE li.tenant_id = ? AND li.product_id = ?
+                  ORDER BY l.created_at DESC LIMIT ${LIMIT}`,
+                [tenant_id, id]
+            ),
+            pool.execute(
+                `SELECT id, adjustment_type, reason_code, quantity_adjusted,
+                        stock_before_adjustment, stock_after_adjustment, notes, adjustment_date, created_at
+                   FROM stock_adjustments
+                  WHERE tenant_id = ? AND product_id = ?
+                  ORDER BY created_at DESC LIMIT ${LIMIT}`,
+                [tenant_id, id]
+            ),
+            pool.execute(
+                `SELECT id, quantity_change, reference_type, reference_id, reason,
+                        current_stock_before_change, current_stock_after_change, created_at
+                   FROM inventory_logs
+                  WHERE tenant_id = ? AND product_id = ?
+                  ORDER BY created_at DESC LIMIT ${LIMIT}`,
+                [tenant_id, id]
+            ),
+            prod[0].is_serialized
+                ? pool.execute(
+                    `SELECT id, piece_code, barcode, status, gross_weight, net_weight, purity,
+                            selling_price, cost_price, sale_id, created_at
+                       FROM product_pieces
+                      WHERE tenant_id = ? AND product_id = ?
+                      ORDER BY created_at DESC LIMIT ${LIMIT}`,
+                    [tenant_id, id]
+                  )
+                : Promise.resolve([[]]),
+            prod[0].is_serialized
+                ? pool.execute(
+                    `SELECT status, COUNT(*) AS count FROM product_pieces
+                      WHERE tenant_id = ? AND product_id = ? GROUP BY status`,
+                    [tenant_id, id]
+                  )
+                : Promise.resolve([[]]),
+        ]);
+
+        const num = (v) => parseFloat(v) || 0;
+        res.json({
+            status: 'success',
+            data: {
+                kpis: {
+                    units_sold: num(salesAgg[0].units_sold),
+                    revenue: num(salesAgg[0].revenue),
+                    sale_count: salesAgg[0].sale_count,
+                    last_sold_at: salesAgg[0].last_sold_at,
+                    open_po_qty: num(poAgg[0].open_qty),
+                    on_memo_qty: num(memoAgg[0].open_qty),
+                },
+                piece_counts: Object.fromEntries(pieceAgg.map((r) => [r.status, r.count])),
+                sales,
+                returns,
+                receipts,
+                po_items: poItems,
+                memos,
+                layaways,
+                adjustments,
+                inventory_logs: logs,
+                pieces,
+            },
+        });
+    } catch (error) {
+        console.error(`[Products API Router] Error fetching product 360 ${id}:`, error);
+        res.status(500).json({ message: 'Error fetching product 360 data', error: error.message });
     }
 });
 

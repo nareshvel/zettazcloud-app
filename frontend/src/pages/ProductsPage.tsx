@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import CategoryTaxClassManager from '@/components/tax/CategoryTaxClassManager'; 
 import { Edit3, Package, AlertTriangle, XCircle, SlidersHorizontal, Trash2, Loader2 } from 'lucide-react'; 
 import ProductFormModal from '@/components/inventory/ProductFormModal';
@@ -25,6 +25,7 @@ import { normalizeImageUrl } from '@/utils/imageUtils';
 
 const ProductsPage: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { formatCurrency } = useCurrency();
   const { formatDate } = useDateFormatting();
@@ -762,22 +763,22 @@ const ProductsPage: React.FC = () => {
       priority: 6,
       Cell: (product) => (
         <div className="flex items-center justify-center md:justify-center space-x-1">
-          <button 
-            onClick={() => handleEditProduct(product)} 
+          <button
+            onClick={(e) => { e.stopPropagation(); handleEditProduct(product); }}
             className="text-primary hover:text-primary-dark p-1.5 md:p-1 rounded-md hover:bg-primary-light transition-colors duration-150"
             title="Edit Product"
           >
             <Edit3 size={18} className="md:w-4 md:h-4" />
           </button>
           <button
-            onClick={() => handleOpenStockAdjustmentModal(product)}
+            onClick={(e) => { e.stopPropagation(); handleOpenStockAdjustmentModal(product); }}
             className="text-primary hover:text-primary/80 p-1.5 md:p-1 rounded-md hover:bg-blue-100 transition-colors duration-150"
             title="Adjust Stock"
           >
             <SlidersHorizontal size={18} className="md:w-4 md:h-4" />
           </button>
           <button
-            onClick={() => handleDeleteProduct(product.id, product.name)}
+            onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id, product.name); }}
             className="text-danger hover:text-danger-dark p-1.5 md:p-1 rounded-md hover:bg-danger-light transition-colors duration-150"
             title="Delete Product"
           >
@@ -883,6 +884,7 @@ const ProductsPage: React.FC = () => {
             itemsPerPage={itemsPerPage}
             totalItems={totalItems}
             mobileCardView={true}
+            onRowClick={(product) => navigate(`/products/${product.id}`)}
           />
         )}
       </div>

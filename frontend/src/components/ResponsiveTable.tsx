@@ -28,6 +28,7 @@ export interface ResponsiveTableProps<T> {
   itemsPerPage?: number;
   totalItems?: number;
   mobileCardView?: boolean; // Enable card view on mobile (default: true)
+  onRowClick?: (item: T) => void; // action cells must stopPropagation
 }
 
 const ResponsiveTable = <T extends {}>({ 
@@ -41,6 +42,7 @@ const ResponsiveTable = <T extends {}>({
   itemsPerPage,
   totalItems,
   mobileCardView = true,
+  onRowClick,
 }: ResponsiveTableProps<T>) => {
 
   const [pageInput, setPageInput] = useState<string>(currentPage.toString());
@@ -118,7 +120,11 @@ const ResponsiveTable = <T extends {}>({
           </thead>
           <tbody className="bg-background-card divide-y divide-border">
             {paginatedData.map((item, rowIndex) => (
-              <tr key={rowIndex} className="even:bg-black/5 dark:even:bg-white/5 hover:bg-primary/10 dark:hover:bg-primary/20 transition-colors duration-150">
+              <tr
+                key={rowIndex}
+                onClick={onRowClick ? () => onRowClick(item) : undefined}
+                className={`even:bg-black/5 dark:even:bg-white/5 hover:bg-primary/10 dark:hover:bg-primary/20 transition-colors duration-150${onRowClick ? ' cursor-pointer' : ''}`}
+              >
                 {columns.map((col, colIndex) => (
                   <td 
                     key={colIndex} 
@@ -137,9 +143,10 @@ const ResponsiveTable = <T extends {}>({
       {mobileCardView && (
         <div className="md:hidden divide-y divide-border">
           {paginatedData.map((item, rowIndex) => (
-            <div 
-              key={rowIndex} 
-              className="p-4 hover:bg-primary/5 transition-colors duration-150"
+            <div
+              key={rowIndex}
+              onClick={onRowClick ? () => onRowClick(item) : undefined}
+              className={`p-4 hover:bg-primary/5 transition-colors duration-150${onRowClick ? ' cursor-pointer' : ''}`}
             >
               <div className="space-y-3">
                 {sortedColumns

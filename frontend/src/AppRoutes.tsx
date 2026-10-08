@@ -47,6 +47,7 @@ const PaymentsPage = React.lazy(() => import('./pages/PaymentsPage'));
 const PrintJobHistory = React.lazy(() => import('./pages/PrintJobHistory'));
 const PrintTemplateDesigner = React.lazy(() => import('./pages/PrintTemplateDesigner'));
 const CustomerDetailsPage = React.lazy(() => import('./pages/CustomerDetailsPage'));
+const ProductDetailsPage = React.lazy(() => import('./pages/ProductDetailsPage'));
 
 // New Reports Structure
 const ReportsLayout = React.lazy(() => import('./pages/reports'));
@@ -127,6 +128,10 @@ const AppRoutes: React.FC = () => {
         <Route path="/" element={<Dashboard />} /> {/* Root path */}
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="admin" element={<Dashboard />} />
+        {/* products/tax-classes must outrank products/:id (React Router ranks
+            static above param), or it would hit the details page as an id. */}
+        <Route path="products/tax-classes" element={<Products />} />
+        <Route path="products/:id" element={<ProductDetailsPage />} />
         <Route path="products/*" element={<Products />} />
         <Route path="customers" element={<Customers />} />
         <Route path="customers/:id" element={<CustomerDetailsPage />} />
