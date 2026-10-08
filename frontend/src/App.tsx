@@ -1,6 +1,7 @@
 import { Component, ErrorInfo, ReactNode, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster as SonnerToaster } from 'sonner';
+import TitleTooltip from './components/common/TitleTooltip';
 import { I18nextProvider } from 'react-i18next';
 
 // Import i18n initialization
@@ -79,6 +80,7 @@ function App() {
         <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
           <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <SonnerToaster richColors position="top-right" />
+            <TitleTooltip />
             <AuthProvider>
               <Routes>
                 {/* Public routes that do not require authentication */}

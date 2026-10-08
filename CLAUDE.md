@@ -352,6 +352,12 @@ repairs, savings schemes).
 - Weight is **always stored in grams** in the DB. `formatWeight` converts for display.
 - Cost codes are cipher text — never decode, just display as-is.
 - Print functions: `window.open('', '_blank') + document.write(html) + setTimeout(() => win.print(), 400)`.
+- **Tooltips**: keep using `title="..."` on icon/action buttons — `TitleTooltip`
+  (`components/common/TitleTooltip.tsx`, mounted in `App.tsx`) intercepts every
+  `[title]` hover globally and shows an instant styled tooltip (120ms), so native
+  tooltips never fire. Do NOT refactor sites to Radix `Tooltip` for delay reasons;
+  only use `ui/tooltip.tsx` when the tooltip needs rich content, positioning
+  control, or an explicit trigger.
 
 ---
 

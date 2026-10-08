@@ -32,6 +32,16 @@
 - Version metadata is still stored in `manifest.json` for display (`version` field)
 - This keeps the frontend build small and avoids stale installer clutter
 
+## UI conventions worth knowing
+
+- **Tooltips are instant**: `frontend/src/components/common/TitleTooltip.tsx` (mounted
+  in `App.tsx`) globally intercepts hovers on any `[title]` element, suppresses the
+  ~1s native browser tooltip, and renders a styled one after 120ms. Keep writing
+  `title="..."` normally — it's fast everywhere. Only reach for the Radix
+  `ui/tooltip.tsx` components for rich content or explicit positioning.
+- **Metric/KPI cards** carry a `border-r-4` right-edge accent bar (primary or
+  semantic color). New stat cards should follow the same pattern.
+
 ## Production backend deployment
 
 - Production backend repository: `/var/www/zettazcloud-app`
