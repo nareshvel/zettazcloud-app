@@ -520,7 +520,7 @@ const ProductsPage: React.FC = () => {
         },
         didDrawPage: (data: { pageNumber: number; settings: { margin: { left: number } } }) => {
           // Footer
-          const pageCount = doc.internal.getNumberOfPages();
+          const pageCount = (doc.internal as any).getNumberOfPages();
           doc.setFontSize(10);
           doc.text(`Page ${data.pageNumber} of ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
         }

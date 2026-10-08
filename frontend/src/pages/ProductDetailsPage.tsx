@@ -312,7 +312,7 @@ const ProductDetailsPage: React.FC = () => {
           </button>
           {product.imageUrl ? (
             <img
-              src={normalizeImageUrl(product.imageUrl)}
+              src={normalizeImageUrl(product.imageUrl) ?? undefined}
               alt={product.name}
               className="w-11 h-11 rounded-lg object-cover border border-border shrink-0"
             />
