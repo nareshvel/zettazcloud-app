@@ -289,6 +289,7 @@ const CustomersPage: React.FC = () => {
           <button
             onClick={(e) => { e.stopPropagation(); handleEditCustomer(customer); }}
             className="text-primary hover:text-primary-hover p-1 rounded-md hover:bg-primary/10 transition-colors"
+            title="Edit customer"
             aria-label={`Edit ${customer.firstName}`}
           >
             <Edit3 size={18} />
@@ -304,6 +305,7 @@ const CustomersPage: React.FC = () => {
           <button
             onClick={(e) => { e.stopPropagation(); handleDeleteCustomer(customer); }}
             className="text-danger hover:text-danger-hover p-1 rounded-md hover:bg-danger/10 transition-colors"
+            title="Delete customer"
             aria-label={`Delete ${customer.firstName}`}
           >
             <UserX size={18} />

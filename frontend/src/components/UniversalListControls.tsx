@@ -117,6 +117,31 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
+  // Descriptive tooltips — never just mirror the visible button text.
+  const ENTITY_LABELS: Record<string, { plural: string; singular: string }> = {
+    customers: { plural: 'customers', singular: 'customer' },
+    suppliers: { plural: 'suppliers', singular: 'supplier' },
+    products: { plural: 'products', singular: 'product' },
+    promotions: { plural: 'promotions', singular: 'promotion' },
+    orders: { plural: 'orders', singular: 'order' },
+    'purchase-orders': { plural: 'purchase orders', singular: 'purchase order' },
+    'goods-received': { plural: 'receipts', singular: 'receipt' },
+    users: { plural: 'users', singular: 'user' },
+    employees: { plural: 'employees', singular: 'employee' },
+    inventory: { plural: 'items', singular: 'item' },
+    expenses: { plural: 'expenses', singular: 'expense' },
+    payments: { plural: 'payments', singular: 'payment' },
+  };
+  const entity = ENTITY_LABELS[currentPage ?? ''] ?? { plural: 'records', singular: 'record' };
+  const newNounMatch = newButtonText.trim().match(/^(?:new|add)\s+(.+)$/i);
+  const newNoun = newNounMatch?.[1] ?? entity.singular;
+  const newButtonTooltip = `Create new ${/^[A-Z0-9]+$/.test(newNoun) ? newNoun : newNoun.toLowerCase()}`;
+  const exportTooltip = `Export ${entity.plural} as ${(exportOptions || ['csv', 'excel', 'pdf']).map((f) => f.toUpperCase()).join(', ')}`;
+  const activeFilterLabel = filterOptions?.find((opt) => opt.value === currentFilterValue)?.label;
+  const filterTooltip = activeFilterLabel
+    ? `Filtered: ${activeFilterLabel} — click to change`
+    : `Filter ${entity.plural}`;
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -175,8 +200,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
               <button
                 onClick={() => setIsFilterDropdownOpen(prev => !prev)}
                 className={`border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75 ${currentFilterValue !== undefined && currentFilterValue !== null && filterOptions.find(opt => opt.value === currentFilterValue) ? 'bg-primary-extralight border-primary text-primary' : 'bg-background-card hover:bg-secondary-light border-border'}`}
-                title={filterOptions.find(opt => opt.value === currentFilterValue)?.label || defaultFilterButtonText}
-                aria-label={filterOptions.find(opt => opt.value === currentFilterValue)?.label || defaultFilterButtonText}
+                title={filterTooltip}
+                aria-label={filterTooltip}
                 aria-haspopup="true"
                 aria-expanded={isFilterDropdownOpen}
               >
@@ -208,8 +233,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
             <button
               onClick={onBulkApplyClick}
               className="bg-green-600 hover:bg-green-700 text-white font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75"
-              title={bulkApplyButtonText}
-              aria-label={bulkApplyButtonText}
+              title={`Apply to selected ${entity.plural}`}
+              aria-label={`Apply to selected ${entity.plural}`}
             >
               <Tag size={18} />
               <span className="hidden sm:inline">{bulkApplyButtonText}</span>
@@ -291,8 +316,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
             <button
               onClick={onImportClick}
               className="bg-primary-extralight hover:bg-primary-light text-primary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-75"
-              title={importButtonText}
-              aria-label={importButtonText}
+              title={`Import ${entity.plural}`}
+              aria-label={`Import ${entity.plural}`}
             >
               {importButtonIcon || <UploadCloud size={18} />}
               <span className="hidden sm:inline">{importButtonText}</span>
@@ -303,8 +328,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
             <button
               onClick={onFilterPanelButtonClick}
               className={`border font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75 ${filterPanelActive ? 'bg-primary-extralight border-primary text-primary' : 'bg-background-card hover:bg-secondary-light border-border text-text-secondary'}`}
-              title={filterPanelButtonText}
-              aria-label={filterPanelButtonText}
+              title={filterPanelActive ? 'Hide advanced filters' : 'Show advanced filters'}
+              aria-label="Toggle advanced filters"
             >
               <SlidersHorizontal size={18} />
               <span className="hidden sm:inline">{filterPanelButtonText}</span>
@@ -316,8 +341,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
               <button 
                 onClick={() => setIsExportDropdownOpen(prev => !prev)}
                 className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
-                title="Export"
-                aria-label="Export"
+                title={exportTooltip}
+                aria-label={exportTooltip}
               >
                 <Download size={18} />
                 <span className="hidden sm:inline">Export</span>
@@ -351,8 +376,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
             <button 
               onClick={onPrint}
               className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
-              title="Print"
-              aria-label="Print"
+              title="Print this list"
+              aria-label="Print this list"
             >
               <Printer size={18} />
               <span className="hidden sm:inline">Print</span>
@@ -363,8 +388,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
             <button 
               onClick={onStockAdjustClick}
               className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
-              title={stockAdjustButtonText}
-              aria-label={stockAdjustButtonText}
+              title="Adjust stock quantity"
+              aria-label="Adjust stock quantity"
             >
               {stockAdjustButtonIcon || <SlidersHorizontal size={18} />}
               <span className="hidden sm:inline">{stockAdjustButtonText}</span>
@@ -376,8 +401,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
             <button
               onClick={() => navigate('/products/tax-classes')}
               className="bg-background-card hover:bg-secondary-light border border-border text-text-secondary font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-opacity-75"
-              title="Manage Tax Classes"
-              aria-label="Manage Tax Classes"
+              title="Manage product tax classes"
+              aria-label="Manage product tax classes"
             >
               <Percent size={18} />
               <span className="hidden sm:inline">Tax Classes</span>
@@ -389,8 +414,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
             <button
               onClick={onManageRolesClick}
               className="flex items-center justify-center gap-1.5 h-9 w-9 px-0 sm:w-auto sm:px-3 text-text-secondary bg-background-card border border-border rounded-lg shadow-sm hover:bg-secondary-light hover:text-primary focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary-light transition-colors duration-150 ease-in-out"
-              title={manageRolesButtonText}
-              aria-label={manageRolesButtonText}
+              title="Configure roles and permissions"
+              aria-label="Configure roles and permissions"
             >
               {manageRolesButtonIcon || <Settings2 size={18} />}
               <span className="hidden sm:inline">{manageRolesButtonText}</span>
@@ -400,8 +425,8 @@ const UniversalListControls: React.FC<UniversalListControlsProps> = ({
           {showNewButton && (
             <button
               onClick={onNewButtonClick}
-              title={newButtonText}
-              aria-label={newButtonText}
+              title={newButtonTooltip}
+              aria-label={newButtonTooltip}
               className="bg-primary hover:bg-primary-dark text-white font-medium h-9 w-9 px-0 sm:w-auto sm:px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-md hover:shadow-lg transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-dark focus:ring-opacity-75"
             >
               {newButtonIcon || <Plus size={18} />}

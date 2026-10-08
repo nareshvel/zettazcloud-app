@@ -135,10 +135,10 @@ const SuppliersListPage: React.FC = () => {
       accessor: 'id', // Accessor is needed, can be any unique key like 'id'
       Cell: (item) => (
         <div className="flex space-x-2">
-          <button onClick={(e) => { e.stopPropagation(); handleEdit(item); }} className="p-1 text-primary hover:text-primary/80">
+          <button onClick={(e) => { e.stopPropagation(); handleEdit(item); }} className="p-1 text-primary hover:text-primary/80" title="Edit supplier" aria-label={`Edit ${item.supplierName}`}>
             <Edit size={18} />
           </button>
-          <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="p-1 text-red-600 hover:text-red-800">
+          <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="p-1 text-red-600 hover:text-red-800" title="Delete supplier" aria-label={`Delete ${item.supplierName}`}>
             <Trash2 size={18} />
           </button>
         </div>
@@ -272,6 +272,7 @@ const SuppliersListPage: React.FC = () => {
         newButtonText="New"
         newButtonIcon={<Plus size={18} className="sm:mr-2" />}
         showFilterButton={false}
+        currentPage="suppliers"
       />
 
       {isLoading && suppliers.length > 0 && (

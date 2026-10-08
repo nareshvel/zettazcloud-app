@@ -519,6 +519,7 @@ const handlePrintPo = async (po: PurchaseOrder) => {
         showFilterButton={false}
         showExportButton={true}
         onExportClick={(format) => alert(`Exporting as ${format}`)}
+        currentPage="purchase-orders"
       />
 
       {isLoading ? (

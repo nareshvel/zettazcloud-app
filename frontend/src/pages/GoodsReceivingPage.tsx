@@ -515,6 +515,7 @@ const GoodsReceivingPage: React.FC = () => {
           showFilterButton={false}
           showExportButton={false}
           showNewButton={true}
+          currentPage="goods-received"
         />
 
         {/* Table container */}
