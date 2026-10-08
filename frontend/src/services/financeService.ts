@@ -207,6 +207,7 @@ export const ACCOUNT_TYPES: AccountType[] = ['asset', 'liability', 'equity', 're
 
 export interface DrawerSession {
   id: string;
+  sessionNo?: string | null;
   storeId: string;
   accountId: string;
   openingFloat: number;
@@ -235,6 +236,23 @@ export interface DrawerMovement {
   journalEntryId?: string | null;
   createdByName?: string;
   createdAt: string;
+}
+
+export interface DrawerTenderTotal {
+  methodCode: string;
+  methodName: string;
+  total: number;
+  txns: number;
+}
+
+export interface DrawerReport {
+  reportType: 'x' | 'z';
+  session: DrawerSession;
+  movements: DrawerMovement[];
+  tenders: DrawerTenderTotal[];
+  salesCount: number;
+  grossSales: number;
+  expectedCashLive: number;
 }
 
 export interface CustomerAccountPayment {
@@ -500,6 +518,10 @@ export const financeService = {
 
   async drawerMovement(sessionId: string, payload: { direction: 'paid_in' | 'paid_out'; amount: number; reason?: string; counterpartAccountId?: string }) {
     return fetchApi<{ id: string; entryNumber: string }>(`/finance/drawer-sessions/${sessionId}/movements`, { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  async getDrawerReport(sessionId: string) {
+    return fetchApi<DrawerReport>(`/finance/drawer-sessions/${sessionId}/report`);
   },
 
   async closeDrawer(sessionId: string, countedCash: number) {

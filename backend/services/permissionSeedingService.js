@@ -33,7 +33,8 @@ class PermissionSeedingService {
       'system.audit', 'system.backup', 'system.settings', 'system.maintenance',
       'orders.view', 'orders.delete', 'orders.fulfill',
       'employees.view', 'employees.create', 'employees.edit', 'employees.delete',
-      'finance.view', 'finance.manage', 'finance.approve'
+      'finance.view', 'finance.manage', 'finance.approve',
+      'register.view', 'register.open', 'register.movement', 'register.close'
     ],
 
     'Store Manager': [
@@ -55,7 +56,8 @@ class PermissionSeedingService {
       'settings.view', 'settings.edit', 'settings.tax', 'settings.payment', 'settings.printer', 'settings.store',
       'orders.view', 'orders.fulfill', 'orders.delete',
       'employees.view', 'employees.create', 'employees.edit',
-      'finance.view', 'finance.manage', 'finance.approve'
+      'finance.view', 'finance.manage', 'finance.approve',
+      'register.view', 'register.open', 'register.movement', 'register.close'
     ],
 
     'Cashier': [
@@ -74,7 +76,8 @@ class PermissionSeedingService {
       'customers.view', 'customers.create', 'customers.edit',
       'tax.view', 'payments.view', 'printer.view', 'printer.settings',
       'sales-return.view', 'sales-return.create',
-      'promotions.view', 'promotions.apply'
+      'promotions.view', 'promotions.apply',
+      'register.view', 'register.open', 'register.movement', 'register.close'
     ],
     
     'Inventory Manager': [
@@ -135,6 +138,12 @@ class PermissionSeedingService {
       { name: 'finance.view', description: 'View expenses and outgoing payments', module: 'finance' },
       { name: 'finance.manage', description: 'Record, edit and void expenses and outgoing payments', module: 'finance' },
       { name: 'finance.approve', description: 'Approve expenses above the tenant approval threshold', module: 'finance' },
+
+      // Cash Register (4)
+      { name: 'register.view', description: 'View the cash register, session history and X/Z reports', module: 'register' },
+      { name: 'register.open', description: 'Open a register session and set the starting float', module: 'register' },
+      { name: 'register.movement', description: 'Record paid-ins and paid-outs on an open register', module: 'register' },
+      { name: 'register.close', description: 'Close a register session and post the cash variance', module: 'register' },
       
       // Sales (5)
       { name: 'sales.view', description: 'View sales', module: 'sales' },

@@ -133,11 +133,11 @@ const NAV_TREE: NavigationSectionRaw[] = [
   {
     titleKey: 'sales_operations',
     icon: Store,
-    permissions: ['sales.view', 'sales.return', 'customers.view', 'sales.create', 'finance.view'],
+    permissions: ['sales.view', 'sales.return', 'customers.view', 'sales.create', 'finance.view', 'register.view'],
     items: [
       { nameKey: 'sales_hub', icon: Gem, path: '/sales-hub', permissions: ['sales.create'], industries: [...SALES_HUB_INDUSTRIES] },
       { nameKey: 'pos', icon: ShoppingCart, path: '/pos', permissions: ['sales.create'], excludeIndustries: [...SALES_HUB_INDUSTRIES] },
-      { nameKey: 'drawer', icon: Vault, path: '/drawer', permissions: ['finance.view'] },
+      { nameKey: 'drawer', icon: Vault, path: '/drawer', permissions: ['register.view', 'finance.view'] },
       {
         nameKey: 'sales_management',
         icon: ClipboardList,

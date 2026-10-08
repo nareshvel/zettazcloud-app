@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Loader2, RefreshCcw, Vault, AlertCircle, ArrowDownToLine,
-  ArrowUpFromLine, Lock, PlayCircle,
+  ArrowUpFromLine, Lock, PlayCircle, FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,12 +19,19 @@ import { useCurrency, useDateFormatting } from '@/contexts/LocalizationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
 import { financeService, DrawerSession, DrawerMovement, MoneyAccount } from '@/services/financeService';
+import RegisterReportDialog from '@/components/finance/RegisterReportDialog';
 
 export default function DrawerPage() {
   const { formatCurrency, currencySymbol } = useCurrency();
   const { formatDateTime, formatTime } = useDateFormatting();
   const { user } = useAuth();
-  const canManage = hasAnyPermission(user, ['finance.manage']);
+  const canOpen = hasAnyPermission(user, ['register.open', 'finance.manage']);
+  const canMove = hasAnyPermission(user, ['register.movement', 'finance.manage']);
+  const canClose = hasAnyPermission(user, ['register.close', 'finance.manage']);
+  // Blind close: the expected figure (and the computed variance preview) is a
+  // finance-visible fact. Users with only register.* perms still count and
+  // close, they just don't see what the register *should* hold.
+  const canSeeExpected = hasAnyPermission(user, ['finance.view', 'finance.manage']);
   const activeStore = useOptionalStore()?.store;
   const storeId = activeStore?.id || user?.storeId || localStorage.getItem('store_id') || '';
 
@@ -48,6 +55,7 @@ export default function DrawerPage() {
   const [fSource, setFSource] = useState('');
   const [fCounterpart, setFCounterpart] = useState('');
   const [closeResult, setCloseResult] = useState<{ expectedCash: number; variance: number } | null>(null);
+  const [reportSessionId, setReportSessionId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!storeId) { setLoading(false); setError('No store selected.'); return; }
@@ -140,6 +148,7 @@ export default function DrawerPage() {
       const r = await financeService.closeDrawer(session.id, countNum);
       setCloseResult({ expectedCash: r.expectedCash, variance: r.variance });
       setCloseOpen(false); setFCount('');
+      setReportSessionId(session.id);
       await load();
     } catch (e: any) {
       setFormError(e.message || 'Failed to close register.');
@@ -152,7 +161,9 @@ export default function DrawerPage() {
       Cell: (s) => (
         <div>
           <div className="text-sm font-medium">{formatDateTime(s.openedAt)}</div>
-          <div className="text-xs text-muted-foreground">{s.openedByName || '—'} · {s.accountCode}</div>
+          <div className="text-xs text-muted-foreground">
+            {s.sessionNo ? `${s.sessionNo} · ` : ''}{s.openedByName || '—'} · {s.accountCode}
+          </div>
         </div>
       ),
     },
@@ -190,6 +201,19 @@ export default function DrawerPage() {
         ? <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Open</Badge>
         : <Badge variant="secondary">Closed</Badge>,
     },
+    {
+      accessor: 'id', Header: '',
+      Cell: (s) => (
+        <Button
+          variant="ghost" size="sm"
+          onClick={() => setReportSessionId(s.id)}
+          title={s.status === 'closed' ? 'Z-report' : 'X-report'}
+        >
+          <FileText className="h-4 w-4" />
+        </Button>
+      ),
+      className: 'text-right w-10', headerClassName: 'text-right w-10',
+    },
   ];
 
   return (
@@ -225,38 +249,55 @@ export default function DrawerPage() {
           <div className="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2">
             <div>
               <h2 className="font-semibold flex items-center gap-2">
-                Register open <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">{session.accountCode}</Badge>
+                Register open
+                {session.sessionNo && <span className="text-xs font-normal text-muted-foreground">{session.sessionNo}</span>}
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">{session.accountCode}</Badge>
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Opened {formatDateTime(session.openedAt)}{session.openedByName ? ` by ${session.openedByName}` : ''} · float {formatCurrency(Number(session.openingFloat))}
               </p>
             </div>
-            {canManage && (
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { setMoveOpen('paid_in'); setFAmount(''); setFReason(''); setFCounterpart(defaultCounterpart); setFormError(null); }}>
-                  <ArrowDownToLine className="h-4 w-4 mr-1" /> Paid in
+            <div className="flex gap-2">
+              {canSeeExpected && (
+                <Button variant="outline" size="sm" onClick={() => setReportSessionId(session.id)} title="X-report — mid-shift snapshot">
+                  <FileText className="h-4 w-4 mr-1" /> X-report
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => { setMoveOpen('paid_out'); setFAmount(''); setFReason(''); setFCounterpart(''); setFormError(null); }}>
-                  <ArrowUpFromLine className="h-4 w-4 mr-1" /> Paid out
-                </Button>
+              )}
+              {canMove && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => { setMoveOpen('paid_in'); setFAmount(''); setFReason(''); setFCounterpart(defaultCounterpart); setFormError(null); }}>
+                    <ArrowDownToLine className="h-4 w-4 mr-1" /> Paid in
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => { setMoveOpen('paid_out'); setFAmount(''); setFReason(''); setFCounterpart(''); setFormError(null); }}>
+                    <ArrowUpFromLine className="h-4 w-4 mr-1" /> Paid out
+                  </Button>
+                </>
+              )}
+              {canClose && (
                 <Button size="sm" onClick={() => { setCloseOpen(true); setFCount(''); setFormError(null); }}>
                   <Lock className="h-4 w-4 mr-1" /> Close register
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
           <div className="px-4 py-4">
             <div className="text-xs text-muted-foreground">Expected in register</div>
-            <div className="text-3xl font-bold tabular-nums">{formatCurrency(liveExpected)}</div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
-              <span>Float {formatCurrency(Number(session.openingFloat))}</span>
-              <span aria-hidden="true">·</span>
-              <span>Cash sales {formatCurrency(salesReceipts)}</span>
-              <span aria-hidden="true">·</span>
-              <span className="text-emerald-700">In {formatCurrency(moveTotals.paidIn)}</span>
-              <span aria-hidden="true">·</span>
-              <span className="text-rose-700">Out {formatCurrency(moveTotals.paidOut)}</span>
-            </div>
+            {canSeeExpected ? (
+              <>
+                <div className="text-3xl font-bold tabular-nums">{formatCurrency(liveExpected)}</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
+                  <span>Float {formatCurrency(Number(session.openingFloat))}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>Cash sales {formatCurrency(salesReceipts)}</span>
+                  <span aria-hidden="true">·</span>
+                  <span className="text-emerald-700">In {formatCurrency(moveTotals.paidIn)}</span>
+                  <span aria-hidden="true">·</span>
+                  <span className="text-rose-700">Out {formatCurrency(moveTotals.paidOut)}</span>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground mt-1">Hidden — expected cash is visible to finance roles only (blind count).</p>
+            )}
             <div className="mt-4 space-y-1.5">
               {movements.length === 0 && (
                 <p className="text-sm text-muted-foreground">No paid-ins or paid-outs yet.</p>
@@ -283,8 +324,13 @@ export default function DrawerPage() {
           <Vault className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
           <p className="font-medium">No register open for this store</p>
           <p className="text-sm text-muted-foreground mt-1">Open the register to start tracking today's cash.</p>
-          {canManage && (
-            <Button className="mt-4" onClick={() => { setOpenOpen(true); setFFloat(''); setFReason(''); setFSource(defaultCounterpart); setFormError(null); }}>
+          {canOpen && (
+            <Button className="mt-4" onClick={() => {
+              const lastClosed = history.find(h => h.status === 'closed' && h.countedCash != null);
+              setOpenOpen(true);
+              setFFloat(lastClosed ? String(lastClosed.countedCash) : '');
+              setFReason(''); setFSource(defaultCounterpart); setFormError(null);
+            }}>
               <PlayCircle className="h-4 w-4 mr-2" /> Open register
             </Button>
           )}
@@ -409,10 +455,14 @@ export default function DrawerPage() {
             <DialogDescription>Count the cash in the till. Any difference from the expected amount posts to Cash Over/Short.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="rounded-lg bg-muted/40 p-3 text-sm flex justify-between">
-              <span className="text-muted-foreground">Expected</span>
-              <span className="font-semibold tabular-nums">{formatCurrency(liveExpected)}</span>
-            </div>
+            {canSeeExpected ? (
+              <div className="rounded-lg bg-muted/40 p-3 text-sm flex justify-between">
+                <span className="text-muted-foreground">Expected</span>
+                <span className="font-semibold tabular-nums">{formatCurrency(liveExpected)}</span>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Blind count — the expected amount is hidden from your role.</p>
+            )}
             <div>
               <Label>Counted cash</Label>
               <div className="relative mt-1">
@@ -420,7 +470,7 @@ export default function DrawerPage() {
                 <Input type="number" min="0" step="0.01" autoFocus value={fCount} onChange={e => setFCount(e.target.value)} className="pl-8 h-12 text-lg font-semibold" placeholder="0.00" />
               </div>
             </div>
-            {previewVariance !== null && (
+            {canSeeExpected && previewVariance !== null && (
               <div className={`rounded-lg p-3 text-sm flex justify-between ${Math.abs(previewVariance) < 0.005 ? 'bg-emerald-50 text-emerald-800' : previewVariance < 0 ? 'bg-rose-50 text-rose-800' : 'bg-amber-50 text-amber-800'}`}>
                 <span>Variance</span>
                 <span className="font-semibold tabular-nums">{previewVariance > 0 ? '+' : ''}{formatCurrency(previewVariance)}</span>
@@ -436,6 +486,13 @@ export default function DrawerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* X/Z report — opens after a successful close, and on demand for the open session */}
+      <RegisterReportDialog
+        sessionId={reportSessionId}
+        storeId={storeId}
+        onClose={() => setReportSessionId(null)}
+      />
     </div>
   );
 }

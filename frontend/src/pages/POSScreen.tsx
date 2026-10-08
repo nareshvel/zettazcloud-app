@@ -20,6 +20,7 @@ import CustomerSearchSelect, { CustomerHit, mapToCustomerHit, mapCustomerHitToCu
 import QuickAddCustomerModal from '@/components/customers/QuickAddCustomerModal';
 import HeldOrdersModal from '../components/pos/HeldOrdersModal';
 import POSQuickAddModal from '../components/pos/POSQuickAddModal';
+import RegisterOpenPrompt from '../components/pos/RegisterOpenPrompt';
 import NotificationsBell from '@/components/common/NotificationsBell';
 import { Product } from '@/types';
 
@@ -485,6 +486,10 @@ const POSScreen = () => {
         tenantId={user?.tenantId ?? ''}
         storeId={user?.storeId ?? undefined}
       />
+
+      {/* Soft-gate register lifecycle: prompts users who can open the register
+          when they land on POS with no open session (once per browser session). */}
+      <RegisterOpenPrompt storeId={user?.storeId ?? undefined} />
     </div>
   );
 };

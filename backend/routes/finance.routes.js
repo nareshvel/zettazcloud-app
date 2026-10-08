@@ -1451,7 +1451,11 @@ async function drawerExpectedCash(conn, tenantId, session) {
   return round2(Number(session.opening_float) + Number(rows[0].net));
 }
 
-/** Default drawer account: a store-scoped cash_drawer account, else the tenant cash-in default. */
+/** Default drawer account: the account cash sales actually post to (tender:cash
+ *  mapping), else a store-scoped cash_drawer account, else the tenant cash-in
+ *  default. Binding the session to the tender account keeps expected-cash
+ *  correct — sales journal legs land on whatever tender:cash maps to, so the
+ *  drawer must measure that same account. */
 async function resolveDrawerAccount(conn, tenantId, storeId, explicitId) {
   if (explicitId) {
     const [rows] = await conn.query(
@@ -1460,6 +1464,8 @@ async function resolveDrawerAccount(conn, tenantId, storeId, explicitId) {
     );
     return rows.length ? rows[0].id : null;
   }
+  const tenderCash = await moneyPosting.resolveAccountId(tenantId, 'tender:cash', conn);
+  if (tenderCash) return tenderCash;
   const [storeAcct] = await conn.query(
     `SELECT id FROM money_accounts
       WHERE tenant_id = ? AND store_id = ? AND subtype = 'cash_drawer' AND is_active = 1
@@ -1471,7 +1477,7 @@ async function resolveDrawerAccount(conn, tenantId, storeId, explicitId) {
 }
 
 // GET /api/finance/drawer-sessions — session history (most recent first).
-router.get('/drawer-sessions', requirePermission('finance.view'), async (req, res) => {
+router.get('/drawer-sessions', requirePermission('register.view'), async (req, res) => {
   const tenantId = req.user.tenant_id;
   const { status, store_id: storeId } = req.query;
   const limit = Math.min(Number(req.query.limit) || 50, 200);
@@ -1505,7 +1511,7 @@ router.get('/drawer-sessions', requirePermission('finance.view'), async (req, re
 
 // GET /api/finance/drawer-sessions/current?store_id= — the open session for a
 // store, with live expected cash and its movement list.
-router.get('/drawer-sessions/current', requirePermission('finance.view'), async (req, res) => {
+router.get('/drawer-sessions/current', requirePermission('register.view'), async (req, res) => {
   const tenantId = req.user.tenant_id;
   const storeId = req.query.store_id || req.storeId;
   if (!storeId) return res.status(400).json({ message: 'store_id is required.' });
@@ -1533,7 +1539,7 @@ router.get('/drawer-sessions/current', requirePermission('finance.view'), async 
 });
 
 // POST /api/finance/drawer-sessions — open a drawer for the store.
-router.post('/drawer-sessions', requirePermission('finance.manage'), async (req, res) => {
+router.post('/drawer-sessions', requirePermission('register.open'), async (req, res) => {
   const tenantId = req.user.tenant_id;
   const userId = req.user?.id || null;
   const storeId = req.body?.storeId || req.storeId;
@@ -1548,11 +1554,20 @@ router.post('/drawer-sessions', requirePermission('finance.manage'), async (req,
     if (!accountId) { await conn.rollback(); return res.status(400).json({ message: 'No usable cash account — create one under Money Accounts first.' }); }
 
     const id = uuidv4();
+    // Session number is a display/audit label, not a uniqueness constraint —
+    // uq_drawer_open already serializes opens per store. Concurrent opens at
+    // two stores may collide on the number; acceptable for a sequence label.
+    const [numRows] = await conn.query(
+      `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(session_no, '-', -1) AS UNSIGNED)), 0) + 1 AS next_no
+         FROM cash_drawer_sessions WHERE tenant_id = ?`,
+      [tenantId]
+    );
+    const sessionNo = `REG-${String(numRows[0].next_no).padStart(4, '0')}`;
     await conn.query(
       `INSERT INTO cash_drawer_sessions
-         (id, tenant_id, store_id, account_id, opening_float, opened_by, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, tenantId, storeId, accountId, round2(openingFloat), userId, req.body?.notes || null]
+         (id, session_no, tenant_id, store_id, account_id, opening_float, opened_by, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, sessionNo, tenantId, storeId, accountId, round2(openingFloat), userId, req.body?.notes || null]
     );
 
     // Journal the float so the drawer account's ledger balance reflects it:
@@ -1594,7 +1609,7 @@ router.post('/drawer-sessions', requirePermission('finance.manage'), async (req,
 // POST /api/finance/drawer-sessions/:id/movements — paid-in / paid-out.
 // paid_out: Dr expense-side (or counterpartAccountId) / Cr drawer.
 // paid_in:  Dr drawer / Cr counterpart (default SAFE).
-router.post('/drawer-sessions/:id/movements', requirePermission('finance.manage'), async (req, res) => {
+router.post('/drawer-sessions/:id/movements', requirePermission('register.movement'), async (req, res) => {
   const tenantId = req.user.tenant_id;
   const userId = req.user?.id || null;
   const direction = req.body?.direction;
@@ -1664,7 +1679,7 @@ router.post('/drawer-sessions/:id/movements', requirePermission('finance.manage'
 
 // POST /api/finance/drawer-sessions/:id/close — count the drawer, post the
 // variance to Cash Over/Short, mark the session closed.
-router.post('/drawer-sessions/:id/close', requirePermission('finance.manage'), async (req, res) => {
+router.post('/drawer-sessions/:id/close', requirePermission('register.close'), async (req, res) => {
   const tenantId = req.user.tenant_id;
   const userId = req.user?.id || null;
   const counted = Number(req.body?.countedCash ?? req.body?.counted_cash);
@@ -1726,6 +1741,82 @@ router.post('/drawer-sessions/:id/close', requirePermission('finance.manage'), a
     res.status(500).json({ message: 'Failed to close drawer session.' });
   } finally {
     conn.release();
+  }
+});
+
+// GET /api/finance/drawer-sessions/:id/report — X-report for an open session,
+// Z-report once closed. One endpoint for both: the report payload is the same,
+// reportType tells the caller which label to print.
+router.get('/drawer-sessions/:id/report', requirePermission('register.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  try {
+    const [sessions] = await pool.query(
+      `SELECT s.*, a.code AS account_code, a.name AS account_name, st.name AS store_name,
+              u1.name AS opened_by_name, u2.name AS closed_by_name
+         FROM cash_drawer_sessions s
+         LEFT JOIN money_accounts a ON a.id = s.account_id
+         LEFT JOIN stores st ON st.id = s.store_id
+         LEFT JOIN users u1 ON u1.id = s.opened_by
+         LEFT JOIN users u2 ON u2.id = s.closed_by
+        WHERE s.id = ? AND s.tenant_id = ?`,
+      [req.params.id, tenantId]
+    );
+    if (!sessions.length) return res.status(404).json({ message: 'Session not found.' });
+    const session = sessions[0];
+    const windowEnd = session.status === 'closed' && session.closed_at ? session.closed_at : new Date();
+
+    const [movements] = await pool.query(
+      `SELECT m.*, u.name AS created_by_name
+         FROM money_drawer_movements m LEFT JOIN users u ON u.id = m.created_by
+        WHERE m.tenant_id = ? AND m.session_id = ? ORDER BY m.created_at`,
+      [tenantId, session.id]
+    );
+
+    // Tender mix across the session window — payment legs carry the real
+    // method on split tenders; resolved by method id or code.
+    const [tenders] = await pool.query(
+      `SELECT COALESCE(pm.code, pt.payment_method_id) AS method_code,
+              COALESCE(pm.name, pt.payment_method_id) AS method_name,
+              SUM(pt.amount) AS total, COUNT(DISTINCT pt.sale_id) AS txns
+         FROM payment_transactions pt
+         JOIN sales s ON s.id = pt.sale_id AND s.tenant_id = pt.tenant_id
+         LEFT JOIN payment_methods pm
+                ON pm.tenant_id = pt.tenant_id
+               AND (pm.id = pt.payment_method_id OR pm.code = pt.payment_method_id)
+        WHERE pt.tenant_id = ? AND s.store_id = ? AND pt.status = 'COMPLETED'
+          AND pt.created_at BETWEEN ? AND ?
+        GROUP BY method_code, method_name
+        ORDER BY total DESC`,
+      [tenantId, session.store_id, session.opened_at, windowEnd]
+    );
+
+    const [salesAgg] = await pool.query(
+      `SELECT COUNT(*) AS sale_count, COALESCE(SUM(total), 0) AS gross
+         FROM sales
+        WHERE tenant_id = ? AND store_id = ? AND status = 'completed'
+          AND created_at BETWEEN ? AND ?`,
+      [tenantId, session.store_id, session.opened_at, windowEnd]
+    );
+
+    const expected = session.status === 'closed'
+      ? Number(session.expected_cash)
+      : await drawerExpectedCash(pool, tenantId, session);
+
+    res.json({
+      status: 'success',
+      data: {
+        reportType: session.status === 'closed' ? 'z' : 'x',
+        session,
+        movements,
+        tenders,
+        salesCount: Number(salesAgg[0].sale_count),
+        grossSales: Number(salesAgg[0].gross),
+        expectedCashLive: expected,
+      },
+    });
+  } catch (err) {
+    console.error('[finance] GET /drawer-sessions/:id/report failed:', err);
+    res.status(500).json({ message: 'Failed to build register report.' });
   }
 });
 
