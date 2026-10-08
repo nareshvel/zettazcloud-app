@@ -96,6 +96,17 @@ repairs, savings schemes).
   `CHAR(36)`, matching `products.id`/`users.id` — if you see `Cannot add or update a child
   row ... stock_adjustments_ibfk_*`, check for a column type mismatch before anything else
   (fixed 2026-09-02, see `06_Implementation_Changelog.md` "Iteration 16.6").
+- **Money writes post to the journal inside the business transaction** —
+  every code path that moves money (sale, return, outgoing payment, layaway/
+  savings payment, drawer movement, transfer) calls
+  `moneyPostingService.postEntry`/`reverseEntry`/`tenderAccountId` on the
+  caller's `conn` before commit, so business write and journal entry are
+  atomic. Voids are **mirror reversal entries**, never edits or deletes, and
+  `UNIQUE(tenant_id, source_type, source_id)` makes posting idempotent.
+  Account targets resolve through `finance_account_mappings`
+  (`tender:<code>`/`event:<name>`) — tenant-editable, don't hard-code. New
+  money-moving paths must hook the same way; see
+  `docs/MODULES/finance/MONEY_ACCOUNTS_AND_LEDGER.md` for the hook map.
 - `auditLogService.js` exports `logActivity` as a compatibility adapter over
   `logAuditEvent` — several callers (including `createSaleController.js`) use the
   `logActivity` name. If you see `TypeError: logActivity is not a function`, the export was
@@ -425,6 +436,14 @@ Key tables:
 - `repair_orders` + `repair_order_updates`
 - `savings_scheme_plans` + `savings_scheme_enrollments` + `savings_scheme_payments`
 - `layaway_plans` + `layaway_items` + `layaway_payments`
+- `money_accounts` + `money_journal_entries` + `money_journal_lines` +
+  `finance_account_mappings` — tenant chart of accounts + double-entry journal
+  (`2026-10-12a_money_accounts_ledger.sql`); `cash_drawer_sessions` +
+  `money_drawer_movements` (`2026-10-12b_drawer_sessions.sql`). See
+  `docs/MODULES/finance/MONEY_ACCOUNTS_AND_LEDGER.md` for the invariants —
+  posting hooks run inside the business transaction, voids are reversal
+  entries (never edits), and `UNIQUE(tenant_id, source_type, source_id)` makes
+  posting idempotent.
 - `sales.sales_mode`/`zero_rate_reason`/`traveller_id_type`/`traveller_id_number`/
   `traveller_id_country`/`travel_method_type`/`travel_method_ref`/`travel_method_detail`/
   `destination`/`departure_date` — added by `2026-09-01_pos_hub_duty_free_capture.sql`;
@@ -461,10 +480,19 @@ Key tables:
 | Weight-unit localization | ✅ Complete | g / oz / tola / baht / kg; all pages use `formatWeight` |
 | Print & Invoice Templates | ✅ Complete | Clean layout redesign (invoice + jewelry_invoice), pinned page footer, Duty-Free/Export block generalized (traveller ID + travel method, declaration moved to compliance); header/text blocks separated (document title+metadata vs. store identity, independently toggleable); font-size control actually reaches the renderers (Fine→Title scale + bold, resolved with per-block fallback); configurable `logoHeight` in mm with presets/alignment/URL override; customer/address blocks expanded (street/city/state/postal/country/tax ID/passport, billing/shipping/both) |
 | Print Module Phase 1 (POS checkout printing) | ⚠️ Code complete, NOT field-proven | POS receipt/refund printing now goes exclusively through `print_templates` — the legacy hardcoded receipt/return HTML in `receiptService.ts` is deleted, and every existing tenant was backfilled with published default templates before the cutover. New `print_document_settings` table + redesigned Printer Settings UI: independent Receipt/Refund and Invoice sections (delivery mode, printer, paper width, template, copies, enabled/auto-print), plus a store-level "Print sales as Receipt/Invoice" choice (`stores.default_sale_document_type`). `copies` is wired end-to-end for local-agent/direct delivery (not achievable for browser print). Dead `receipt_templates` table/CRUD/dropdown removed. **Two real bugs found via manual testing after this was first declared done** (both invisible to `tsc`/Mocha/Vitest — see Iteration 17.1/17.2): a `pool.query()` destructuring bug that 500'd every settings GET, and a written-but-never-applied migration. **Before trusting this module, work through `docs/MODULES/print-module/PHASE_1_STORE_LEVEL_ROUTES.md §6` end to end** — a clean live checkout through the new path has not yet been observed. **Deferred to a later milestone** (see §5 of that doc): station-level routing, `print_jobs`/retry/audit, full Local Agent v1 protocol, label/tag template system, and a Designer block type for the per-item industry attributes (e.g. jewelry purity/weight) the old legacy renderer used to show but the template renderer doesn't yet support |
+| Finance / Accounting (money accounts, ledger, drawer, reports) | ✅ Complete through Phase 5 (2026-10-13), gaps below | Tenant chart of accounts + double-entry journal with auto-posting hooks on every money-moving write (sale, return, outgoing payment + voids, layaway/savings payments, drawer open/close/movements, transfers, manual journals). `postEntry` runs inside the caller's transaction so business write and ledger entry commit or roll back together; reversals are mirror entries, history never edited. UI: `/accounts` (chart + posting-rules editor + transfers), `/ledger` (journal + CSV export), `/drawer` (sessions + variance), `/reports/cash-flow`, `/reports/profit-loss`. Full model, hook map, and gap list: `docs/MODULES/finance/MONEY_ACCOUNTS_AND_LEDGER.md` — read §6 before touching sales deletion or AR. |
 | Sales Hub (jewelry) | ✅ Complete, search-first redesign 2026-08-29 | Fullscreen, chromeless `/sales-hub` (no `<header>`, no admin chrome — same treatment as `/pos`); sales-floor jewelry users land here straight from login instead of the dashboard. **Redesigned from a 10-tile bento grid to a search-first model**: 2 hero tiles (New Sale, Duty-Free Sale) + a universal customer/record search (`GET /api/sales-hub/search`) surfacing a customer's whole relationship across all 6 modules with contextual per-record actions, + 7 permission-filtered "Start something new" shortcuts, replacing the old 1-tile-per-module grid that made cashiers re-search separately inside each destination page. Search results support quick-action deep-linking (see `SalesHubPage.tsx` row above and the quick-action contract in `docs/FEATURES/14_Sales_Hub_Search_First_Redesign.md`) into Repairs/OldGold/Memo/Layaway/Savings/Orders/Returns, each of which auto-opens its create/collect-payment flow and pre-fills its own search. Duty-Free Sale tile opens a two-column intake (required customer + traveller ID/travel method in one screen) via `DutyFreeIntakeModal`; store-level duty-free/export sales are actually zero-rated on real sales; New Sale/Duty-Free tiles navigate to `/pos` with `{fromSalesHub: true}`, and `POSScreen.tsx` returns to `/sales-hub` once checkout completes. Sale search results show a print-preview "view" icon (see Key files). Sales Return (`SalesReturnPage.tsx`) is reachable both from the Hub search and directly, and its own lookup step (`ReturnProcessingModal.tsx`) is search-by-name/email/phone/document-number rather than raw internal Sale ID. Discovering and fixing the permission-check-triggered RBAC login bugs (see Critical conventions) was a side effect of adding permission gating to this redesign — the old ungated tile Hub never surfaced them. |
 
 ## Known pending work
 
+- **Finance module gaps** — full list with fix sketches in
+  `docs/MODULES/finance/MONEY_ACCOUNTS_AND_LEDGER.md §6`. Top items: sale
+  void/delete doesn't reverse its journal entry (cash/revenue overstated);
+  `customers.outstanding_credit` is never written at runtime (needs a
+  receive-payment-on-account flow); drawer opening float isn't journaled;
+  layaway/savings cancel leaves `LAYDEF`/`SAVDEF` liabilities standing;
+  no COGS accrual, period locking, or bank reconciliation yet; legacy
+  `payment.controller.js` refund path references non-existent columns.
 - **Sales Hub glance strip** — optional "N repairs ready / N memos overdue"
   summary row from the Hub design, not yet built.
 - **Sales Hub mobile/tablet live check** — responsive breakpoints verified by
@@ -518,6 +546,7 @@ Key tables:
 | `docs/ARCHITECTURE/PRINT_MODULE_FINAL_BLUEPRINT.md` | Full target Print Module architecture (device-agnostic, station/route/job model) — independent of Phase 1's scope |
 | `docs/print-module/print-implementation-plan.md` | Milestone-based plan of action for the full blueprint above |
 | `docs/MODULES/print-module/PHASE_1_STORE_LEVEL_ROUTES.md` | Execution companion for the completed store-level slice actually built (this session) — `print_document_settings`, legacy receipt removal, what was explicitly deferred |
+| `docs/MODULES/finance/MONEY_ACCOUNTS_AND_LEDGER.md` | Finance module map: double-entry model, seeded chart/mappings, `postEntry`/`reverseEntry` invariants, every posting hook location, API + frontend surface, known gaps §6, operational gotchas §7 |
 | `docs/FEATURES/14_Sales_Hub_Search_First_Redesign.md` | 2026-08-29 session record: Sales Hub search-first redesign rationale + architecture, the quick-action deep-linking contract, the RBAC login bug chain found as a side effect, the Print Agent origin/CORS rework, the `useOptionalStore()` pattern, and the Sale-null/view-icon fix — written as a handoff record for continuing this work in a different AI tool (e.g. Devin's IDE) |
 
 ---
