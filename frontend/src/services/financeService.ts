@@ -150,6 +150,61 @@ export const PAYMENT_METHODS = [
   'Cash', 'Bank Transfer', 'Card', 'Cheque', 'Mobile Money', 'Other',
 ];
 
+export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+
+export interface MoneyAccount {
+  id: string;
+  code: string;
+  name: string;
+  accountType: AccountType;
+  subtype?: string | null;
+  storeId?: string | null;
+  openingBalance: number;
+  isSystem: number | boolean;
+  isActive: number | boolean;
+  totalDebit: number;
+  totalCredit: number;
+  balance: number;
+  debitNormal: number | boolean;
+}
+
+export interface AccountMapping {
+  mappingKey: string;
+  accountId: string;
+  code: string;
+  name: string;
+  accountType: AccountType;
+  isActive: number | boolean;
+}
+
+export interface JournalLine {
+  lineNo: number;
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+  memo?: string | null;
+  customerId?: string | null;
+  supplierId?: string | null;
+}
+
+export interface JournalEntry {
+  id: string;
+  entryNumber: string;
+  entryDate: string;
+  sourceType: string;
+  sourceId?: string | null;
+  memo?: string | null;
+  status: 'posted' | 'voided';
+  reversalOfId?: string | null;
+  storeId?: string | null;
+  createdAt: string;
+  lines: JournalLine[];
+}
+
+export const ACCOUNT_TYPES: AccountType[] = ['asset', 'liability', 'equity', 'revenue', 'expense'];
+
 export const financeService = {
   async listExpenses(params: { search?: string; category?: string; status?: string; supplierId?: string; from?: string; to?: string } = {}) {
     const qs = new URLSearchParams();
@@ -239,5 +294,46 @@ export const financeService = {
 
   async createVendor(payload: { name: string; contactPerson?: string; email?: string; phone?: string }) {
     return fetchApi<{ id: string; supplierName: string }>('/finance/vendors', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  // ---- Money accounts + ledger -------------------------------------------
+
+  async listAccounts(params: { storeId?: string } = {}) {
+    const qs = params.storeId ? `?store_id=${encodeURIComponent(params.storeId)}` : '';
+    return fetchApi<{ accounts: MoneyAccount[] }>(`/finance/accounts${qs}`);
+  },
+
+  async createAccount(payload: { code: string; name: string; accountType: AccountType; subtype?: string; storeId?: string; openingBalance?: number }) {
+    return fetchApi<{ id: string; code: string }>('/finance/accounts', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  async updateAccount(id: string, payload: { name?: string; subtype?: string | null; isActive?: boolean; openingBalance?: number }) {
+    return fetchApi<{ ok: boolean }>(`/finance/accounts/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+  },
+
+  async listMappings() {
+    return fetchApi<{ mappings: AccountMapping[] }>('/finance/mappings');
+  },
+
+  async updateMapping(key: string, accountId: string) {
+    return fetchApi<{ ok: boolean }>(`/finance/mappings/${encodeURIComponent(key)}`, { method: 'PUT', body: JSON.stringify({ accountId }) });
+  },
+
+  async listLedger(params: { accountId?: string; sourceType?: string; from?: string; to?: string; limit?: number } = {}) {
+    const qs = new URLSearchParams();
+    if (params.accountId) qs.set('account_id', params.accountId);
+    if (params.sourceType) qs.set('source_type', params.sourceType);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.limit) qs.set('limit', String(params.limit));
+    return fetchApi<{ entries: JournalEntry[] }>(`/finance/ledger?${qs.toString()}`);
+  },
+
+  async postJournal(payload: { entryDate?: string; memo?: string; lines: { accountId?: string; accountCode?: string; debit?: number; credit?: number; memo?: string }[] }) {
+    return fetchApi<{ entryId: string; entryNumber: string }>('/finance/journal', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  async reverseJournal(id: string, memo?: string) {
+    return fetchApi<{ entryId: string; entryNumber: string }>(`/finance/journal/${id}/reverse`, { method: 'POST', body: JSON.stringify({ memo }) });
   },
 };

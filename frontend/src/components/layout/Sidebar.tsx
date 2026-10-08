@@ -37,6 +37,8 @@ import {
   Wallet,
   Receipt,
   HandCoins,
+  Landmark,
+  BookOpen,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
@@ -109,7 +111,7 @@ const NAV_FALLBACK: Record<string, string> = {
   catalog_channels: 'Sales Channels', reports: 'Reports', settings: 'Settings',
   team: 'Team & Access', print_jobs: 'Print Jobs', print_templates: 'Print Templates',
   sales_management: 'Sales Management', services: 'Services',
-  expenses: 'Expenses', payments: 'Payments', procurement: 'Procurement',
+  expenses: 'Expenses', payments: 'Payments', accounts: 'Money Accounts', ledger: 'Ledger', procurement: 'Procurement',
 };
 
 const SECTION_FALLBACK: Record<string, string> = {
@@ -191,6 +193,8 @@ const NAV_TREE: NavigationSectionRaw[] = [
     items: [
       { nameKey: 'expenses', icon: Receipt, path: '/expenses', permissions: ['finance.view'] },
       { nameKey: 'payments', icon: HandCoins, path: '/payments', permissions: ['finance.view'] },
+      { nameKey: 'accounts', icon: Landmark, path: '/accounts', permissions: ['finance.view'] },
+      { nameKey: 'ledger', icon: BookOpen, path: '/ledger', permissions: ['finance.view'] },
     ],
   },
   {
