@@ -1428,4 +1428,326 @@ router.post('/journal/:id/reverse', requirePermission('finance.manage'), async (
   }
 });
 
+// ---------------------------------------------------------------------------
+// Cash drawer sessions — open float → paid in/out → close with counted vs
+// expected variance. Expected cash is derived from the drawer's ledger lines
+// for this store during the session window; the journal stays authoritative.
+// ---------------------------------------------------------------------------
+
+/** Live expected cash for an open session: float + ledger activity since open. */
+async function drawerExpectedCash(conn, tenantId, session) {
+  const [rows] = await conn.query(
+    `SELECT COALESCE(SUM(l.debit - l.credit), 0) AS net
+       FROM money_journal_lines l
+       JOIN money_journal_entries e ON e.id = l.entry_id AND e.tenant_id = l.tenant_id
+      WHERE l.tenant_id = ? AND l.account_id = ?
+        AND e.store_id = ? AND e.created_at >= ?`,
+    [tenantId, session.account_id, session.store_id, session.opened_at]
+  );
+  return round2(Number(session.opening_float) + Number(rows[0].net));
+}
+
+/** Default drawer account: a store-scoped cash_drawer account, else the tenant cash-in default. */
+async function resolveDrawerAccount(conn, tenantId, storeId, explicitId) {
+  if (explicitId) {
+    const [rows] = await conn.query(
+      'SELECT id FROM money_accounts WHERE id = ? AND tenant_id = ? AND is_active = 1',
+      [explicitId, tenantId]
+    );
+    return rows.length ? rows[0].id : null;
+  }
+  const [storeAcct] = await conn.query(
+    `SELECT id FROM money_accounts
+      WHERE tenant_id = ? AND store_id = ? AND subtype = 'cash_drawer' AND is_active = 1
+      LIMIT 1`,
+    [tenantId, storeId]
+  );
+  if (storeAcct.length) return storeAcct[0].id;
+  return moneyPosting.resolveAccountId(tenantId, 'event:default_in', conn);
+}
+
+// GET /api/finance/drawer-sessions — session history (most recent first).
+router.get('/drawer-sessions', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { status, store_id: storeId } = req.query;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  try {
+    const where = ['s.tenant_id = ?'];
+    const params = [tenantId];
+    if (status) { where.push('s.status = ?'); params.push(status); }
+    if (storeId) { where.push('s.store_id = ?'); params.push(storeId); }
+    const [rows] = await pool.query(
+      `SELECT s.id, s.store_id, s.account_id, s.opening_float, s.opened_at, s.opened_by,
+              s.closed_at, s.closed_by, s.counted_cash, s.expected_cash, s.variance,
+              s.status, s.notes, a.code AS account_code, a.name AS account_name,
+              st.name AS store_name,
+              ou.name AS opened_by_name, cu.name AS closed_by_name
+         FROM cash_drawer_sessions s
+         JOIN money_accounts a ON a.id = s.account_id
+         LEFT JOIN stores st ON st.id = s.store_id
+         LEFT JOIN users ou ON ou.id = s.opened_by
+         LEFT JOIN users cu ON cu.id = s.closed_by
+        WHERE ${where.join(' AND ')}
+        ORDER BY s.opened_at DESC
+        LIMIT ${limit}`,
+      params
+    );
+    res.json({ status: 'success', data: { sessions: rows } });
+  } catch (err) {
+    console.error('[finance] GET /drawer-sessions failed:', err);
+    res.status(500).json({ message: 'Failed to load drawer sessions.' });
+  }
+});
+
+// GET /api/finance/drawer-sessions/current?store_id= — the open session for a
+// store, with live expected cash and its movement list.
+router.get('/drawer-sessions/current', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const storeId = req.query.store_id || req.storeId;
+  if (!storeId) return res.status(400).json({ message: 'store_id is required.' });
+  try {
+    const [rows] = await pool.query(
+      `SELECT s.*, a.code AS account_code, a.name AS account_name
+         FROM cash_drawer_sessions s JOIN money_accounts a ON a.id = s.account_id
+        WHERE s.tenant_id = ? AND s.store_id = ? AND s.status = 'open'`,
+      [tenantId, storeId]
+    );
+    if (!rows.length) return res.json({ status: 'success', data: { session: null } });
+    const session = rows[0];
+    const [movements] = await pool.query(
+      `SELECT m.*, u.name AS created_by_name
+         FROM money_drawer_movements m LEFT JOIN users u ON u.id = m.created_by
+        WHERE m.session_id = ? ORDER BY m.created_at`,
+      [session.id]
+    );
+    const expectedCash = await drawerExpectedCash(pool, tenantId, session);
+    res.json({ status: 'success', data: { session: { ...session, expected_cash_live: expectedCash }, movements } });
+  } catch (err) {
+    console.error('[finance] GET /drawer-sessions/current failed:', err);
+    res.status(500).json({ message: 'Failed to load current drawer session.' });
+  }
+});
+
+// POST /api/finance/drawer-sessions — open a drawer for the store.
+router.post('/drawer-sessions', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const userId = req.user?.id || null;
+  const storeId = req.body?.storeId || req.storeId;
+  const openingFloat = Number(req.body?.openingFloat ?? req.body?.opening_float) || 0;
+  if (!storeId) return res.status(400).json({ message: 'storeId is required.' });
+  if (openingFloat < 0) return res.status(400).json({ message: 'openingFloat cannot be negative.' });
+
+  const conn = await getConnectionWithTimeZone();
+  try {
+    await conn.beginTransaction();
+    const accountId = await resolveDrawerAccount(conn, tenantId, storeId, req.body?.accountId);
+    if (!accountId) { await conn.rollback(); return res.status(400).json({ message: 'No usable cash account — create one under Money Accounts first.' }); }
+
+    const id = uuidv4();
+    await conn.query(
+      `INSERT INTO cash_drawer_sessions
+         (id, tenant_id, store_id, account_id, opening_float, opened_by, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, tenantId, storeId, accountId, round2(openingFloat), userId, req.body?.notes || null]
+    );
+    await conn.commit();
+    res.status(201).json({ status: 'success', data: { id } });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'This store already has an open drawer session.' });
+    }
+    console.error('[finance] POST /drawer-sessions failed:', err);
+    res.status(500).json({ message: 'Failed to open drawer session.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// POST /api/finance/drawer-sessions/:id/movements — paid-in / paid-out.
+// paid_out: Dr expense-side (or counterpartAccountId) / Cr drawer.
+// paid_in:  Dr drawer / Cr counterpart (default SAFE).
+router.post('/drawer-sessions/:id/movements', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const userId = req.user?.id || null;
+  const direction = req.body?.direction;
+  const amount = Number(req.body?.amount);
+  if (!['paid_in', 'paid_out'].includes(direction)) return res.status(400).json({ message: 'direction must be paid_in or paid_out.' });
+  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ message: 'amount must be a positive number.' });
+
+  const conn = await getConnectionWithTimeZone();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT * FROM cash_drawer_sessions WHERE id = ? AND tenant_id = ? AND status = 'open' FOR UPDATE`,
+      [req.params.id, tenantId]
+    );
+    if (!rows.length) { await conn.rollback(); return res.status(404).json({ message: 'Open drawer session not found.' }); }
+    const session = rows[0];
+
+    let lines;
+    if (direction === 'paid_out') {
+      const dr = req.body?.counterpartAccountId
+        ? await resolveDrawerAccount(conn, tenantId, session.store_id, req.body.counterpartAccountId)
+        : await moneyPosting.resolveAccountId(tenantId, 'event:expense', conn);
+      if (!dr) { await conn.rollback(); return res.status(400).json({ message: 'No expense account available for the paid-out.' }); }
+      lines = [
+        { accountId: dr, debit: amount, credit: 0, memo: req.body?.reason || 'Drawer paid-out' },
+        { accountId: session.account_id, debit: 0, credit: amount, memo: req.body?.reason || 'Drawer paid-out' },
+      ];
+    } else {
+      const cr = req.body?.counterpartAccountId
+        ? await resolveDrawerAccount(conn, tenantId, session.store_id, req.body.counterpartAccountId)
+        : await moneyPosting.resolveAccountId(tenantId, 'SAFE', conn);
+      if (!cr) { await conn.rollback(); return res.status(400).json({ message: 'No source account for the paid-in — pass counterpartAccountId.' }); }
+      lines = [
+        { accountId: session.account_id, debit: amount, credit: 0, memo: req.body?.reason || 'Drawer paid-in' },
+        { accountId: cr, debit: 0, credit: amount, memo: req.body?.reason || 'Drawer paid-in' },
+      ];
+    }
+
+    const movementId = uuidv4();
+    const entry = await moneyPosting.postEntry({
+      tenantId,
+      storeId: session.store_id,
+      sourceType: direction === 'paid_out' ? 'drawer_paid_out' : 'drawer_paid_in',
+      sourceId: movementId,
+      memo: `Drawer ${direction === 'paid_out' ? 'paid-out' : 'paid-in'} — ${req.body?.reason || ''}`.trim(),
+      createdBy: userId,
+      lines,
+    }, conn);
+
+    await conn.query(
+      `INSERT INTO money_drawer_movements
+         (id, tenant_id, session_id, direction, amount, reason, journal_entry_id, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [movementId, tenantId, session.id, direction, round2(amount), req.body?.reason || null, entry.entryId, userId]
+    );
+
+    await conn.commit();
+    res.status(201).json({ status: 'success', data: { id: movementId, entryNumber: entry.entryNumber } });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[finance] POST /drawer-sessions/:id/movements failed:', err);
+    res.status(500).json({ message: err.message || 'Failed to record drawer movement.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// POST /api/finance/drawer-sessions/:id/close — count the drawer, post the
+// variance to Cash Over/Short, mark the session closed.
+router.post('/drawer-sessions/:id/close', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const userId = req.user?.id || null;
+  const counted = Number(req.body?.countedCash ?? req.body?.counted_cash);
+  if (!Number.isFinite(counted) || counted < 0) return res.status(400).json({ message: 'countedCash must be a non-negative number.' });
+
+  const conn = await getConnectionWithTimeZone();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT * FROM cash_drawer_sessions WHERE id = ? AND tenant_id = ? AND status = 'open' FOR UPDATE`,
+      [req.params.id, tenantId]
+    );
+    if (!rows.length) { await conn.rollback(); return res.status(404).json({ message: 'Open drawer session not found.' }); }
+    const session = rows[0];
+
+    const expected = await drawerExpectedCash(conn, tenantId, session);
+    const variance = round2(counted - expected); // negative = short
+
+    let varianceEntry = null;
+    if (Math.abs(variance) >= 0.005) {
+      const overshort = await moneyPosting.resolveAccountId(tenantId, 'event:over_short', conn);
+      if (overshort) {
+        // Short (counted < expected): Dr OVERSHORT / Cr drawer — the missing
+        // cash is expensed. Over: Dr drawer / Cr OVERSHORT — the extra cash
+        // is booked against the same account (negative expense = income).
+        varianceEntry = await moneyPosting.postEntry({
+          tenantId,
+          storeId: session.store_id,
+          sourceType: 'drawer_variance',
+          sourceId: session.id,
+          memo: `Drawer close variance — ${variance < 0 ? 'short' : 'over'} ${Math.abs(variance).toFixed(2)}`,
+          createdBy: userId,
+          lines: variance < 0
+            ? [
+                { accountId: overshort, debit: -variance, credit: 0, memo: 'Cash short' },
+                { accountId: session.account_id, debit: 0, credit: -variance, memo: 'Counted below expected' },
+              ]
+            : [
+                { accountId: session.account_id, debit: variance, credit: 0, memo: 'Counted above expected' },
+                { accountId: overshort, debit: 0, credit: variance, memo: 'Cash over' },
+              ],
+        }, conn);
+      }
+    }
+
+    await conn.query(
+      `UPDATE cash_drawer_sessions
+          SET status = 'closed', closed_at = NOW(), closed_by = ?,
+              counted_cash = ?, expected_cash = ?, variance = ?
+        WHERE id = ?`,
+      [userId, round2(counted), expected, variance, session.id]
+    );
+
+    await conn.commit();
+    res.json({ status: 'success', data: { expectedCash: expected, countedCash: round2(counted), variance, varianceEntry: varianceEntry?.entryNumber || null } });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[finance] POST /drawer-sessions/:id/close failed:', err);
+    res.status(500).json({ message: 'Failed to close drawer session.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// POST /api/finance/transfers — move money between accounts (drawer → safe →
+// bank deposit). A balanced two-line entry, source_type 'transfer'.
+router.post('/transfers', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { fromAccountId, toAccountId, amount, memo, entryDate, storeId } = req.body || {};
+  const amt = Number(amount);
+  if (!fromAccountId || !toAccountId || fromAccountId === toAccountId) {
+    return res.status(400).json({ message: 'Choose two different accounts.' });
+  }
+  if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ message: 'amount must be a positive number.' });
+
+  const conn = await getConnectionWithTimeZone();
+  try {
+    await conn.beginTransaction();
+    const [accts] = await conn.query(
+      `SELECT id, code, name FROM money_accounts
+        WHERE tenant_id = ? AND is_active = 1 AND id IN (?, ?)`,
+      [tenantId, fromAccountId, toAccountId]
+    );
+    if (accts.length !== 2) { await conn.rollback(); return res.status(400).json({ message: 'Unknown or inactive account.' }); }
+    const from = accts.find(a => a.id === fromAccountId);
+    const to = accts.find(a => a.id === toAccountId);
+
+    const entry = await moneyPosting.postEntry({
+      tenantId,
+      storeId: storeId || req.storeId || null,
+      entryDate,
+      sourceType: 'transfer',
+      sourceId: uuidv4(),
+      memo: memo || `Transfer ${from.code} → ${to.code}`,
+      createdBy: req.user?.id || null,
+      lines: [
+        { accountId: toAccountId, debit: round2(amt), credit: 0, memo: `From ${from.name}` },
+        { accountId: fromAccountId, debit: 0, credit: round2(amt), memo: `To ${to.name}` },
+      ],
+    }, conn);
+
+    await conn.commit();
+    res.status(201).json({ status: 'success', data: entry });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[finance] POST /transfers failed:', err);
+    res.status(500).json({ message: 'Failed to record transfer.' });
+  } finally {
+    conn.release();
+  }
+});
+
 module.exports = router;

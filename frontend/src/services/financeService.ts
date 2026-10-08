@@ -205,6 +205,38 @@ export interface JournalEntry {
 
 export const ACCOUNT_TYPES: AccountType[] = ['asset', 'liability', 'equity', 'revenue', 'expense'];
 
+export interface DrawerSession {
+  id: string;
+  storeId: string;
+  accountId: string;
+  openingFloat: number;
+  openedAt: string;
+  openedBy?: string | null;
+  closedAt?: string | null;
+  closedBy?: string | null;
+  countedCash?: number | null;
+  expectedCash?: number | null;
+  variance?: number | null;
+  status: 'open' | 'closed';
+  notes?: string | null;
+  accountCode?: string;
+  accountName?: string;
+  storeName?: string;
+  openedByName?: string;
+  closedByName?: string;
+}
+
+export interface DrawerMovement {
+  id: string;
+  sessionId: string;
+  direction: 'paid_in' | 'paid_out';
+  amount: number;
+  reason?: string | null;
+  journalEntryId?: string | null;
+  createdByName?: string;
+  createdAt: string;
+}
+
 export const financeService = {
   async listExpenses(params: { search?: string; category?: string; status?: string; supplierId?: string; from?: string; to?: string } = {}) {
     const qs = new URLSearchParams();
@@ -335,5 +367,39 @@ export const financeService = {
 
   async reverseJournal(id: string, memo?: string) {
     return fetchApi<{ entryId: string; entryNumber: string }>(`/finance/journal/${id}/reverse`, { method: 'POST', body: JSON.stringify({ memo }) });
+  },
+
+  // ---- Cash drawer sessions + transfers ----------------------------------
+
+  async listDrawerSessions(params: { status?: string; storeId?: string; limit?: number } = {}) {
+    const qs = new URLSearchParams();
+    if (params.status) qs.set('status', params.status);
+    if (params.storeId) qs.set('store_id', params.storeId);
+    if (params.limit) qs.set('limit', String(params.limit));
+    return fetchApi<{ sessions: DrawerSession[] }>(`/finance/drawer-sessions?${qs.toString()}`);
+  },
+
+  async currentDrawerSession(storeId: string) {
+    return fetchApi<{ session: (DrawerSession & { expectedCashLive: number }) | null; movements: DrawerMovement[] }>(
+      `/finance/drawer-sessions/current?store_id=${encodeURIComponent(storeId)}`
+    );
+  },
+
+  async openDrawer(payload: { storeId: string; openingFloat: number; accountId?: string; notes?: string }) {
+    return fetchApi<{ id: string }>('/finance/drawer-sessions', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  async drawerMovement(sessionId: string, payload: { direction: 'paid_in' | 'paid_out'; amount: number; reason?: string; counterpartAccountId?: string }) {
+    return fetchApi<{ id: string; entryNumber: string }>(`/finance/drawer-sessions/${sessionId}/movements`, { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  async closeDrawer(sessionId: string, countedCash: number) {
+    return fetchApi<{ expectedCash: number; countedCash: number; variance: number; varianceEntry?: string | null }>(
+      `/finance/drawer-sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify({ countedCash }) }
+    );
+  },
+
+  async createTransfer(payload: { fromAccountId: string; toAccountId: string; amount: number; memo?: string; entryDate?: string; storeId?: string }) {
+    return fetchApi<{ entryId: string; entryNumber: string }>('/finance/transfers', { method: 'POST', body: JSON.stringify(payload) });
   },
 };

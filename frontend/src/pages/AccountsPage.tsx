@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Loader2, Plus, RefreshCcw, Landmark, AlertCircle, Pencil,
-  Wallet, ArrowDownToLine, ArrowUpFromLine, Scale,
+  Wallet, ArrowDownToLine, ArrowUpFromLine, Scale, ArrowRightLeft,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -73,6 +73,12 @@ export default function AccountsPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editing, setEditing] = useState<MoneyAccount | null>(null);
+
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [tFrom, setTFrom] = useState('');
+  const [tTo, setTTo] = useState('');
+  const [tAmount, setTAmount] = useState('');
+  const [tMemo, setTMemo] = useState('');
 
   // form
   const [fCode, setFCode] = useState('');
@@ -164,6 +170,29 @@ export default function AccountsPage() {
     }
   };
 
+  const openTransfer = () => {
+    setTFrom(''); setTTo(''); setTAmount(''); setTMemo('');
+    setFormError(null);
+    setTransferOpen(true);
+  };
+
+  const doTransfer = async () => {
+    const amt = Number(tAmount);
+    if (!tFrom || !tTo || tFrom === tTo) { setFormError('Choose two different accounts.'); return; }
+    if (!Number.isFinite(amt) || amt <= 0) { setFormError('Enter a positive amount.'); return; }
+    setSaving(true);
+    setFormError(null);
+    try {
+      await financeService.createTransfer({ fromAccountId: tFrom, toAccountId: tTo, amount: amt, memo: tMemo.trim() || undefined });
+      setTransferOpen(false);
+      await load();
+    } catch (e: any) {
+      setFormError(e.message || 'Failed to record transfer.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const remap = async (key: string, accountId: string) => {
     setMappingError(null);
     try {
@@ -234,7 +263,10 @@ export default function AccountsPage() {
           <p className="text-sm text-muted-foreground mt-0.5">Chart of accounts — where money sits, and what every sale and payment posts against.</p>
         </div>
         {canManage && (
-          <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> New Account</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={openTransfer}><ArrowRightLeft className="h-4 w-4 mr-2" /> Transfer</Button>
+            <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> New Account</Button>
+          </div>
         )}
       </div>
 
@@ -397,6 +429,53 @@ export default function AccountsPage() {
             <Button onClick={save} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editing ? 'Save changes' : 'Create account'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer between accounts dialog */}
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transfer between accounts</DialogTitle>
+            <DialogDescription>Move money — e.g. drawer to safe, or safe to bank for a deposit. Posts one balanced ledger entry.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>From</Label>
+                <Select value={tFrom} onValueChange={setTFrom}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Source…" /></SelectTrigger>
+                  <SelectContent>
+                    {activeAccounts.map(a => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>To</Label>
+                <Select value={tTo} onValueChange={setTTo}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Destination…" /></SelectTrigger>
+                  <SelectContent>
+                    {activeAccounts.map(a => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label>Amount</Label>
+              <Input type="number" min="0" step="0.01" value={tAmount} onChange={e => setTAmount(e.target.value)} className="mt-1" placeholder="0.00" />
+            </div>
+            <div>
+              <Label>Memo <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input value={tMemo} onChange={e => setTMemo(e.target.value)} className="mt-1" placeholder="Night deposit…" />
+            </div>
+            {formError && <p className="text-sm text-destructive">{formError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferOpen(false)}>Cancel</Button>
+            <Button onClick={doTransfer} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Transfer
             </Button>
           </DialogFooter>
         </DialogContent>
