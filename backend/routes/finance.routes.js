@@ -47,6 +47,7 @@ const { authenticate, requireTenantId, requireStoreId } = require('../middleware
 const { requirePermission } = require('../middleware/rbacPermissionMiddleware');
 const { logActivity } = require('../services/auditLogService');
 const rbacService = require('../services/rbacService');
+const moneyPosting = require('../services/moneyPostingService');
 
 router.use(authenticate);
 router.use(requireTenantId);
@@ -1040,6 +1041,307 @@ router.get('/expenses/export.csv', requirePermission('finance.view'), async (req
   } catch (err) {
     console.error('[finance] GET /expenses/export.csv failed:', err);
     res.status(500).json({ message: 'Failed to export expenses.' });
+  }
+});
+
+/* ============================================================================
+ * Money accounts + ledger — double-entry foundation (Phase 1)
+ *
+ *   GET    /accounts               list chart of accounts with live balances
+ *   POST   /accounts               create a custom account (code unique/tenant)
+ *   PUT    /accounts/:id           rename, set opening balance (pre-posting
+ *                                  only), activate/deactivate
+ *   GET    /mappings               posting map (tender:<code>, event:<name> -> account)
+ *   PUT    /mappings/:key          remap a posting key to a different account
+ *   GET    /ledger                 journal entries with lines; filters:
+ *                                  ?account_id&source_type&from&to&limit
+ *   POST   /journal                manual balanced entry (finance.manage)
+ *   POST   /journal/:id/reverse    void a posted entry via a reversal entry
+ *
+ * Account types drive normal balance: asset/expense are debit-normal,
+ * liability/equity/revenue are credit-normal. Posted entries are immutable —
+ * corrections happen through reversal entries, never edits.
+ * ========================================================================== */
+
+const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
+
+// GET /api/finance/accounts — chart of accounts with computed balances.
+router.get('/accounts', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  try {
+    await moneyPosting.ensureDefaults(tenantId); // lazily seeds pre-existing tenants
+    const accounts = await moneyPosting.accountBalances(tenantId, {
+      storeId: req.query.store_id || req.storeId || undefined,
+    });
+    res.json({ status: 'success', data: { accounts } });
+  } catch (err) {
+    console.error('[finance] GET /accounts failed:', err);
+    res.status(500).json({ message: 'Failed to load money accounts.' });
+  }
+});
+
+// POST /api/finance/accounts — create a custom account.
+router.post('/accounts', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { code, name, accountType, subtype, storeId, openingBalance } = req.body || {};
+  const cleanCode = String(code || '').trim().toUpperCase();
+  const cleanName = String(name || '').trim();
+
+  if (!/^[A-Z0-9][A-Z0-9_-]{0,39}$/.test(cleanCode)) {
+    return res.status(400).json({ message: 'Code must be 1–40 chars: letters, digits, - or _' });
+  }
+  if (!cleanName || cleanName.length > 120) {
+    return res.status(400).json({ message: 'Name is required (max 120 chars)' });
+  }
+  if (!ACCOUNT_TYPES.includes(accountType)) {
+    return res.status(400).json({ message: `accountType must be one of ${ACCOUNT_TYPES.join(', ')}` });
+  }
+  const opening = openingBalance === undefined || openingBalance === null ? 0 : Number(openingBalance);
+  if (!Number.isFinite(opening)) {
+    return res.status(400).json({ message: 'openingBalance must be a number' });
+  }
+
+  try {
+    const id = uuidv4();
+    await pool.query(
+      `INSERT INTO money_accounts
+         (id, tenant_id, store_id, code, name, account_type, subtype, opening_balance, is_system, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)`,
+      [id, tenantId, storeId || null, cleanCode, cleanName, accountType, subtype || null, round2(opening)]
+    );
+    res.status(201).json({ status: 'success', data: { id, code: cleanCode } });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: `Account code ${cleanCode} already exists` });
+    }
+    console.error('[finance] POST /accounts failed:', err);
+    res.status(500).json({ message: 'Failed to create account.' });
+  }
+});
+
+// PUT /api/finance/accounts/:id — rename, opening balance (pre-ledger only),
+// activate/deactivate. Codes are immutable — postings and mappings anchor on
+// them; a code change would silently re-point history.
+router.put('/accounts/:id', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { id } = req.params;
+  const { name, subtype, isActive, openingBalance } = req.body || {};
+
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, code, is_system, opening_balance FROM money_accounts WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Account not found' });
+
+    const sets = [];
+    const params = [];
+    if (name !== undefined) {
+      const cleanName = String(name).trim();
+      if (!cleanName || cleanName.length > 120) {
+        return res.status(400).json({ message: 'Name must be 1–120 chars' });
+      }
+      sets.push('name = ?'); params.push(cleanName);
+    }
+    if (subtype !== undefined) { sets.push('subtype = ?'); params.push(subtype || null); }
+    if (isActive !== undefined) { sets.push('is_active = ?'); params.push(isActive ? 1 : 0); }
+
+    if (openingBalance !== undefined) {
+      const opening = Number(openingBalance);
+      if (!Number.isFinite(opening)) {
+        return res.status(400).json({ message: 'openingBalance must be a number' });
+      }
+      // Once postings exist, changing the opening balance would corrupt the
+      // derived balance — it must go through an opening_balance journal entry.
+      const [posted] = await pool.query(
+        'SELECT 1 FROM money_journal_lines WHERE account_id = ? LIMIT 1',
+        [id]
+      );
+      if (posted.length) {
+        return res.status(409).json({
+          message: 'This account already has posted entries — record an opening/adjustment journal instead of editing the opening balance',
+        });
+      }
+      sets.push('opening_balance = ?'); params.push(round2(opening));
+    }
+
+    if (!sets.length) return res.status(400).json({ message: 'Nothing to update' });
+    params.push(id, tenantId);
+    await pool.query(`UPDATE money_accounts SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`, params);
+    res.json({ status: 'success' });
+  } catch (err) {
+    console.error('[finance] PUT /accounts/:id failed:', err);
+    res.status(500).json({ message: 'Failed to update account.' });
+  }
+});
+
+// GET /api/finance/mappings — posting map with resolved account info.
+router.get('/mappings', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  try {
+    await moneyPosting.ensureDefaults(tenantId);
+    const [rows] = await pool.query(
+      `SELECT m.mapping_key, m.account_id, a.code, a.name, a.account_type, a.is_active
+         FROM finance_account_mappings m
+         JOIN money_accounts a ON a.id = m.account_id
+        WHERE m.tenant_id = ?
+        ORDER BY m.mapping_key`,
+      [tenantId]
+    );
+    res.json({ status: 'success', data: { mappings: rows } });
+  } catch (err) {
+    console.error('[finance] GET /mappings failed:', err);
+    res.status(500).json({ message: 'Failed to load posting mappings.' });
+  }
+});
+
+// PUT /api/finance/mappings/:key — re-point a posting key at another account.
+router.put('/mappings/:key', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const key = String(req.params.key || '');
+  const { accountId } = req.body || {};
+  if (!/^[a-z]+:[a-z0-9_]+$/i.test(key)) {
+    return res.status(400).json({ message: 'Invalid mapping key' });
+  }
+  try {
+    const [acct] = await pool.query(
+      'SELECT id FROM money_accounts WHERE id = ? AND tenant_id = ? AND is_active = 1',
+      [accountId, tenantId]
+    );
+    if (!acct.length) return res.status(400).json({ message: 'Unknown or inactive account' });
+
+    const [existing] = await pool.query(
+      'SELECT id FROM finance_account_mappings WHERE tenant_id = ? AND mapping_key = ?',
+      [tenantId, key]
+    );
+    if (existing.length) {
+      await pool.query(
+        'UPDATE finance_account_mappings SET account_id = ? WHERE tenant_id = ? AND mapping_key = ?',
+        [accountId, tenantId, key]
+      );
+    } else {
+      await pool.query(
+        'INSERT INTO finance_account_mappings (id, tenant_id, mapping_key, account_id) VALUES (?, ?, ?, ?)',
+        [uuidv4(), tenantId, key, accountId]
+      );
+    }
+    res.json({ status: 'success' });
+  } catch (err) {
+    console.error('[finance] PUT /mappings/:key failed:', err);
+    res.status(500).json({ message: 'Failed to update mapping.' });
+  }
+});
+
+// GET /api/finance/ledger — journal entries with their lines.
+router.get('/ledger', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { account_id: accountId, source_type: sourceType, from, to } = req.query;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+  const where = ['e.tenant_id = ?'];
+  const params = [tenantId];
+  if (sourceType) { where.push('e.source_type = ?'); params.push(sourceType); }
+  if (from) { where.push('e.entry_date >= ?'); params.push(from); }
+  if (to) { where.push('e.entry_date <= ?'); params.push(to); }
+  if (accountId) {
+    where.push(`EXISTS (SELECT 1 FROM money_journal_lines l WHERE l.entry_id = e.id AND l.account_id = ?)`);
+    params.push(accountId);
+  }
+
+  try {
+    const [entries] = await pool.query(
+      `SELECT e.id, e.entry_number, e.entry_date, e.source_type, e.source_id,
+              e.memo, e.status, e.reversal_of_id, e.store_id, e.created_at
+         FROM money_journal_entries e
+        WHERE ${where.join(' AND ')}
+        ORDER BY e.entry_date DESC, e.created_at DESC
+        LIMIT ${limit}`,
+      params
+    );
+    if (!entries.length) return res.json({ status: 'success', data: { entries: [] } });
+
+    const ids = entries.map((e) => e.id);
+    const [lines] = await pool.query(
+      `SELECT l.entry_id, l.line_no, l.account_id, l.debit, l.credit, l.memo,
+              l.customer_id, l.supplier_id, a.code AS account_code, a.name AS account_name
+         FROM money_journal_lines l
+         JOIN money_accounts a ON a.id = l.account_id
+        WHERE l.entry_id IN (${ids.map(() => '?').join(',')})
+        ORDER BY l.entry_id, l.line_no`,
+      ids
+    );
+    const byEntry = {};
+    for (const l of lines) (byEntry[l.entry_id] ||= []).push(l);
+    res.json({
+      status: 'success',
+      data: { entries: entries.map((e) => ({ ...e, lines: byEntry[e.id] || [] })) },
+    });
+  } catch (err) {
+    console.error('[finance] GET /ledger failed:', err);
+    res.status(500).json({ message: 'Failed to load ledger.' });
+  }
+});
+
+// POST /api/finance/journal — manual balanced entry (corrections, opening
+// balances, accruals). lines: [{accountId|accountCode, debit?, credit?, memo?}]
+router.post('/journal', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { entryDate, memo, lines } = req.body || {};
+  try {
+    const result = await moneyPosting.postEntry({
+      tenantId,
+      storeId: req.storeId || null,
+      entryDate,
+      sourceType: 'manual',
+      memo,
+      createdBy: req.user.id,
+      lines: (lines || []).map((l) => ({
+        accountId: l.accountId || l.account_id,
+        accountCode: l.accountCode || l.account_code,
+        debit: l.debit,
+        credit: l.credit,
+        memo: l.memo,
+      })),
+    });
+    await logActivity({
+      tenant_id: tenantId,
+      user_id: req.user?.id || 'system',
+      username: req.user?.email || 'system',
+      action_type: 'JOURNAL_POSTED',
+      entity_type: 'money_journal_entry',
+      entity_id: result.entryId,
+      description: `Journal ${result.entryNumber} posted`,
+    }).catch(() => {});
+    res.status(201).json({ status: 'success', data: result });
+  } catch (err) {
+    console.error('[finance] POST /journal failed:', err);
+    res.status(400).json({ message: err.message || 'Failed to post journal entry.' });
+  }
+});
+
+// POST /api/finance/journal/:id/reverse — void a posted entry via reversal.
+router.post('/journal/:id/reverse', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  try {
+    const result = await moneyPosting.reverseEntry(req.params.id, {
+      tenantId,
+      memo: req.body?.memo,
+      createdBy: req.user.id,
+    });
+    await logActivity({
+      tenant_id: tenantId,
+      user_id: req.user?.id || 'system',
+      username: req.user?.email || 'system',
+      action_type: 'JOURNAL_REVERSED',
+      entity_type: 'money_journal_entry',
+      entity_id: req.params.id,
+      description: `Journal entry ${req.params.id} reversed as ${result.entryNumber}`,
+    }).catch(() => {});
+    res.status(201).json({ status: 'success', data: result });
+  } catch (err) {
+    console.error('[finance] POST /journal/:id/reverse failed:', err);
+    const status = /not found/i.test(err.message) ? 404 : /already voided/i.test(err.message) ? 409 : 400;
+    res.status(status).json({ message: err.message || 'Failed to reverse entry.' });
   }
 });
 

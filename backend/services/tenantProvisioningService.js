@@ -128,6 +128,14 @@ class TenantProvisioningService {
         // Don't fail the entire provisioning if tax setup fails
       }
 
+      // 3.6) Seed the system chart of accounts + posting mappings (idempotent)
+      try {
+        await require('./moneyPostingService').ensureDefaults(tenantId, connection);
+        created.moneyAccounts = true;
+      } catch (acctError) {
+        console.error(`⚠️ Money accounts seeding failed for tenant ${tenantId}:`, acctError.message);
+      }
+
       // 4) Enable default features in tenant settings (merge)
       const [tenantRows] = await connection.execute(
         'SELECT settings, onboarding_step, setup_completed FROM tenants WHERE id = ? LIMIT 1',
