@@ -15,12 +15,11 @@ import React, { useState, useEffect, ChangeEvent } from 'react';
 import ModalBase from '@/components/ui/ModalBase';
 import { Button } from '@/components/ui/button';
 import {
-  Save, Mail, Globe, Edit2, DollarSign, Info, Building, Hash,
-  Loader2, User, Phone, MapPin, UserPlus, Star,
+  Save, Mail, Globe, DollarSign, Info, Building, Hash,
+  Loader2, User, Phone, MapPin, Star,
   BadgeCheck, MessageSquare, CreditCard,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { useStore } from '@/contexts/StoreContext';
 import DatePickerInput from '@/components/ui/DatePickerInput';
 import { Customer, CreateCustomerPayload } from '@/types';
 import { COUNTRIES } from '@/data/localization/countries';
