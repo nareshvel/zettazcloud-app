@@ -388,22 +388,25 @@ router.post('/enrollments/:id/payments', async (req, res) => {
 
 /* POST /enrollments/:id/status */
 router.post('/enrollments/:id/status', async (req, res) => {
+  const conn = await pool.getConnection();
   try {
+    await conn.beginTransaction();
     const { status, redeemed_sale_id } = req.body || {};
 
     const validStatuses = ['active', 'matured', 'redeemed', 'cancelled'];
     if (!validStatuses.includes(status)) {
-      return res.status(400).json({ status: 'error', message: 'invalid status' });
+      await conn.rollback(); return res.status(400).json({ status: 'error', message: 'invalid status' });
     }
 
-    const [[existing]] = await pool.query(
-      'SELECT status FROM savings_scheme_enrollments WHERE id = ? AND tenant_id = ?',
+    const [[existing]] = await conn.query(
+      'SELECT id, status, total_paid, store_id, customer_id, enrollment_no FROM savings_scheme_enrollments WHERE id = ? AND tenant_id = ? FOR UPDATE',
       [req.params.id, tid(req)]
     );
-    if (!existing) return res.status(404).json({ status: 'error', message: 'not found' });
+    if (!existing) { await conn.rollback(); return res.status(404).json({ status: 'error', message: 'not found' }); }
 
     const allowed = TRANSITIONS[existing.status] ?? [];
     if (!allowed.includes(status)) {
+      await conn.rollback();
       return res.status(400).json({
         status: 'error',
         message: `Cannot transition from "${existing.status}" to "${status}"`,
@@ -419,13 +422,45 @@ router.post('/enrollments/:id/status', async (req, res) => {
     }
 
     vals.push(req.params.id, tid(req));
-    const [r] = await pool.execute(
+    const [r] = await conn.query(
       `UPDATE savings_scheme_enrollments SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`,
       vals
     );
-    if (!r.affectedRows) return res.status(404).json({ status: 'error', message: 'not found' });
+    if (!r.affectedRows) { await conn.rollback(); return res.status(404).json({ status: 'error', message: 'not found' }); }
+
+    // Relieve the deferred-revenue liability when cancelling a paid scheme.
+    //   refund (default): Dr SAVDEF / Cr refund tender (body.refundMethod,
+    //                     default cash). body.forfeit=true books it as
+    //                     forfeited-deposit income instead.
+    if (status === 'cancelled') {
+      const paid = Math.round(Number(existing.total_paid || 0) * 100) / 100;
+      if (paid > 0) {
+        const forfeit = req.body?.forfeit === true;
+        const dr = await moneyPosting.resolveAccountId(tid(req), 'event:savings_liability', conn);
+        const cr = forfeit
+          ? (await moneyPosting.resolveAccountId(tid(req), 'event:forfeited_deposits', conn)
+              || await moneyPosting.resolveAccountId(tid(req), 'event:revenue', conn))
+          : await moneyPosting.tenderAccountId(conn, tid(req), req.body?.refundMethod || 'cash', 'out');
+        if (!dr || !cr) { await conn.rollback(); return res.status(500).json({ status: 'error', message: 'Ledger posting failed: money account(s) missing' }); }
+        await moneyPosting.postEntry({
+          tenantId: tid(req), storeId: existing.store_id || null,
+          sourceType: 'savings_cancel', sourceId: existing.id,
+          memo: `Savings enrollment ${existing.enrollment_no || existing.id} cancelled — ${forfeit ? 'deposit forfeited' : 'deposit refunded'}`,
+          createdBy: uid(req),
+          lines: [
+            { accountId: dr, debit: paid, credit: 0, memo: 'Relieve savings deferred revenue', customerId: existing.customer_id || null },
+            { accountId: cr, debit: 0, credit: paid, memo: forfeit ? 'Forfeited deposit income' : `Refund — ${req.body?.refundMethod || 'cash'}`, customerId: existing.customer_id || null },
+          ],
+        }, conn);
+      }
+    }
+
+    await conn.commit();
     res.json({ status: 'success' });
-  } catch (e) { res.status(500).json({ status: 'error', message: e.message }); }
+  } catch (e) {
+    await conn.rollback();
+    res.status(500).json({ status: 'error', message: e.message });
+  } finally { conn.release(); }
 });
 
 module.exports = router;

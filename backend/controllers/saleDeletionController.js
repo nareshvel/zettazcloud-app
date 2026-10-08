@@ -88,6 +88,7 @@ const deleteSale = async (req, res) => {
         saleId: result.saleId,
         deletedRecords: result.deletedRecords,
         inventoryRollback: result.inventoryRollback,
+        journalReversal: result.journalReversal,
         auditLogId: result.auditLog
       }
     });

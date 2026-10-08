@@ -312,6 +312,11 @@ router.post('/:id/status', async (req, res) => {
     await conn.beginTransaction();
     const valid = ['active', 'completed', 'cancelled', 'defaulted'];
     if (!valid.includes(req.body?.status)) { await conn.rollback(); return res.status(400).json({ status: 'error', message: 'invalid status' }); }
+    const [[plan]] = await conn.query(
+      'SELECT id, plan_no, paid_amount, store_id, customer_id FROM layaway_plans WHERE id = ? AND tenant_id = ? FOR UPDATE',
+      [req.params.id, tid(req)]
+    );
+    if (!plan) { await conn.rollback(); return res.status(404).json({ status: 'error', message: 'not found' }); }
     const [r] = await conn.query('UPDATE layaway_plans SET status = ? WHERE id = ? AND tenant_id = ?',
       [req.body.status, req.params.id, tid(req)]);
     if (!r.affectedRows) { await conn.rollback(); return res.status(404).json({ status: 'error', message: 'not found' }); }
@@ -324,6 +329,32 @@ router.post('/:id/status', async (req, res) => {
           WHERE li.layaway_id = ? AND p.tenant_id = ? AND p.status = 'hold'`,
         [req.params.id, tid(req)]
       );
+
+      // Relieve the deferred-revenue liability for whatever was paid.
+      //   defaulted → forfeit:  Dr LAYDEF / Cr forfeited-deposit income
+      //   cancelled → refund:   Dr LAYDEF / Cr refund tender (body.refundMethod,
+      //                         default cash); body.forfeit=true forces the
+      //                         forfeit treatment on a cancel too.
+      const paid = Math.round(Number(plan.paid_amount || 0) * 100) / 100;
+      if (paid > 0) {
+        const forfeit = req.body?.forfeit === true || req.body.status === 'defaulted';
+        const dr = await moneyPosting.resolveAccountId(tid(req), 'event:layaway_liability', conn);
+        const cr = forfeit
+          ? (await moneyPosting.resolveAccountId(tid(req), 'event:forfeited_deposits', conn)
+              || await moneyPosting.resolveAccountId(tid(req), 'event:revenue', conn))
+          : await moneyPosting.tenderAccountId(conn, tid(req), req.body?.refundMethod || 'cash', 'out');
+        if (!dr || !cr) { await conn.rollback(); return res.status(500).json({ status: 'error', message: 'Ledger posting failed: money account(s) missing' }); }
+        await moneyPosting.postEntry({
+          tenantId: tid(req), storeId: plan.store_id || null,
+          sourceType: 'layaway_cancel', sourceId: plan.id,
+          memo: `Layaway ${plan.plan_no} ${req.body.status} — ${forfeit ? 'deposit forfeited' : 'deposit refunded'}`,
+          createdBy: uid(req),
+          lines: [
+            { accountId: dr, debit: paid, credit: 0, memo: 'Relieve layaway deferred revenue', customerId: plan.customer_id || null },
+            { accountId: cr, debit: 0, credit: paid, memo: forfeit ? 'Forfeited deposit income' : `Refund — ${req.body?.refundMethod || 'cash'}`, customerId: plan.customer_id || null },
+          ],
+        }, conn);
+      }
     }
     await conn.commit();
     res.json({ status: 'success' });

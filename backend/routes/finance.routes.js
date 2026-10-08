@@ -1434,14 +1434,17 @@ router.post('/journal/:id/reverse', requirePermission('finance.manage'), async (
 // for this store during the session window; the journal stays authoritative.
 // ---------------------------------------------------------------------------
 
-/** Live expected cash for an open session: float + ledger activity since open. */
+/** Live expected cash for an open session: float + ledger activity since open.
+ *  drawer_open entries are excluded — the float is added via opening_float,
+ *  so counting its journal leg too would double-count it. */
 async function drawerExpectedCash(conn, tenantId, session) {
   const [rows] = await conn.query(
     `SELECT COALESCE(SUM(l.debit - l.credit), 0) AS net
        FROM money_journal_lines l
        JOIN money_journal_entries e ON e.id = l.entry_id AND e.tenant_id = l.tenant_id
       WHERE l.tenant_id = ? AND l.account_id = ?
-        AND e.store_id = ? AND e.created_at >= ?`,
+        AND e.store_id = ? AND e.created_at >= ?
+        AND e.source_type <> 'drawer_open'`,
     [tenantId, session.account_id, session.store_id, session.opened_at]
   );
   return round2(Number(session.opening_float) + Number(rows[0].net));
@@ -1550,6 +1553,29 @@ router.post('/drawer-sessions', requirePermission('finance.manage'), async (req,
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [id, tenantId, storeId, accountId, round2(openingFloat), userId, req.body?.notes || null]
     );
+
+    // Journal the float so the drawer account's ledger balance reflects it:
+    // Dr drawer / Cr funding source. The float normally comes out of the
+    // store safe — pass body.sourceAccountId to fund it from elsewhere.
+    // Skipped (not an error) when no distinct counterpart exists — the
+    // session row still carries the float for expected-cash math.
+    if (openingFloat > 0) {
+      const counterpart = req.body?.sourceAccountId
+        ? await resolveDrawerAccount(conn, tenantId, storeId, req.body.sourceAccountId)
+        : await moneyPosting.resolveAccountId(tenantId, 'SAFE', conn);
+      if (counterpart && counterpart !== accountId) {
+        await moneyPosting.postEntry({
+          tenantId, storeId,
+          sourceType: 'drawer_open', sourceId: id,
+          memo: `Drawer opening float`,
+          createdBy: userId,
+          lines: [
+            { accountId, debit: round2(openingFloat), credit: 0, memo: 'Opening float' },
+            { accountId: counterpart, debit: 0, credit: round2(openingFloat), memo: 'Opening float funding' },
+          ],
+        }, conn);
+      }
+    }
     await conn.commit();
     res.status(201).json({ status: 'success', data: { id } });
   } catch (err) {

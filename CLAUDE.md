@@ -486,13 +486,15 @@ Key tables:
 ## Known pending work
 
 - **Finance module gaps** — full list with fix sketches in
-  `docs/MODULES/finance/MONEY_ACCOUNTS_AND_LEDGER.md §6`. Top items: sale
-  void/delete doesn't reverse its journal entry (cash/revenue overstated);
+  `docs/MODULES/finance/MONEY_ACCOUNTS_AND_LEDGER.md §6`. Top items:
   `customers.outstanding_credit` is never written at runtime (needs a
-  receive-payment-on-account flow); drawer opening float isn't journaled;
-  layaway/savings cancel leaves `LAYDEF`/`SAVDEF` liabilities standing;
-  no COGS accrual, period locking, or bank reconciliation yet; legacy
-  `payment.controller.js` refund path references non-existent columns.
+  receive-payment-on-account flow); layaway/savings *redemption* doesn't
+  relieve the liability unless the completing sale tenders a method mapped
+  to `LAYDEF`/`SAVDEF`; no COGS accrual, period locking, or bank
+  reconciliation yet; legacy `payment.controller.js` refund path references
+  non-existent columns. (Fixed 2026-10-13: sale-delete now reverses its
+  journal, drawer open posts the float, layaway/savings cancel posts
+  refund-or-forfeit relief.)
 - **Sales Hub glance strip** — optional "N repairs ready / N memos overdue"
   summary row from the Hub design, not yet built.
 - **Sales Hub mobile/tablet live check** — responsive breakpoints verified by

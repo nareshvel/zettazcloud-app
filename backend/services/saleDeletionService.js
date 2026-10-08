@@ -7,6 +7,7 @@
 const { pool } = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const storeProductListingService = require('./storeProductListingService');
+const moneyPosting = require('./moneyPostingService');
 
 class SaleDeletionService {
   /**
@@ -130,6 +131,7 @@ class SaleDeletionService {
       saleId,
       deletedRecords: {},
       inventoryRollback: [],
+      journalReversal: null,
       auditLog: null,
       error: null
     };
@@ -274,6 +276,35 @@ class SaleDeletionService {
           } else {
             throw tableError;
           }
+        }
+      }
+
+      // 4b. Reverse the sale's posted journal entry (Phase-2 auto-post leaves
+      // Dr tender / Cr revenue / Cr tax standing). Never skip this — a
+      // deleted sale whose entry stays posted overstates cash and revenue.
+      // money_journal_entries may not exist on an unmigrated DB — skip
+      // gracefully there, rollback on any other ledger error.
+      try {
+        const [jeRows] = await connection.execute(
+          `SELECT id FROM money_journal_entries
+            WHERE tenant_id = ? AND source_type = 'sale' AND source_id = ?
+              AND status = 'posted'
+            LIMIT 1`,
+          [tenantId, saleId]
+        );
+        if (jeRows.length) {
+          const reversal = await moneyPosting.reverseEntry(jeRows[0].id, {
+            tenantId,
+            memo: `Sale deleted (${saleId})`,
+            createdBy: userId,
+          }, connection);
+          result.journalReversal = reversal.entryNumber;
+        }
+      } catch (ledgerErr) {
+        if (ledgerErr.code === 'ER_NO_SUCH_TABLE') {
+          console.warn('money_journal_entries missing — skipping sale journal reversal');
+        } else {
+          throw ledgerErr;
         }
       }
 
