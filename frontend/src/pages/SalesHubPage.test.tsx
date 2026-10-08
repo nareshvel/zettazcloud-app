@@ -84,7 +84,12 @@ vi.mock('@/hooks/usePromotionalOffersData', () => ({
   usePromotionalOffersData: () => ({ data: mockOffers, isLoading: false, error: null, lastUpdated: null, refresh: vi.fn() }),
 }));
 vi.mock('@/contexts/LocalizationContext', () => ({
-  useCurrency: () => ({ formatCurrency: (n: number) => `$${n}` }),
+  useCurrency: () => ({ formatCurrency: (n: number) => `$${n}`, currencySymbol: '$' }),
+  useDateFormatting: () => ({
+    formatDate: (d: string) => d,
+    formatDateTime: (d: string) => d,
+    formatTime: (d: string) => d,
+  }),
 }));
 
 const logoutMock = vi.fn();

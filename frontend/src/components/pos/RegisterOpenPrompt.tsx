@@ -109,7 +109,7 @@ const RegisterOpenPrompt = ({ storeId }: Props) => {
                 type="number" min="0" step="0.01" autoFocus
                 value={float} onChange={e => setFloat(e.target.value)}
                 className="h-12 text-lg font-semibold"
-                style={{ paddingLeft: `calc(0.75rem + ${currencySymbol.length}ch + 6px)` }}
+                style={{ paddingLeft: `calc(0.75rem + ${(currencySymbol || "")?.length || 1}ch + 6px)` }}
                 placeholder="0.00"
               />
             </div>

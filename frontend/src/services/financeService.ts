@@ -524,6 +524,15 @@ export const financeService = {
     return fetchApi<DrawerReport>(`/finance/drawer-sessions/${sessionId}/report`);
   },
 
+  /** Open/closed flag only — no financial figures. Safe for register-action
+   *  holders who don't have register.view (blind-close compatible). */
+  async drawerStatus(storeId: string) {
+    return fetchApi<{
+      open: boolean;
+      session: { id: string; sessionNo?: string; openedAt: string; openedByName?: string } | null;
+    }>(`/finance/drawer-sessions/status?store_id=${storeId}`);
+  },
+
   async closeDrawer(sessionId: string, countedCash: number) {
     return fetchApi<{ expectedCash: number; countedCash: number; variance: number; varianceEntry?: string | null }>(
       `/finance/drawer-sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify({ countedCash }) }

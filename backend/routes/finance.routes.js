@@ -1538,6 +1538,40 @@ router.get('/drawer-sessions/current', requirePermission('register.view'), async
   }
 });
 
+// GET /api/finance/drawer-sessions/status?store_id= — open/closed flag only.
+// Deliberately no financial figures: leaking expected_cash here would defeat
+// blind close. Reachable by ANY register.* holder (or finance.*) so a cashier
+// with open/close/movement but no register.view can still tell whether the
+// register needs opening — that user can't reach /current at all.
+router.get('/drawer-sessions/status', async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const storeId = req.query.store_id || req.storeId;
+  if (!storeId) return res.status(400).json({ message: 'store_id is required.' });
+  try {
+    const REGISTER_PERMS = [
+      'register.view', 'register.open', 'register.movement', 'register.close',
+      'finance.view', 'finance.manage',
+    ];
+    let allowed = false;
+    for (const p of REGISTER_PERMS) {
+      if (await rbacService.hasPermission(req.user.id, p, tenantId, storeId)) { allowed = true; break; }
+    }
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied. A register.* or finance.* permission is required.' });
+    }
+    const [rows] = await pool.query(
+      `SELECT s.id, s.session_no, s.opened_at, u.name AS opened_by_name
+         FROM cash_drawer_sessions s LEFT JOIN users u ON u.id = s.opened_by
+        WHERE s.tenant_id = ? AND s.store_id = ? AND s.status = 'open'`,
+      [tenantId, storeId]
+    );
+    res.json({ status: 'success', data: { open: rows.length > 0, session: rows[0] || null } });
+  } catch (err) {
+    console.error('[finance] GET /drawer-sessions/status failed:', err);
+    res.status(500).json({ message: 'Failed to check register status.' });
+  }
+});
+
 // POST /api/finance/drawer-sessions — open a drawer for the store.
 router.post('/drawer-sessions', requirePermission('register.open'), async (req, res) => {
   const tenantId = req.user.tenant_id;

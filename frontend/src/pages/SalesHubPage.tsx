@@ -6,6 +6,7 @@ import { normalizeImageUrl } from '@/utils/imageUtils';
 import { hasAnyPermission } from '@/utils/permissionUtils';
 import NotificationsBell from '@/components/common/NotificationsBell';
 import DutyFreeIntakeModal from './DutyFreeIntakeModal';
+import RegisterCards from '@/components/pos/RegisterCards';
 import ReceiptModal from '@/components/Receipt/ReceiptModal';
 import { useReceipt } from '@/hooks/useReceipt';
 import { getRetailProfile } from '@/services/retailProfileService';
@@ -516,6 +517,11 @@ const SalesHubPage: React.FC = () => {
               )}
             </div>
           )}
+
+          {/* Register lifecycle — open/paid-in/out/close/X-report, gated per
+              action permission. Lives here (not only on the Cash Register
+              page) because register operators may not hold register.view. */}
+          <RegisterCards storeId={store?.id || effectiveUser?.storeId || undefined} />
 
           {/* Universal search */}
           <p className="text-xs font-medium text-muted-foreground mb-2">Find a customer or record</p>
