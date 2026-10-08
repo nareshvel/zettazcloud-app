@@ -110,6 +110,147 @@ router.get('/:id', requirePermission('customers.view'), async (req, res) => {
   }
 });
 
+// GET a customer's 360 view: KPIs + recent records across all customer-linked modules
+router.get('/:id/360', requirePermission('customers.view'), async (req, res) => {
+  const tenant_id = req.user?.tenant_id || req.query?.tenant_id || req.headers["x-tenant-id"] || null;
+  const { id } = req.params;
+
+  if (!tenant_id) {
+    return res.status(403).json({ status: 'error', message: 'Tenant ID not found for user.' });
+  }
+
+  try {
+    const [cust] = await pool.execute(
+      'SELECT id FROM customers WHERE id = ? AND tenant_id = ?',
+      [id, tenant_id]
+    );
+    if (cust.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Customer not found' });
+    }
+
+    const LIMIT = 25;
+    const [
+      [sales], [salesAgg],
+      [returns],
+      [layaways], [layawayAgg],
+      [memos], [memoAgg],
+      [repairs], [repairAgg],
+      [oldGold], [oldGoldAgg],
+      [savings], [savingsAgg],
+    ] = await Promise.all([
+      pool.execute(
+        `SELECT id, document_number, total, payment_status, status, created_at
+           FROM sales WHERE tenant_id = ? AND customer_id = ?
+           ORDER BY created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS sale_count, COALESCE(SUM(total), 0) AS lifetime_spend,
+                MAX(created_at) AS last_sale_at
+           FROM sales WHERE tenant_id = ? AND customer_id = ? AND status = 'completed'`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT id, return_number, total_return_amount, status, refund_method, return_date, created_at
+           FROM sales_returns WHERE tenant_id = ? AND customer_id = ?
+           ORDER BY created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT id, plan_no, total_amount, down_payment, paid_amount, due_date, status, created_at
+           FROM layaway_plans WHERE tenant_id = ? AND customer_id = ?
+           ORDER BY created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS open_count, COALESCE(SUM(total_amount - paid_amount), 0) AS open_balance
+           FROM layaway_plans WHERE tenant_id = ? AND customer_id = ? AND status = 'active'`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT id, memo_no, direction, total_value, issue_date, due_date, status, created_at
+           FROM memo_transactions WHERE tenant_id = ? AND customer_id = ?
+           ORDER BY created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS open_count, COALESCE(SUM(total_value), 0) AS open_balance
+           FROM memo_transactions
+           WHERE tenant_id = ? AND customer_id = ? AND direction = 'out'
+             AND status IN ('open','partially_returned')`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT id, ticket_no, item_description, status, promised_date,
+                estimated_cost, final_cost, advance_paid, balance_paid, created_at
+           FROM repair_orders WHERE tenant_id = ? AND customer_id = ?
+           ORDER BY created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS open_count,
+                COALESCE(SUM(COALESCE(final_cost, estimated_cost, 0) - COALESCE(advance_paid, 0) - COALESCE(balance_paid, 0)), 0) AS open_balance
+           FROM repair_orders
+           WHERE tenant_id = ? AND customer_id = ? AND status IN ('received','in_progress','ready')`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT id, voucher_no, item_description, metal, net_weight, valuation_amount, status, created_at
+           FROM old_gold_purchases WHERE tenant_id = ? AND customer_id = ?
+           ORDER BY created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS open_count, COALESCE(SUM(valuation_amount), 0) AS open_balance
+           FROM old_gold_purchases
+           WHERE tenant_id = ? AND customer_id = ? AND status IN ('valued','credited')`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT id, enrollment_no, plan_id, start_date, maturity_date,
+                paid_installments, total_paid, bonus_amount, status, created_at
+           FROM savings_scheme_enrollments WHERE tenant_id = ? AND customer_id = ?
+           ORDER BY created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS open_count, COALESCE(SUM(total_paid), 0) AS open_balance
+           FROM savings_scheme_enrollments WHERE tenant_id = ? AND customer_id = ? AND status = 'active'`,
+        [tenant_id, id]
+      ),
+    ]);
+
+    const num = (v) => parseFloat(v) || 0;
+    res.json({
+      status: 'success',
+      data: {
+        kpis: {
+          sale_count: salesAgg[0].sale_count,
+          lifetime_spend: num(salesAgg[0].lifetime_spend),
+          last_sale_at: salesAgg[0].last_sale_at,
+          return_count: returns.length,
+          returns_total: returns.reduce((s, r) => s + num(r.total_return_amount), 0),
+          layaway_open: { count: layawayAgg[0].open_count, balance: num(layawayAgg[0].open_balance) },
+          memo_open: { count: memoAgg[0].open_count, balance: num(memoAgg[0].open_balance) },
+          repair_open: { count: repairAgg[0].open_count, balance: num(repairAgg[0].open_balance) },
+          old_gold_open: { count: oldGoldAgg[0].open_count, balance: num(oldGoldAgg[0].open_balance) },
+          savings_open: { count: savingsAgg[0].open_count, balance: num(savingsAgg[0].open_balance) },
+        },
+        sales,
+        returns,
+        layaways,
+        memos,
+        repairs,
+        old_gold: oldGold,
+        savings,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching customer 360:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to fetch customer 360 data' });
+  }
+});
+
 // POST (create) a new customer
 /**
  * @route   POST /api/customers

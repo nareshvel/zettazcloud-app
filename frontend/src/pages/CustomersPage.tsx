@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Edit3,
   Users, UserCog, UserX, CalendarPlus, Heart, UserCheck, Loader2, UserPlus
@@ -25,6 +25,7 @@ type UpdateCustomerPayload = Partial<CreateCustomerPayload>;
 type CustomerFormData = NewCustomerData | UpdateCustomerPayload;
 
 const CustomersPage: React.FC = () => {
+  const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -285,15 +286,15 @@ const CustomersPage: React.FC = () => {
       accessor: 'id', 
       Cell: (customer) => (
         <div className="flex items-center justify-center space-x-2">
-          <button 
-            onClick={() => handleEditCustomer(customer)} 
+          <button
+            onClick={(e) => { e.stopPropagation(); handleEditCustomer(customer); }}
             className="text-primary hover:text-primary-hover p-1 rounded-md hover:bg-primary/10 transition-colors"
             aria-label={`Edit ${customer.firstName}`}
           >
             <Edit3 size={18} />
           </button>
           <button
-            onClick={() => setCrmCustomer(customer)}
+            onClick={(e) => { e.stopPropagation(); setCrmCustomer(customer); }}
             className="text-rose-500 hover:text-rose-700 p-1 rounded-md hover:bg-rose-50 transition-colors"
             aria-label={`CRM for ${customer.firstName}`}
             title="Wishlist & reminders"
@@ -301,7 +302,7 @@ const CustomersPage: React.FC = () => {
             <Heart size={18} />
           </button>
           <button
-            onClick={() => handleDeleteCustomer(customer)}
+            onClick={(e) => { e.stopPropagation(); handleDeleteCustomer(customer); }}
             className="text-danger hover:text-danger-hover p-1 rounded-md hover:bg-danger/10 transition-colors"
             aria-label={`Delete ${customer.firstName}`}
           >
@@ -419,6 +420,7 @@ const CustomersPage: React.FC = () => {
               columns={columns}
               data={filteredCustomers}
               isLoading={false}
+              onRowClick={(customer) => navigate(`/customers/${customer.id}`)}
               noDataMessage="No customers found. Try adjusting your filters or search term."
               currentPage={currentPage}
               totalPages={totalPages}

@@ -30,6 +30,8 @@ export interface ReusableTableProps<T> {
   // handler is supplied — pass both this and itemsPerPageOptions to opt in.
   onItemsPerPageChange?: (itemsPerPage: number) => void;
   itemsPerPageOptions?: number[];
+  // Optional row click — callers must stopPropagation inside action cells
+  onRowClick?: (item: T) => void;
   // Future: onSort?: (sortConfig: any) => void;
 }
 
@@ -45,6 +47,7 @@ const ReusableTable = <T extends {}>({
   totalItems,
   onItemsPerPageChange,
   itemsPerPageOptions = [10, 25, 50, 100],
+  onRowClick,
 }: ReusableTableProps<T>) => {
 
   const [pageInput, setPageInput] = useState<string>(currentPage?.toString() ?? '1');
@@ -117,7 +120,11 @@ const ReusableTable = <T extends {}>({
           </thead>
           <tbody className="bg-background-card divide-y divide-border">
             {paginatedData.map((item, rowIndex) => (
-              <tr key={rowIndex} className="even:bg-black/5 dark:even:bg-white/5 hover:bg-primary/10 dark:hover:bg-primary/20 transition-colors duration-150">
+              <tr
+                key={rowIndex}
+                onClick={onRowClick ? () => onRowClick(item) : undefined}
+                className={`even:bg-black/5 dark:even:bg-white/5 hover:bg-primary/10 dark:hover:bg-primary/20 transition-colors duration-150${onRowClick ? ' cursor-pointer' : ''}`}
+              >
                 {columns.map((col, colIndex) => (
                   <td 
                     key={colIndex} 
