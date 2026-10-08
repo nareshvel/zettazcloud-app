@@ -63,6 +63,49 @@ function parseAmount(v) {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+/**
+ * Ledger hooks for outgoing payments. Both run on the caller's transaction
+ * so the payment row and its journal entry commit/roll back together.
+ *
+ * Posting model is cash-basis: Dr purchases (supplier) or operating expense
+ * (expense/other), Cr the tender account the payment left from. The debit
+ * side resolves through event:mappings so a tenant can point supplier
+ * payments at Accounts Payable instead if they keep accrual books.
+ */
+async function postOutgoingPaymentEntry(conn, tenantId, payment, userId) {
+  const eventKey = payment.payee_type === 'supplier' ? 'event:purchases' : 'event:expense';
+  const debitAcctId = await moneyPosting.resolveAccountId(tenantId, eventKey, conn);
+  const creditAcctId = await moneyPosting.tenderAccountId(conn, tenantId, payment.payment_method, 'out');
+  if (!debitAcctId || !creditAcctId) {
+    throw new Error('Ledger posting failed: required money account(s) are missing or inactive');
+  }
+  await moneyPosting.postEntry({
+    tenantId,
+    storeId: payment.store_id || null,
+    sourceType: 'outgoing_payment',
+    sourceId: payment.id,
+    entryDate: payment.payment_date || undefined,
+    memo: `Payment ${payment.payment_number || payment.id} — ${payment.payee_name || payment.payee_type}`,
+    createdBy: userId,
+    lines: [
+      { accountId: debitAcctId, debit: payment.amount, credit: 0, memo: payment.payee_name || null, supplierId: payment.supplier_id || null },
+      { accountId: creditAcctId, debit: 0, credit: payment.amount, memo: `Paid via ${payment.payment_method || 'unspecified'}`, supplierId: payment.supplier_id || null },
+    ],
+  }, conn);
+}
+
+/** Reverse the journal entry of a payment being voided (no-op if none posted). */
+async function reverseOutgoingPaymentEntry(conn, tenantId, paymentId, userId) {
+  const [entries] = await conn.query(
+    `SELECT id FROM money_journal_entries
+      WHERE tenant_id = ? AND source_type = 'outgoing_payment' AND source_id = ? AND status = 'posted'`,
+    [tenantId, paymentId]
+  );
+  for (const e of entries) {
+    await moneyPosting.reverseEntry(e.id, { tenantId, memo: 'Payment voided', createdBy: userId }, conn);
+  }
+}
+
 /** Non-negative number or 0 — for tax/shipping/discount components. */
 function parseOptionalAmount(v) {
   const n = Number(v);
@@ -370,16 +413,22 @@ router.post('/expenses', requirePermission('finance.manage'), async (req, res) =
     // Payments page is a single ledger of everything that left the business.
     if (expStatus === 'paid') {
       const payNum = await docNumber(conn, 'outgoing_payments', 'payment_number', 'PAY', tenantId, new Date(date).getFullYear());
+      const payId = uuidv4();
       await conn.query(
         `INSERT INTO outgoing_payments
            (id, tenant_id, store_id, payment_number, payee_type, payee_name,
             supplier_id, expense_id, amount, payment_date, payment_method,
             reference, notes, created_by)
          VALUES (?, ?, ?, ?, 'expense', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uuidv4(), tenantId, storeId, payNum, payee || String(category).trim(),
+        [payId, tenantId, storeId, payNum, payee || String(category).trim(),
          supplier_id || null, id, amt, date, payment_method || null, reference || null,
          `Expense ${number}`, userId]
       );
+      await postOutgoingPaymentEntry(conn, tenantId, {
+        id: payId, store_id: storeId, payment_number: payNum, payee_type: 'expense',
+        payee_name: payee || String(category).trim(), supplier_id: supplier_id || null,
+        amount: amt, payment_date: date, payment_method: payment_method || null,
+      }, userId);
     }
 
     await conn.commit();
@@ -511,21 +560,33 @@ router.put('/expenses/:id', requirePermission('finance.manage'), async (req, res
       // Top up the remaining balance with a payment row.
       const year = new Date(effDate).getFullYear();
       const payNum = await docNumber(conn, 'outgoing_payments', 'payment_number', 'PAY', tenantId, year);
+      const payId = uuidv4();
+      const payAmt = round2(amt - paidSoFar);
+      const payMethod = payment_method !== undefined ? payment_method : existing.payment_method;
+      const paySupplier = supplier_id !== undefined ? supplier_id : existing.supplier_id;
       await conn.query(
         `INSERT INTO outgoing_payments
            (id, tenant_id, store_id, payment_number, payee_type, payee_name,
             supplier_id, expense_id, amount, payment_date, payment_method,
             reference, notes, created_by)
          VALUES (?, ?, ?, ?, 'expense', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uuidv4(), tenantId, existing.store_id, payNum,
+        [payId, tenantId, existing.store_id, payNum,
          (payee !== undefined ? payee : existing.payee) || (category !== undefined ? category : existing.category),
-         (supplier_id !== undefined ? supplier_id : existing.supplier_id),
-         req.params.id, round2(amt - paidSoFar), effDate,
-         payment_method !== undefined ? payment_method : existing.payment_method,
+         paySupplier,
+         req.params.id, payAmt, effDate,
+         payMethod,
          reference !== undefined ? reference : existing.reference,
          `Expense ${existing.expense_number}`, userId]
       );
+      await postOutgoingPaymentEntry(conn, tenantId, {
+        id: payId, store_id: existing.store_id, payment_number: payNum, payee_type: 'expense',
+        payee_name: (payee !== undefined ? payee : existing.payee) || (category !== undefined ? category : existing.category),
+        supplier_id: paySupplier, amount: payAmt, payment_date: effDate, payment_method: payMethod,
+      }, userId);
     } else if (expStatus !== 'paid' && expStatus !== 'partial' && liveLinks.length) {
+      for (const l of liveLinks) {
+        await reverseOutgoingPaymentEntry(conn, tenantId, l.id, userId);
+      }
       await conn.query(
         `UPDATE outgoing_payments SET status = 'voided', voided_by = ?, voided_at = NOW(),
            void_reason = 'Expense marked unpaid/cancelled'
@@ -560,7 +621,14 @@ router.delete('/expenses/:id', requirePermission('finance.manage'), async (req, 
     const userId = req.user?.id || null;
     await conn.beginTransaction();
     // Void linked payments first — payment rows survive as audit, the
-    // expense itself is removed.
+    // expense itself is removed. Reverse each payment's journal entry too.
+    const [linked] = await conn.query(
+      `SELECT id FROM outgoing_payments WHERE expense_id = ? AND tenant_id = ? AND status = 'completed'`,
+      [req.params.id, tenantId]
+    );
+    for (const p of linked) {
+      await reverseOutgoingPaymentEntry(conn, tenantId, p.id, userId);
+    }
     await conn.query(
       `UPDATE outgoing_payments SET status = 'voided', voided_by = ?, voided_at = NOW(),
          void_reason = 'Expense deleted'
@@ -816,6 +884,12 @@ router.post('/payments', requirePermission('finance.manage'), async (req, res) =
        payment_method || null, reference || null, notes || null, userId]
     );
 
+    await postOutgoingPaymentEntry(conn, tenantId, {
+      id, store_id: storeId, payment_number: number, payee_type,
+      payee_name: resolvedPayeeName, supplier_id: linkedSupplierId,
+      amount: amt, payment_date: date, payment_method: payment_method || null,
+    }, userId);
+
     // Expense payments roll up to the expense's derived status
     // (unpaid → partial → paid).
     if (expense_id) {
@@ -852,6 +926,8 @@ router.post('/payments/:id/void', requirePermission('finance.manage'), async (re
     if (!rows.length) { await conn.rollback(); return res.status(404).json({ message: 'Payment not found.' }); }
     const payment = rows[0];
     if (payment.status === 'voided') { await conn.rollback(); return res.status(400).json({ message: 'Payment is already voided.' }); }
+
+    await reverseOutgoingPaymentEntry(conn, tenantId, req.params.id, userId);
 
     await conn.query(
       `UPDATE outgoing_payments SET status = 'voided', voided_by = ?, voided_at = NOW(), void_reason = ? WHERE id = ?`,
@@ -911,17 +987,24 @@ router.post('/expenses/:id/approve', requirePermission('finance.approve'), async
       // DATE columns come back as Date objects — normalize to YYYY-MM-DD.
       const expDate = new Date(exp.expense_date).toISOString().slice(0, 10);
       const payNum = await docNumber(conn, 'outgoing_payments', 'payment_number', 'PAY', tenantId, new Date(expDate).getUTCFullYear());
+      const payId = uuidv4();
+      const payMethod = payment_method || exp.payment_method || null;
       await conn.query(
         `INSERT INTO outgoing_payments
            (id, tenant_id, store_id, payment_number, payee_type, payee_name,
             supplier_id, expense_id, amount, payment_date, payment_method,
             reference, notes, created_by)
          VALUES (?, ?, ?, ?, 'expense', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uuidv4(), tenantId, exp.store_id, payNum, exp.payee || exp.category,
+        [payId, tenantId, exp.store_id, payNum, exp.payee || exp.category,
          exp.supplier_id, exp.id, Number(exp.amount), expDate,
-         payment_method || exp.payment_method || null, reference || exp.reference || null,
+         payMethod, reference || exp.reference || null,
          `Expense ${exp.expense_number} (approved)`, userId]
       );
+      await postOutgoingPaymentEntry(conn, tenantId, {
+        id: payId, store_id: exp.store_id, payment_number: payNum, payee_type: 'expense',
+        payee_name: exp.payee || exp.category, supplier_id: exp.supplier_id,
+        amount: Number(exp.amount), payment_date: expDate, payment_method: payMethod,
+      }, userId);
     }
 
     await conn.commit();

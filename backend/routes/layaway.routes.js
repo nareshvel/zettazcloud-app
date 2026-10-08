@@ -17,6 +17,23 @@ const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../config/db');
 const { authenticate, requireTenantId } = require('../middleware/unifiedAuthMiddleware');
 const inst = require('../services/installmentService');
+const moneyPosting = require('../services/moneyPostingService');
+
+/** Post Dr tender / Cr deferred-revenue for a layaway payment, on the caller's transaction. */
+async function postLayawayPaymentEntry(conn, tenantId, { id, planNo, amount, method, storeId, userId, customerId }) {
+  const dr = await moneyPosting.tenderAccountId(conn, tenantId, method, 'in');
+  const cr = await moneyPosting.resolveAccountId(tenantId, 'event:layaway_liability', conn);
+  if (!dr || !cr) throw new Error('Ledger posting failed: required money account(s) are missing or inactive');
+  const amt = Math.round(Number(amount) * 100) / 100;
+  await moneyPosting.postEntry({
+    tenantId, storeId: storeId || null, sourceType: 'layaway_payment', sourceId: id,
+    memo: `Layaway ${planNo} payment`, createdBy: userId,
+    lines: [
+      { accountId: dr, debit: amt, credit: 0, memo: `Tender — ${method || 'unspecified'}`, customerId: customerId || null },
+      { accountId: cr, debit: 0, credit: amt, memo: 'Layaway deferred revenue', customerId: customerId || null },
+    ],
+  }, conn);
+}
 
 // Email service — gracefully skip if not configured
 let emailService = null;
@@ -223,11 +240,16 @@ router.post('/', async (req, res) => {
     }
 
     if (down > 0) {
+      const payRowId = uuidv4();
       await conn.query(
         `INSERT INTO layaway_payments (id, tenant_id, layaway_id, amount, payment_method, notes, received_by_user_id)
          VALUES (?,?,?,?,?,?,?)`,
-        [uuidv4(), tid(req), id, down, b.payment_method ?? null, 'Down payment', uid(req)]
+        [payRowId, tid(req), id, down, b.payment_method ?? null, 'Down payment', uid(req)]
       );
+      await postLayawayPaymentEntry(conn, tid(req), {
+        id: payRowId, planNo, amount: down, method: b.payment_method,
+        storeId: b.store_id ?? req.user?.store_id, userId: uid(req), customerId: b.customer_id,
+      });
     }
 
     await conn.commit();
@@ -248,12 +270,17 @@ router.post('/:id/payments', async (req, res) => {
     const [[plan]] = await conn.query('SELECT * FROM layaway_plans WHERE id = ? AND tenant_id = ?', [req.params.id, tid(req)]);
     if (!plan) { await conn.rollback(); return res.status(404).json({ status: 'error', message: 'not found' }); }
 
+    const payRowId = uuidv4();
     await conn.query(
       `INSERT INTO layaway_payments (id, tenant_id, layaway_id, amount, payment_method, reference, notes, received_by_user_id)
        VALUES (?,?,?,?,?,?,?,?)`,
-      [uuidv4(), tid(req), req.params.id, amount, req.body?.payment_method ?? null,
+      [payRowId, tid(req), req.params.id, amount, req.body?.payment_method ?? null,
        req.body?.reference ?? null, req.body?.notes ?? null, uid(req)]
     );
+    await postLayawayPaymentEntry(conn, tid(req), {
+      id: payRowId, planNo: plan.plan_no, amount, method: req.body?.payment_method,
+      storeId: plan.store_id, userId: uid(req), customerId: plan.customer_id,
+    });
 
     const newPaid = Math.round((Number(plan.paid_amount) + amount) * 100) / 100;
     const st = inst.layawayStatus({ totalAmount: plan.total_amount, paidAmount: newPaid });

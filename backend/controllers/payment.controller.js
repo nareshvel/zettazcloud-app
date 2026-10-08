@@ -1,5 +1,6 @@
 const { query, queryOne, withTransaction } = require('../db');
 const { v4: uuidv4 } = require('uuid');
+const moneyPosting = require('../services/moneyPostingService');
 
 /**
  * Get all active payment methods for the current tenant
@@ -81,13 +82,14 @@ const processPayment = async (req, res) => {
     // 3. Create the payment transaction using transaction
     await withTransaction(async (trx) => {
       // Insert transaction
+      const paymentRowId = uuidv4();
       await trx.query(
-        `INSERT INTO payment_transactions 
-         (id, tenant_id, sale_id, payment_method_id, terminal_id, amount, 
+        `INSERT INTO payment_transactions
+         (id, tenant_id, sale_id, payment_method_id, terminal_id, amount,
           currency, status, transaction_id, reference_id, metadata, created_by)
          VALUES (?, ?, ?, ?, ?, ?, 'USD', 'completed', ?, ?, ?, ?)`,
         [
-          uuidv4(),
+          paymentRowId,
           req.user.tenant_id,
           saleId,
           paymentMethodId,
@@ -105,6 +107,35 @@ const processPayment = async (req, res) => {
         'UPDATE sales SET payment_status = ? WHERE id = ? AND tenant_id = ?',
         ['paid', saleId, req.user.tenant_id]
       );
+
+      // Ledger: a /process payment settles a receivable when the sale was
+      // tendered on_account at checkout — Dr tender / Cr AR. Sales already
+      // paid at checkout posted their own entry at creation, so posting here
+      // would double-count them; skip those.
+      const saleRows = await trx.query(
+        'SELECT payment_method, store_id, customer_id FROM sales WHERE id = ? AND tenant_id = ?',
+        [saleId, req.user.tenant_id]
+      );
+      const saleMethod = String(saleRows?.[0]?.payment_method || '').toLowerCase();
+      if (saleMethod === 'on_account') {
+        const conn = trx.getConnection();
+        const dr = await moneyPosting.tenderAccountId(conn, req.user.tenant_id, paymentMethod.code, 'in');
+        const cr = await moneyPosting.resolveAccountId(req.user.tenant_id, 'event:receivable', conn);
+        if (!dr || !cr) throw new Error('Ledger posting failed: required money account(s) are missing or inactive');
+        const amt = Math.round(Number(amount) * 100) / 100;
+        await moneyPosting.postEntry({
+          tenantId: req.user.tenant_id,
+          storeId: saleRows[0].store_id || null,
+          sourceType: 'payment_received',
+          sourceId: paymentRowId,
+          memo: `On-account settlement — sale ${saleId}`,
+          createdBy: req.user.id,
+          lines: [
+            { accountId: dr, debit: amt, credit: 0, memo: `Tender — ${paymentMethod.code}`, customerId: saleRows[0].customer_id || null },
+            { accountId: cr, debit: 0, credit: amt, memo: 'Receivable settled', customerId: saleRows[0].customer_id || null },
+          ],
+        }, conn);
+      }
     });
     
 

@@ -21,6 +21,7 @@ const { pool } = require('../config/db');
 const { authenticate, requireTenantId } = require('../middleware/unifiedAuthMiddleware');
 const requireIndustry = require('../middleware/requireIndustry');
 const inst = require('../services/installmentService');
+const moneyPosting = require('../services/moneyPostingService');
 
 const tid = (req) => req.user?.tenant_id || req.query?.tenant_id || req.headers['x-tenant-id'];
 const uid = (req) => req.user?.id || null;
@@ -340,13 +341,14 @@ router.post('/enrollments/:id/payments', async (req, res) => {
     const matured     = nextNo >= Number(e.duration_months);
     const newStatus   = matured ? 'matured' : e.status;
 
+    const payRowId = uuidv4();
     await conn.query(
       `INSERT INTO savings_scheme_payments
         (id, tenant_id, enrollment_id, installment_no, amount, metal_rate,
          weight_credited, payment_method, reference, received_by_user_id)
        VALUES (?,?,?,?,?,?,?,?,?,?)`,
       [
-        uuidv4(), tid(req), req.params.id, nextNo, accrual.amount,
+        payRowId, tid(req), req.params.id, nextNo, accrual.amount,
         req.body?.metal_rate   ?? null,
         accrual.weightCredited,
         req.body?.payment_method ?? null,
@@ -354,6 +356,20 @@ router.post('/enrollments/:id/payments', async (req, res) => {
         uid(req),
       ]
     );
+
+    // Ledger: Dr tender / Cr savings-scheme deferred revenue.
+    const dr = await moneyPosting.tenderAccountId(conn, tid(req), req.body?.payment_method, 'in');
+    const cr = await moneyPosting.resolveAccountId(tid(req), 'event:savings_liability', conn);
+    if (!dr || !cr) { await conn.rollback(); return res.status(500).json({ status: 'error', message: 'Ledger posting failed: money account(s) missing' }); }
+    const payAmt = inst.round2(accrual.amount);
+    await moneyPosting.postEntry({
+      tenantId: tid(req), sourceType: 'savings_payment', sourceId: payRowId,
+      memo: `Savings scheme installment #${nextNo}`, createdBy: uid(req),
+      lines: [
+        { accountId: dr, debit: payAmt, credit: 0, memo: `Tender — ${req.body?.payment_method || 'unspecified'}`, customerId: e.customer_id || null },
+        { accountId: cr, debit: 0, credit: payAmt, memo: 'Savings scheme deferred revenue', customerId: e.customer_id || null },
+      ],
+    }, conn);
 
     await conn.query(
       `UPDATE savings_scheme_enrollments

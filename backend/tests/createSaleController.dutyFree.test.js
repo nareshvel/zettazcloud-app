@@ -91,6 +91,14 @@ function loadController({ jurisdiction, verifyTaxResult, queryLog = [], paymentM
     stubModule('../services/auditLogService', {
       logActivity: async () => {},
     }),
+    // The sale's journal entry posts through moneyPostingService inside the
+    // same transaction — stub it so these tests stay pure-unit; ledger
+    // behavior itself is covered in createSaleController.ledger.test.js.
+    stubModule('../services/moneyPostingService', {
+      tenderAccountId: async () => 'acct-tender',
+      resolveAccountId: async () => 'acct-resolved',
+      postEntry: async () => ({ entryId: 'je-1', entryNumber: 'JE-2026-000001' }),
+    }),
   ];
 
   delete require.cache[controllerPath];
@@ -255,6 +263,11 @@ describe('createSaleController — duty-free zero-rating', function () {
         isEnabledFor: async () => ({ enabled: false, mandatory: false }), allocate: async () => null,
       }),
       stubModule('../services/auditLogService', { logActivity: async () => {} }),
+      stubModule('../services/moneyPostingService', {
+        tenderAccountId: async () => 'acct-tender',
+        resolveAccountId: async () => 'acct-resolved',
+        postEntry: async () => ({ entryId: 'je-1', entryNumber: 'JE-2026-000001' }),
+      }),
     ];
     delete require.cache[controllerPath];
     const controller = require(controllerPath);

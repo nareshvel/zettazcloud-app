@@ -369,6 +369,25 @@ async function accountBalances(tenantId, { storeId } = {}) {
   });
 }
 
+/**
+ * Resolve the money account a tender/payment method posts to.
+ * Order: the tenant's explicit `tender:<code>` mapping → direction default
+ * (money in → event:default_in → CASH; money out → event:default_out → BANK).
+ * Never throws for an unknown or custom tenant payment method — those simply
+ * fall back to the direction default until the tenant adds a mapping.
+ * `methodCode` is the resolved/normalized code (e.g. 'cash', 'on_account',
+ * or a custom payment_methods.code), not the raw row id.
+ */
+async function tenderAccountId(conn, tenantId, methodCode, direction = 'in') {
+  const code = String(methodCode || '').trim().toLowerCase();
+  if (code) {
+    const mapped = await resolveAccountId(tenantId, `tender:${code}`, conn);
+    if (mapped) return mapped;
+  }
+  const fallbackKey = direction === 'out' ? 'event:default_out' : 'event:default_in';
+  return resolveAccountId(tenantId, fallbackKey, conn);
+}
+
 module.exports = {
   DEBIT_NORMAL_TYPES,
   DEFAULT_ACCOUNTS,
@@ -377,6 +396,7 @@ module.exports = {
   buildReversalLines,
   ensureDefaults,
   resolveAccountId,
+  tenderAccountId,
   postEntry,
   reverseEntry,
   accountBalances,

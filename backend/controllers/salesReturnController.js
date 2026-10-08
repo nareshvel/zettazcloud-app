@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 const { generateReturnNumber } = require('../utils/appHelper');
+const moneyPosting = require('../services/moneyPostingService');
 
 /**
  * @desc    Get all returnable items for a given sale
@@ -374,6 +375,45 @@ exports.createReturn = async (req, res, next) => {
           `, [uuidv4(), item.product_id, tenantId, storeId, userId, quantityReturned, returnId]);
         }
       }
+    }
+
+    // --- Ledger posting: refund is the mirror of the sale -----------------
+    // Dr Sales Returns (net) + Dr Tax Payable (tax claw-back), Cr the refund
+    // tender account. 'store_credit'/'exchange' move no cash — they credit
+    // Accounts Receivable as a customer credit balance instead.
+    if (totalReturnAmount > 0) {
+      const retTotal = Math.round(totalReturnAmount * 100) / 100;
+      const retTax = Math.round(Number(taxAmount) * 100) / 100 || 0;
+      const retNet = Math.round((retTotal - retTax) * 100) / 100;
+
+      const refundIsCredit = ['store_credit', 'exchange'].includes(normalizedRefundMethod);
+      const creditAcctId = refundIsCredit
+        ? await moneyPosting.resolveAccountId(tenantId, 'event:receivable', connection)
+        : await moneyPosting.tenderAccountId(connection, tenantId, normalizedRefundMethod, 'out');
+      const returnsAcctId = await moneyPosting.resolveAccountId(tenantId, 'event:returns', connection);
+      const retTaxAcctId = retTax > 0 ? await moneyPosting.resolveAccountId(tenantId, 'event:tax', connection) : null;
+      if (!creditAcctId || !returnsAcctId || (retTax > 0 && !retTaxAcctId)) {
+        throw new Error('Ledger posting failed: required money account(s) are missing or inactive');
+      }
+
+      const retLines = [
+        { accountId: creditAcctId, debit: 0, credit: retTotal, memo: `Refund — ${normalizedRefundMethod}`, customerId: customerIdForDB || null },
+      ];
+      if (retNet > 0) {
+        retLines.push({ accountId: returnsAcctId, debit: retNet, credit: 0, memo: 'Sales return', customerId: customerIdForDB || null });
+      }
+      if (retTax > 0) {
+        retLines.push({ accountId: retTaxAcctId, debit: retTax, credit: 0, memo: 'Tax payable reversal', customerId: customerIdForDB || null });
+      }
+      await moneyPosting.postEntry({
+        tenantId,
+        storeId,
+        sourceType: 'sale_return',
+        sourceId: returnId,
+        memo: `Return ${returnNumber} (sale ${original_sale_id})`,
+        createdBy: userId,
+        lines: retLines,
+      }, connection);
     }
 
     await connection.commit();

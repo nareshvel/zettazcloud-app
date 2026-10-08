@@ -5,6 +5,7 @@ const { logActivity } = require('../services/auditLogService');
 const taxCalculationService = require('../services/taxCalculationService');
 const documentSequenceService = require('../services/documentSequenceService');
 const jurisdictionService = require('../services/jurisdictionService');
+const moneyPosting = require('../services/moneyPostingService');
 const storeProductListingService = require('../services/storeProductListingService');
 const { checkUserPermission } = require('../middleware/rbacPermissionMiddleware');
 
@@ -860,6 +861,56 @@ exports.createSale = async (req, res) => {
     } catch (voucherErr) {
       console.warn('[SALES] old-gold voucher redemption skipped:', voucherErr.message);
     }
+
+    // --- Ledger posting (money accounts) ------------------------------------
+    // Dr the tender/payment account, Cr sales revenue (net) + tax payable.
+    // Runs inside this transaction so the sale and its journal entry commit or
+    // roll back together — a ledger failure fails the sale, and vice versa.
+    // The tender account resolves through the tenant's finance_account_mappings
+    // (tender:<code>); custom payment methods without a mapping fall back to
+    // the money-in default so they keep working. 'none'/$0.00 sales skip
+    // posting — nothing moved.
+    if (adjustedTotal > 0) {
+      const saleTotal = Math.round(adjustedTotal * 100) / 100;
+      const saleTax = Math.round(Number(taxFromRequest) * 100) / 100 || 0;
+      const netRevenue = Math.round((saleTotal - saleTax) * 100) / 100;
+
+      const tenderAcctId = await moneyPosting.tenderAccountId(connection, actualTenantId, validationPaymentMethodId, 'in');
+      const revenueAcctId = await moneyPosting.resolveAccountId(actualTenantId, 'event:revenue', connection);
+      const taxAcctId = saleTax > 0 ? await moneyPosting.resolveAccountId(actualTenantId, 'event:tax', connection) : null;
+      if (!tenderAcctId || !revenueAcctId || (saleTax > 0 && !taxAcctId)) {
+        throw new Error('Ledger posting failed: required money account(s) are missing or inactive');
+      }
+
+      const journalLines = [
+        { accountId: tenderAcctId, debit: saleTotal, credit: 0, memo: `Tender — ${validationPaymentMethodId}`, customerId: actualCustomerId || null },
+      ];
+      if (netRevenue > 0) {
+        journalLines.push({ accountId: revenueAcctId, debit: 0, credit: netRevenue, memo: 'Sales revenue', customerId: actualCustomerId || null });
+      }
+      if (saleTax > 0) {
+        journalLines.push({ accountId: taxAcctId, debit: 0, credit: saleTax, memo: 'Tax payable', customerId: actualCustomerId || null });
+      }
+      await moneyPosting.postEntry({
+        tenantId: actualTenantId,
+        storeId: store_id,
+        sourceType: 'sale',
+        sourceId: saleId,
+        memo: `Sale ${documentNumber || saleId}`,
+        createdBy: actualCashierId,
+        lines: journalLines,
+      }, connection);
+    }
+
+    // Tender record — one row per tender on the sale. The current checkout
+    // sends a single payment_method_id; when split tender lands, loop over
+    // the tender array here instead (each leg posts its own journal line too).
+    await connection.query(
+      `INSERT INTO payment_transactions
+         (id, tenant_id, sale_id, payment_method_id, amount, status)
+       VALUES (?, ?, ?, ?, ?, 'COMPLETED')`,
+      [uuidv4(), actualTenantId, saleId, payment_method_id, Math.round(adjustedTotal * 100) / 100]
+    );
 
     await connection.commit();
 
