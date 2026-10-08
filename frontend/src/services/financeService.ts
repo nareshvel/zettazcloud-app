@@ -494,7 +494,7 @@ export const financeService = {
     );
   },
 
-  async openDrawer(payload: { storeId: string; openingFloat: number; accountId?: string; notes?: string }) {
+  async openDrawer(payload: { storeId: string; openingFloat: number; accountId?: string; sourceAccountId?: string; notes?: string }) {
     return fetchApi<{ id: string }>('/finance/drawer-sessions', { method: 'POST', body: JSON.stringify(payload) });
   },
 

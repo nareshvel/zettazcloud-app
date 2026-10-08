@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useOptionalStore } from '@/contexts/StoreContext';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
@@ -20,10 +22,11 @@ import { financeService, DrawerSession, DrawerMovement, MoneyAccount } from '@/s
 
 export default function DrawerPage() {
   const { formatCurrency, currencySymbol } = useCurrency();
-  const { formatDateTime } = useDateFormatting();
+  const { formatDateTime, formatTime } = useDateFormatting();
   const { user } = useAuth();
   const canManage = hasAnyPermission(user, ['finance.manage']);
-  const storeId = user?.storeId || localStorage.getItem('store_id') || '';
+  const activeStore = useOptionalStore()?.store;
+  const storeId = activeStore?.id || user?.storeId || localStorage.getItem('store_id') || '';
 
   const [session, setSession] = useState<(DrawerSession & { expectedCashLive: number }) | null>(null);
   const [movements, setMovements] = useState<DrawerMovement[]>([]);
@@ -42,6 +45,8 @@ export default function DrawerPage() {
   const [fAmount, setFAmount] = useState('');
   const [fReason, setFReason] = useState('');
   const [fCount, setFCount] = useState('');
+  const [fSource, setFSource] = useState('');
+  const [fCounterpart, setFCounterpart] = useState('');
   const [closeResult, setCloseResult] = useState<{ expectedCash: number; variance: number } | null>(null);
 
   const load = useCallback(async () => {
@@ -68,6 +73,27 @@ export default function DrawerPage() {
   useEffect(() => { load(); }, [load]);
 
   const liveExpected = session ? Number(session.expectedCashLive) : 0;
+
+  // Where the expected figure comes from — backend sums every journal line on
+  // the drawer account since open (cash sales, paid-ins, paid-outs).
+  const moveTotals = useMemo(() => ({
+    paidIn: movements.filter(m => m.direction === 'paid_in').reduce((s, m) => s + Number(m.amount), 0),
+    paidOut: movements.filter(m => m.direction === 'paid_out').reduce((s, m) => s + Number(m.amount), 0),
+  }), [movements]);
+  const salesReceipts = session
+    ? Math.round((liveExpected - Number(session.openingFloat) - moveTotals.paidIn + moveTotals.paidOut) * 100) / 100
+    : 0;
+
+  // Cash-side accounts a float/movement can come from or go to (excludes the
+  // drawer account itself — backend ignores same-account picks anyway).
+  const cashAccounts = useMemo(
+    () => accounts.filter(a => a.accountType === 'asset' && a.id !== session?.accountId),
+    [accounts, session?.accountId],
+  );
+  const defaultCounterpart = useMemo(
+    () => cashAccounts.find(a => a.code === 'SAFE')?.id || cashAccounts[0]?.id || '',
+    [cashAccounts],
+  );
   const countNum = Number(fCount);
   const previewVariance = session && fCount !== '' && Number.isFinite(countNum)
     ? Math.round((countNum - liveExpected) * 100) / 100
@@ -78,8 +104,11 @@ export default function DrawerPage() {
     if (!Number.isFinite(f) || f < 0) { setFormError('Enter the opening float (0 or more).'); return; }
     setSaving(true); setFormError(null);
     try {
-      await financeService.openDrawer({ storeId, openingFloat: f, notes: fReason.trim() || undefined });
-      setOpenOpen(false); setFFloat(''); setFReason('');
+      await financeService.openDrawer({
+        storeId, openingFloat: f, notes: fReason.trim() || undefined,
+        sourceAccountId: fSource || undefined,
+      });
+      setOpenOpen(false); setFFloat(''); setFReason(''); setFSource('');
       await load();
     } catch (e: any) {
       setFormError(e.message || 'Failed to open register.');
@@ -92,8 +121,11 @@ export default function DrawerPage() {
     if (!Number.isFinite(a) || a <= 0) { setFormError('Enter a positive amount.'); return; }
     setSaving(true); setFormError(null);
     try {
-      await financeService.drawerMovement(session.id, { direction: moveOpen, amount: a, reason: fReason.trim() || undefined });
-      setMoveOpen(null); setFAmount(''); setFReason('');
+      await financeService.drawerMovement(session.id, {
+        direction: moveOpen, amount: a, reason: fReason.trim() || undefined,
+        counterpartAccountId: fCounterpart || undefined,
+      });
+      setMoveOpen(null); setFAmount(''); setFReason(''); setFCounterpart('');
       await load();
     } catch (e: any) {
       setFormError(e.message || 'Failed to record movement.');
@@ -165,7 +197,9 @@ export default function DrawerPage() {
       <PageHeader
         icon={Vault}
         title="Cash Register"
-        subtitle="Open the register, record paid-ins/outs, and close with a counted-vs-expected check."
+        subtitle={activeStore?.name
+          ? `${activeStore.name} — open the register, record paid-ins/outs, close with a counted-vs-expected check.`
+          : 'Open the register, record paid-ins/outs, and close with a counted-vs-expected check.'}
         actions={(
           <Button variant="outline" size="sm" onClick={load} disabled={loading} title="Refresh">
             <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
@@ -194,15 +228,15 @@ export default function DrawerPage() {
                 Register open <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">{session.accountCode}</Badge>
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Opened {formatDateTime(session.openedAt)} · float {formatCurrency(Number(session.openingFloat))}
+                Opened {formatDateTime(session.openedAt)}{session.openedByName ? ` by ${session.openedByName}` : ''} · float {formatCurrency(Number(session.openingFloat))}
               </p>
             </div>
             {canManage && (
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { setMoveOpen('paid_in'); setFAmount(''); setFReason(''); setFormError(null); }}>
+                <Button variant="outline" size="sm" onClick={() => { setMoveOpen('paid_in'); setFAmount(''); setFReason(''); setFCounterpart(defaultCounterpart); setFormError(null); }}>
                   <ArrowDownToLine className="h-4 w-4 mr-1" /> Paid in
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => { setMoveOpen('paid_out'); setFAmount(''); setFReason(''); setFormError(null); }}>
+                <Button variant="outline" size="sm" onClick={() => { setMoveOpen('paid_out'); setFAmount(''); setFReason(''); setFCounterpart(''); setFormError(null); }}>
                   <ArrowUpFromLine className="h-4 w-4 mr-1" /> Paid out
                 </Button>
                 <Button size="sm" onClick={() => { setCloseOpen(true); setFCount(''); setFormError(null); }}>
@@ -214,6 +248,15 @@ export default function DrawerPage() {
           <div className="px-4 py-4">
             <div className="text-xs text-muted-foreground">Expected in register</div>
             <div className="text-3xl font-bold tabular-nums">{formatCurrency(liveExpected)}</div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
+              <span>Float {formatCurrency(Number(session.openingFloat))}</span>
+              <span aria-hidden="true">·</span>
+              <span>Cash sales {formatCurrency(salesReceipts)}</span>
+              <span aria-hidden="true">·</span>
+              <span className="text-emerald-700">In {formatCurrency(moveTotals.paidIn)}</span>
+              <span aria-hidden="true">·</span>
+              <span className="text-rose-700">Out {formatCurrency(moveTotals.paidOut)}</span>
+            </div>
             <div className="mt-4 space-y-1.5">
               {movements.length === 0 && (
                 <p className="text-sm text-muted-foreground">No paid-ins or paid-outs yet.</p>
@@ -227,7 +270,9 @@ export default function DrawerPage() {
                     {m.direction === 'paid_in' ? '+' : '−'}{formatCurrency(Number(m.amount))}
                   </span>
                   <span className="text-muted-foreground truncate">{m.reason || (m.direction === 'paid_in' ? 'Paid in' : 'Paid out')}</span>
-                  <span className="ml-auto text-xs text-muted-foreground shrink-0">{m.createdByName || ''}</span>
+                  <span className="ml-auto text-xs text-muted-foreground shrink-0">
+                    {formatTime(m.createdAt)}{m.createdByName ? ` · ${m.createdByName}` : ''}
+                  </span>
                 </div>
               ))}
             </div>
@@ -239,7 +284,7 @@ export default function DrawerPage() {
           <p className="font-medium">No register open for this store</p>
           <p className="text-sm text-muted-foreground mt-1">Open the register to start tracking today's cash.</p>
           {canManage && (
-            <Button className="mt-4" onClick={() => { setOpenOpen(true); setFFloat(''); setFReason(''); setFormError(null); }}>
+            <Button className="mt-4" onClick={() => { setOpenOpen(true); setFFloat(''); setFReason(''); setFSource(defaultCounterpart); setFormError(null); }}>
               <PlayCircle className="h-4 w-4 mr-2" /> Open register
             </Button>
           )}
@@ -278,6 +323,18 @@ export default function DrawerPage() {
               </div>
             </div>
             <div>
+              <Label>Funded from</Label>
+              <Select value={fSource} onValueChange={setFSource}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Store safe (default)" /></SelectTrigger>
+                <SelectContent>
+                  {cashAccounts.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">Where the float cash comes from — usually the store safe.</p>
+            </div>
+            <div>
               <Label>Notes <span className="text-muted-foreground font-normal">(optional)</span></Label>
               <Input value={fReason} onChange={e => setFReason(e.target.value)} className="mt-1" placeholder="Morning shift…" />
             </div>
@@ -310,6 +367,24 @@ export default function DrawerPage() {
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{currencySymbol}</span>
                 <Input type="number" min="0" step="0.01" autoFocus value={fAmount} onChange={e => setFAmount(e.target.value)} className="pl-8 h-12 text-lg font-semibold" placeholder="0.00" />
               </div>
+            </div>
+            <div>
+              <Label>{moveOpen === 'paid_in' ? 'From account' : 'To account'}</Label>
+              <Select value={fCounterpart} onValueChange={setFCounterpart}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder={moveOpen === 'paid_in' ? 'Store safe (default)' : 'Operating expenses (default)'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(moveOpen === 'paid_in' ? cashAccounts : accounts.filter(a => a.id !== session?.accountId)).map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {moveOpen === 'paid_in'
+                  ? 'The account this cash comes from (e.g. a safe drop into the register).'
+                  : 'Pick SAFE for a mid-shift drop to the safe, or an expense account for cash paid out.'}
+              </p>
             </div>
             <div>
               <Label>Reason</Label>
