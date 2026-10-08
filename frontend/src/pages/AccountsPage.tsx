@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import {
   Loader2, Plus, RefreshCcw, Landmark, AlertCircle, Pencil,
   Wallet, ArrowDownToLine, ArrowUpFromLine, Scale, ArrowRightLeft,
-  Lock, LockOpen, Receipt,
+  Lock, Unlock, Receipt,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -475,7 +475,7 @@ export default function AccountsPage() {
               </Button>
               {periodLock && (
                 <Button variant="outline" size="sm" onClick={unlock} disabled={saving}>
-                  <LockOpen className="h-4 w-4 mr-1.5" /> Unlock
+                  <Unlock className="h-4 w-4 mr-1.5" /> Unlock
                 </Button>
               )}
               {periodLock?.lockedByName && (
