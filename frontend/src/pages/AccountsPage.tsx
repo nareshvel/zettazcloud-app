@@ -16,6 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import ReusableTable, { ColumnDefinition } from '@/components/ReusableTable';
+import PageHeader from '@/components/common/PageHeader';
 import { useCurrency } from '@/contexts/LocalizationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
@@ -337,58 +338,55 @@ export default function AccountsPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Landmark className="h-6 w-6" /> Money Accounts</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Chart of accounts — where money sits, and what every sale and payment posts against.</p>
-        </div>
-        {canManage && (
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={openTransfer}><ArrowRightLeft className="h-4 w-4 mr-2" /> Transfer</Button>
-            <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> New Account</Button>
-          </div>
+    <div className="p-4 sm:p-6 space-y-5 min-h-screen">
+      <PageHeader
+        icon={Landmark}
+        title="Money Accounts"
+        subtitle="Chart of accounts — where money sits, and what every sale and payment posts against."
+        actions={(
+          <>
+            {canManage && (
+              <>
+                <Button variant="outline" onClick={openTransfer}><ArrowRightLeft className="h-4 w-4 mr-2" /> Transfer</Button>
+                <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> New Account</Button>
+              </>
+            )}
+            <Button variant="outline" size="sm" onClick={load} disabled={loading} title="Refresh">
+              <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+          </>
         )}
-      </div>
+      />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-r-4 border-r-emerald-500 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Wallet className="h-3.5 w-3.5" /> Cash &amp; bank on hand</div>
-          <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(kpis.onHand)}</div>
-        </div>
-        <div className="rounded-xl border border-r-4 border-r-sky-500 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><ArrowDownToLine className="h-3.5 w-3.5" /> Owed to us (A/R)</div>
-          <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(kpis.receivable)}</div>
-        </div>
-        <div className="rounded-xl border border-r-4 border-r-amber-500 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><ArrowUpFromLine className="h-3.5 w-3.5" /> Liabilities</div>
-          <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(kpis.liabilities)}</div>
-        </div>
-        <div className="rounded-xl border border-r-4 border-r-violet-500 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Scale className="h-3.5 w-3.5" /> Net revenue</div>
-          <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(kpis.revenueNet)}</div>
-        </div>
+        {[
+          { label: 'Cash & bank on hand', value: formatCurrency(kpis.onHand), icon: Wallet, color: 'text-emerald-600' },
+          { label: 'Owed to us (A/R)', value: formatCurrency(kpis.receivable), icon: ArrowDownToLine, color: 'text-sky-600' },
+          { label: 'Liabilities', value: formatCurrency(kpis.liabilities), icon: ArrowUpFromLine, color: 'text-amber-600' },
+          { label: 'Net revenue', value: formatCurrency(kpis.revenueNet), icon: Scale, color: 'text-violet-600' },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="flex items-center gap-3 rounded-xl border border-border border-r-4 border-r-primary/40 bg-card p-3.5">
+              <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
+              <div>
+                <p className="text-2xl font-bold text-foreground leading-none tabular-nums">{item.value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={load} disabled={loading} title="Refresh">
-          <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
-      </div>
+      {error && <div className="bg-danger-light text-danger-text p-4 rounded-lg flex items-center gap-2"><AlertCircle className="h-4 w-4" /> {error}</div>}
 
-      {error && (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-center gap-2">
-          <AlertCircle className="h-4 w-4" /> {error}
-        </div>
-      )}
-
-      <div className="overflow-x-auto rounded-xl border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         {loading && accounts.length === 0 ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-10 px-4">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading accounts…
           </div>
         ) : accounts.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="rounded-xl border border-dashed border-border p-12 text-center">
             <Landmark className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm font-medium text-muted-foreground">No accounts yet — defaults are seeded automatically.</p>
           </div>
@@ -405,7 +403,7 @@ export default function AccountsPage() {
       <p className="text-xs text-muted-foreground">Click a row to see its ledger entries.</p>
 
       {/* Posting rules — which account each tender/event posts to */}
-      <div className="rounded-xl border bg-card">
+      <div className="rounded-xl border border-border bg-card shadow-sm">
         <div className="px-4 py-3 border-b">
           <h2 className="font-semibold">Posting rules</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -413,7 +411,7 @@ export default function AccountsPage() {
           </p>
         </div>
         {mappingError && (
-          <div className="mx-4 mt-3 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive flex items-center gap-2">
+          <div className="mx-4 mt-3 rounded-lg bg-danger-light text-danger-text px-3 py-2 text-sm flex items-center gap-2">
             <AlertCircle className="h-4 w-4" /> {mappingError}
           </div>
         )}
@@ -447,7 +445,7 @@ export default function AccountsPage() {
       </div>
 
       {/* Period lock — prevents any journal posting on/before the locked date */}
-      <div className="rounded-xl border bg-card">
+      <div className="rounded-xl border border-border bg-card shadow-sm">
         <div className="px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="font-semibold flex items-center gap-2"><Lock className="h-4 w-4" /> Period lock</h2>
@@ -489,7 +487,7 @@ export default function AccountsPage() {
       </div>
 
       {/* Tax payable — accrued liability + remittance history */}
-      <div className="rounded-xl border bg-card">
+      <div className="rounded-xl border border-border bg-card shadow-sm">
         <div className="px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="font-semibold flex items-center gap-2"><Receipt className="h-4 w-4" /> Tax payable</h2>

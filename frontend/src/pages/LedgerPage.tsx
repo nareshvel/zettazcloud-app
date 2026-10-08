@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import ReusableTable, { ColumnDefinition } from '@/components/ReusableTable';
+import PageHeader from '@/components/common/PageHeader';
 import { useCurrency, useDateFormatting } from '@/contexts/LocalizationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
@@ -226,30 +227,31 @@ export default function LedgerPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-6 w-6" /> Ledger</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Every money movement as a balanced journal entry — sales, refunds, payments, deposits.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            title="Export filtered journal lines as CSV"
-            onClick={() => financeService.downloadLedgerCsv({
-              accountId: accountFilter !== ALL ? accountFilter : undefined,
-              sourceType: sourceFilter !== ALL ? sourceFilter : undefined,
-              from: fromDate || undefined,
-              to: toDate || undefined,
-            }).catch((e: any) => setError(e.message || 'Export failed.'))}
-          >
-            <Download className="h-4 w-4 mr-2" /> Export CSV
-          </Button>
-          {canManage && (
-            <Button onClick={openJournal}><Plus className="h-4 w-4 mr-2" /> New Journal Entry</Button>
-          )}
-        </div>
-      </div>
+    <div className="p-4 sm:p-6 space-y-5 min-h-screen">
+      <PageHeader
+        icon={BookOpen}
+        title="Ledger"
+        subtitle="Every money movement as a balanced journal entry — sales, refunds, payments, deposits."
+        actions={(
+          <>
+            <Button
+              variant="outline"
+              title="Export filtered journal lines as CSV"
+              onClick={() => financeService.downloadLedgerCsv({
+                accountId: accountFilter !== ALL ? accountFilter : undefined,
+                sourceType: sourceFilter !== ALL ? sourceFilter : undefined,
+                from: fromDate || undefined,
+                to: toDate || undefined,
+              }).catch((e: any) => setError(e.message || 'Export failed.'))}
+            >
+              <Download className="h-4 w-4 mr-2" /> Export CSV
+            </Button>
+            {canManage && (
+              <Button onClick={openJournal}><Plus className="h-4 w-4 mr-2" /> New Journal Entry</Button>
+            )}
+          </>
+        )}
+      />
 
       <div className="flex items-center gap-2 flex-wrap">
         <Select value={accountFilter} onValueChange={setAccountFilter}>
@@ -277,21 +279,18 @@ export default function LedgerPage() {
         </Button>
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-center gap-2">
-          <AlertCircle className="h-4 w-4" /> {error}
-        </div>
-      )}
+      {error && <div className="bg-danger-light text-danger-text p-4 rounded-lg flex items-center gap-2"><AlertCircle className="h-4 w-4" /> {error}</div>}
 
-      <div className="overflow-x-auto rounded-xl border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         {loading && entries.length === 0 ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-10 px-4">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading ledger…
           </div>
         ) : entries.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="rounded-xl border border-dashed border-border p-12 text-center">
             <BookOpen className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm font-medium text-muted-foreground">No journal entries match.</p>
+            <p className="text-xs text-muted-foreground mt-1">Try adjusting your filters.</p>
           </div>
         ) : (
           <ReusableTable columns={columns} data={entries} isLoading={false} noDataMessage="No entries." />

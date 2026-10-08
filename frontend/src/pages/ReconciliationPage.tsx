@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
+import PageHeader from '@/components/common/PageHeader';
 import { toast } from 'react-toastify';
 import { useCurrency } from '@/contexts/LocalizationContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -174,44 +175,45 @@ export default function ReconciliationPage() {
   if (openId && detail) {
     const r = detail.reconciliation;
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <Button variant="ghost" size="sm" className="-ml-2 mb-1" onClick={() => { setOpenId(null); setDetail(null); }}>
-              <ArrowLeft className="h-4 w-4 mr-1" /> All reconciliations
-            </Button>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Scale className="h-6 w-6" /> {r.accountCode} — {r.accountName}
-            </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Statement ending {String(r.statementDate).slice(0, 10)} · opened by {r.createdByName || '—'}
-            </p>
-          </div>
-          <Badge variant="secondary" className={isCompleted
-            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-            : 'bg-amber-50 text-amber-700 border-amber-200'}>
-            {isCompleted ? 'Completed' : 'In progress'}
-          </Badge>
+      <div className="p-4 sm:p-6 space-y-5 min-h-screen">
+        <div>
+          <Button variant="ghost" size="sm" className="-ml-2 mb-1" onClick={() => { setOpenId(null); setDetail(null); }}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> All reconciliations
+          </Button>
+          <PageHeader
+            icon={Scale}
+            title={`${r.accountCode} — ${r.accountName}`}
+            subtitle={`Statement ending ${String(r.statementDate).slice(0, 10)} · opened by ${r.createdByName || '—'}`}
+            actions={
+              <Badge variant="secondary" className={isCompleted
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200'}>
+                {isCompleted ? 'Completed' : 'In progress'}
+              </Badge>
+            }
+          />
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl border bg-card p-4">
-            <div className="text-xs text-muted-foreground">Statement balance</div>
-            <div className="text-xl font-bold tabular-nums">{formatCurrency(Number(r.statementBalance))}</div>
-          </div>
-          <div className="rounded-xl border bg-card p-4">
-            <div className="text-xs text-muted-foreground">Cleared in ledger</div>
-            <div className="text-xl font-bold tabular-nums">{formatCurrency(previewCleared)}</div>
-          </div>
-          <div className="rounded-xl border bg-card p-4">
-            <div className="text-xs text-muted-foreground">Difference</div>
-            <div className={`text-xl font-bold tabular-nums ${Math.abs(previewDiff) < 0.005 ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {formatCurrency(previewDiff)}
-            </div>
-          </div>
+          {[
+            { label: 'Statement balance', value: formatCurrency(Number(r.statementBalance)), icon: Scale, color: 'text-primary' },
+            { label: 'Cleared in ledger', value: formatCurrency(previewCleared), icon: CheckCircle2, color: 'text-emerald-600' },
+            { label: 'Difference', value: formatCurrency(previewDiff), icon: AlertCircle, color: Math.abs(previewDiff) < 0.005 ? 'text-emerald-600' : 'text-amber-600' },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} className="flex items-center gap-3 rounded-xl border border-border border-r-4 border-r-primary/40 bg-card p-3.5">
+                <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
+                <div>
+                  <p className="text-2xl font-bold text-foreground leading-none tabular-nums">{item.value}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        <div className="overflow-x-auto rounded-xl border bg-card">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
@@ -296,37 +298,34 @@ export default function ReconciliationPage() {
 
   // ---- Session list --------------------------------------------------------
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Scale className="h-6 w-6" /> Reconciliation</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Match ledger lines against a bank or cash statement.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
-          </Button>
-          {canManage && (
-            <Button size="sm" onClick={() => { setNAccount(''); setNDate(''); setNBalance(''); setFormError(null); setNewOpen(true); }}>
-              New reconciliation
+    <div className="p-4 sm:p-6 space-y-5 min-h-screen">
+      <PageHeader
+        icon={Scale}
+        title="Reconciliation"
+        subtitle="Match ledger lines against a bank or cash statement."
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
             </Button>
-          )}
-        </div>
-      </div>
+            {canManage && (
+              <Button size="sm" onClick={() => { setNAccount(''); setNDate(''); setNBalance(''); setFormError(null); setNewOpen(true); }}>
+                New reconciliation
+              </Button>
+            )}
+          </>
+        }
+      />
 
-      {error && (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-center gap-2">
-          <AlertCircle className="h-4 w-4" /> {error}
-        </div>
-      )}
+      {error && <div className="bg-danger-light text-danger-text p-4 rounded-lg flex items-center gap-2"><AlertCircle className="h-4 w-4" /> {error}</div>}
 
-      <div className="overflow-x-auto rounded-xl border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         {loading && sessions.length === 0 ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-10 px-4">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
         ) : sessions.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="rounded-xl border border-dashed border-border p-12 text-center">
             <Scale className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm font-medium text-muted-foreground">No reconciliations yet.</p>
             <p className="text-xs text-muted-foreground mt-1">Start one to match an account against a statement.</p>
