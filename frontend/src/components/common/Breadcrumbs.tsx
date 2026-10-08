@@ -22,6 +22,7 @@ import {
  */
 const NAME_MAPPING: Record<string, string> = {
   pos: 'POS Screen',
+  drawer: 'Cash Register',
   products: 'Products',
   customers: 'Customers',
   reports: 'Reports',

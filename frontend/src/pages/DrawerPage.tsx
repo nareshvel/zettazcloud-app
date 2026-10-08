@@ -59,7 +59,7 @@ export default function DrawerPage() {
       setAccounts(accts.accounts.filter(a => a.isActive));
       setError(null);
     } catch (e: any) {
-      setError(e.message || 'Failed to load drawer.');
+      setError(e.message || 'Failed to load register.');
     } finally {
       setLoading(false);
     }
@@ -82,7 +82,7 @@ export default function DrawerPage() {
       setOpenOpen(false); setFFloat(''); setFReason('');
       await load();
     } catch (e: any) {
-      setFormError(e.message || 'Failed to open drawer.');
+      setFormError(e.message || 'Failed to open register.');
     } finally { setSaving(false); }
   };
 
@@ -110,7 +110,7 @@ export default function DrawerPage() {
       setCloseOpen(false); setFCount('');
       await load();
     } catch (e: any) {
-      setFormError(e.message || 'Failed to close drawer.');
+      setFormError(e.message || 'Failed to close register.');
     } finally { setSaving(false); }
   };
 
@@ -164,8 +164,8 @@ export default function DrawerPage() {
     <div className="p-4 sm:p-6 space-y-5 min-h-screen">
       <PageHeader
         icon={Vault}
-        title="Cash Drawer"
-        subtitle="Open the till, record paid-ins/outs, and close with a counted-vs-expected check."
+        title="Cash Register"
+        subtitle="Open the register, record paid-ins/outs, and close with a counted-vs-expected check."
         actions={(
           <Button variant="outline" size="sm" onClick={load} disabled={loading} title="Refresh">
             <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
@@ -178,7 +178,7 @@ export default function DrawerPage() {
       {closeResult && (
         <div className={`rounded-xl border px-4 py-3 text-sm flex items-center justify-between ${Math.abs(closeResult.variance) < 0.005 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
           <span>
-            Drawer closed — expected {formatCurrency(closeResult.expectedCash)},
+            Register closed — expected {formatCurrency(closeResult.expectedCash)},
             variance {closeResult.variance > 0 ? '+' : ''}{formatCurrency(closeResult.variance)}.
           </span>
           <Button variant="ghost" size="sm" onClick={() => setCloseResult(null)}>Dismiss</Button>
@@ -191,7 +191,7 @@ export default function DrawerPage() {
           <div className="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2">
             <div>
               <h2 className="font-semibold flex items-center gap-2">
-                Drawer open <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">{session.accountCode}</Badge>
+                Register open <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">{session.accountCode}</Badge>
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Opened {formatDateTime(session.openedAt)} · float {formatCurrency(Number(session.openingFloat))}
@@ -206,13 +206,13 @@ export default function DrawerPage() {
                   <ArrowUpFromLine className="h-4 w-4 mr-1" /> Paid out
                 </Button>
                 <Button size="sm" onClick={() => { setCloseOpen(true); setFCount(''); setFormError(null); }}>
-                  <Lock className="h-4 w-4 mr-1" /> Close drawer
+                  <Lock className="h-4 w-4 mr-1" /> Close register
                 </Button>
               </div>
             )}
           </div>
           <div className="px-4 py-4">
-            <div className="text-xs text-muted-foreground">Expected in drawer</div>
+            <div className="text-xs text-muted-foreground">Expected in register</div>
             <div className="text-3xl font-bold tabular-nums">{formatCurrency(liveExpected)}</div>
             <div className="mt-4 space-y-1.5">
               {movements.length === 0 && (
@@ -236,11 +236,11 @@ export default function DrawerPage() {
       ) : !loading && (
         <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center">
           <Vault className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-          <p className="font-medium">No drawer open for this store</p>
-          <p className="text-sm text-muted-foreground mt-1">Open the drawer to start tracking today's cash.</p>
+          <p className="font-medium">No register open for this store</p>
+          <p className="text-sm text-muted-foreground mt-1">Open the register to start tracking today's cash.</p>
           {canManage && (
             <Button className="mt-4" onClick={() => { setOpenOpen(true); setFFloat(''); setFReason(''); setFormError(null); }}>
-              <PlayCircle className="h-4 w-4 mr-2" /> Open drawer
+              <PlayCircle className="h-4 w-4 mr-2" /> Open register
             </Button>
           )}
         </div>
@@ -256,17 +256,17 @@ export default function DrawerPage() {
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
         ) : history.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">No drawer sessions yet.</div>
+          <div className="p-8 text-center text-sm text-muted-foreground">No register sessions yet.</div>
         ) : (
           <ReusableTable columns={historyColumns} data={history} isLoading={false} noDataMessage="No sessions." />
         )}
       </div>
 
-      {/* Open drawer dialog */}
+      {/* Open register dialog */}
       <Dialog open={openOpen} onOpenChange={setOpenOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Open drawer</DialogTitle>
+            <DialogTitle>Open register</DialogTitle>
             <DialogDescription>Count the starting cash in the till — that becomes the opening float.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -286,7 +286,7 @@ export default function DrawerPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenOpen(false)}>Cancel</Button>
             <Button onClick={doOpen} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Open drawer
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Open register
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -299,8 +299,8 @@ export default function DrawerPage() {
             <DialogTitle>{moveOpen === 'paid_in' ? 'Paid in' : 'Paid out'}</DialogTitle>
             <DialogDescription>
               {moveOpen === 'paid_in'
-                ? 'Cash added to the drawer (e.g. change from the safe).'
-                : 'Cash taken from the drawer (e.g. a petty expense).'}
+                ? 'Cash added to the register (e.g. change from the safe).'
+                : 'Cash taken from the register (e.g. a petty expense).'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -326,11 +326,11 @@ export default function DrawerPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Close drawer dialog */}
+      {/* Close register dialog */}
       <Dialog open={closeOpen} onOpenChange={setCloseOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Close drawer</DialogTitle>
+            <DialogTitle>Close register</DialogTitle>
             <DialogDescription>Count the cash in the till. Any difference from the expected amount posts to Cash Over/Short.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -356,7 +356,7 @@ export default function DrawerPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCloseOpen(false)}>Cancel</Button>
             <Button onClick={doClose} disabled={saving || previewVariance === null}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Close drawer
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Close register
             </Button>
           </DialogFooter>
         </DialogContent>

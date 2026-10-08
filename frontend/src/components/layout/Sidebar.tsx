@@ -113,7 +113,7 @@ const NAV_FALLBACK: Record<string, string> = {
   catalog_channels: 'Sales Channels', reports: 'Reports', settings: 'Settings',
   team: 'Team & Access', print_jobs: 'Print Jobs', print_templates: 'Print Templates',
   sales_management: 'Sales Management', services: 'Services',
-  expenses: 'Expenses', payments: 'Payments', accounts: 'Money Accounts', ledger: 'Ledger', drawer: 'Cash Drawer', reconciliation: 'Reconciliation', procurement: 'Procurement',
+  expenses: 'Expenses', payments: 'Payments', accounts: 'Money Accounts', ledger: 'Ledger', drawer: 'Cash Register', reconciliation: 'Reconciliation', procurement: 'Procurement',
 };
 
 const SECTION_FALLBACK: Record<string, string> = {
@@ -133,10 +133,11 @@ const NAV_TREE: NavigationSectionRaw[] = [
   {
     titleKey: 'sales_operations',
     icon: Store,
-    permissions: ['sales.view', 'sales.return', 'customers.view', 'sales.create'],
+    permissions: ['sales.view', 'sales.return', 'customers.view', 'sales.create', 'finance.view'],
     items: [
       { nameKey: 'sales_hub', icon: Gem, path: '/sales-hub', permissions: ['sales.create'], industries: [...SALES_HUB_INDUSTRIES] },
       { nameKey: 'pos', icon: ShoppingCart, path: '/pos', permissions: ['sales.create'], excludeIndustries: [...SALES_HUB_INDUSTRIES] },
+      { nameKey: 'drawer', icon: Vault, path: '/drawer', permissions: ['finance.view'] },
       {
         nameKey: 'sales_management',
         icon: ClipboardList,
@@ -197,7 +198,6 @@ const NAV_TREE: NavigationSectionRaw[] = [
       { nameKey: 'payments', icon: HandCoins, path: '/payments', permissions: ['finance.view'] },
       { nameKey: 'accounts', icon: Landmark, path: '/accounts', permissions: ['finance.view'] },
       { nameKey: 'ledger', icon: BookOpen, path: '/ledger', permissions: ['finance.view'] },
-      { nameKey: 'drawer', icon: Vault, path: '/drawer', permissions: ['finance.view'] },
       { nameKey: 'reconciliation', icon: Scale, path: '/reconciliation', permissions: ['finance.view'] },
     ],
   },
