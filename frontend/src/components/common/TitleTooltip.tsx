@@ -34,10 +34,13 @@ const TitleTooltip = () => {
       const el = activeEl.current;
       if (el) {
         const t = el.getAttribute('data-tt');
-        if (t !== null) {
+        // Only write title back if React hasn't already set a fresher one
+        // while we held it in data-tt (e.g. dynamic tooltips), and only if
+        // the element is still in the document.
+        if (t !== null && el.isConnected && !el.getAttribute('title')) {
           el.setAttribute('title', t);
-          el.removeAttribute('data-tt');
         }
+        el.removeAttribute('data-tt');
         activeEl.current = null;
       }
       window.clearTimeout(timer.current);
@@ -45,15 +48,20 @@ const TitleTooltip = () => {
     };
 
     const onMouseOver = (e: MouseEvent) => {
-      const el = (e.target as HTMLElement)?.closest?.('[title]') as HTMLElement | null;
+      // Match data-tt too: once we move title -> data-tt the element no longer
+      // matches [title], so moving between a button's icon and padding would
+      // otherwise kill the tooltip mid-hover and re-arm it — visible flicker.
+      const el = (e.target as HTMLElement)?.closest?.('[title],[data-tt]') as HTMLElement | null;
       if (el === activeEl.current) return;
       restore();
       if (!el) return;
 
-      const text = el.getAttribute('title');
+      const text = el.getAttribute('title') ?? el.getAttribute('data-tt');
       if (!text) return;
-      el.setAttribute('data-tt', text);
-      el.removeAttribute('title');
+      if (el.hasAttribute('title')) {
+        el.setAttribute('data-tt', text);
+        el.removeAttribute('title');
+      }
       if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', text);
       activeEl.current = el;
 
