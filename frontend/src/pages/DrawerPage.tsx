@@ -365,7 +365,7 @@ export default function DrawerPage() {
               <Label>Opening float</Label>
               <div className="relative mt-1">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{currencySymbol}</span>
-                <Input type="number" min="0" step="0.01" autoFocus value={fFloat} onChange={e => setFFloat(e.target.value)} className="pl-8 h-12 text-lg font-semibold" placeholder="0.00" />
+                <Input type="number" min="0" step="0.01" autoFocus value={fFloat} onChange={e => setFFloat(e.target.value)} className="h-12 text-lg font-semibold" style={{ paddingLeft: `calc(0.75rem + ${currencySymbol.length}ch + 6px)` }} placeholder="0.00" />
               </div>
             </div>
             <div>
@@ -411,7 +411,7 @@ export default function DrawerPage() {
               <Label>Amount</Label>
               <div className="relative mt-1">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{currencySymbol}</span>
-                <Input type="number" min="0" step="0.01" autoFocus value={fAmount} onChange={e => setFAmount(e.target.value)} className="pl-8 h-12 text-lg font-semibold" placeholder="0.00" />
+                <Input type="number" min="0" step="0.01" autoFocus value={fAmount} onChange={e => setFAmount(e.target.value)} className="h-12 text-lg font-semibold" style={{ paddingLeft: `calc(0.75rem + ${currencySymbol.length}ch + 6px)` }} placeholder="0.00" />
               </div>
             </div>
             <div>
@@ -467,7 +467,7 @@ export default function DrawerPage() {
               <Label>Counted cash</Label>
               <div className="relative mt-1">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{currencySymbol}</span>
-                <Input type="number" min="0" step="0.01" autoFocus value={fCount} onChange={e => setFCount(e.target.value)} className="pl-8 h-12 text-lg font-semibold" placeholder="0.00" />
+                <Input type="number" min="0" step="0.01" autoFocus value={fCount} onChange={e => setFCount(e.target.value)} className="h-12 text-lg font-semibold" style={{ paddingLeft: `calc(0.75rem + ${currencySymbol.length}ch + 6px)` }} placeholder="0.00" />
               </div>
             </div>
             {canSeeExpected && previewVariance !== null && (
