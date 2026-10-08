@@ -48,6 +48,7 @@ const PrintJobHistory = React.lazy(() => import('./pages/PrintJobHistory'));
 const PrintTemplateDesigner = React.lazy(() => import('./pages/PrintTemplateDesigner'));
 const CustomerDetailsPage = React.lazy(() => import('./pages/CustomerDetailsPage'));
 const ProductDetailsPage = React.lazy(() => import('./pages/ProductDetailsPage'));
+const SupplierDetailsPage = React.lazy(() => import('./pages/SupplierDetailsPage'));
 
 // New Reports Structure
 const ReportsLayout = React.lazy(() => import('./pages/reports'));
@@ -136,6 +137,7 @@ const AppRoutes: React.FC = () => {
         <Route path="customers" element={<Customers />} />
         <Route path="customers/:id" element={<CustomerDetailsPage />} />
         <Route path="suppliers" element={<Suppliers />} />
+        <Route path="suppliers/:id" element={<SupplierDetailsPage />} />
         <Route path="team" element={<EmployeesPage />} />
         <Route path="team/roles" element={<RolesManagementPage />} />
         <Route path="employees" element={<Navigate to="/team" replace />} />

@@ -465,7 +465,7 @@ router.get('/:id/360', requirePermission('products.view'), async (req, res) => {
                    FROM purchase_order_items pi
                    JOIN purchase_orders po ON po.id = pi.purchase_order_id AND po.tenant_id = ?
                   WHERE pi.product_id = ?
-                    AND po.status IN ('ordered','partially_received','sent','confirmed')`,
+                    AND po.status IN ('ORDERED','APPROVED','PARTIALLY_RECEIVED')`,
                 [tenant_id, id]
             ),
             pool.execute(

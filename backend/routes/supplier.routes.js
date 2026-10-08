@@ -70,6 +70,132 @@ router.get('/:id', requirePermission('suppliers.view'), async (req, res) => {
 });
 
 /**
+ * @route   GET /api/suppliers/:id/360
+ * @desc    Supplier 360: KPIs + recent POs, GRNs, payments, expenses, memos
+ * @access  Private (requires suppliers.view permission)
+ */
+router.get('/:id/360', requirePermission('suppliers.view'), async (req, res) => {
+  const tenant_id = req.user?.tenant_id || req.query?.tenant_id || req.headers["x-tenant-id"];
+  const { id } = req.params;
+
+  if (!tenant_id) {
+    return res.status(403).json({ status: 'error', message: 'Tenant ID not found for user.' });
+  }
+
+  try {
+    const [sup] = await pool.execute(
+      'SELECT id FROM suppliers WHERE id = ? AND tenant_id = ?',
+      [id, tenant_id]
+    );
+    if (sup.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Supplier not found or not authorized.' });
+    }
+
+    const LIMIT = 25;
+    const [
+      [pos], [poAgg],
+      [grns], [grnAgg],
+      [payments], [payAgg],
+      [expenses], [expAgg],
+      [memos], [memoAgg],
+    ] = await Promise.all([
+      pool.execute(
+        `SELECT id, purchase_order_number, order_date, expected_delivery_date, status, total_amount, created_at
+           FROM purchase_orders WHERE tenant_id = ? AND supplier_id = ?
+           ORDER BY order_date DESC, created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS po_count,
+                COALESCE(SUM(total_amount), 0) AS po_total,
+                COALESCE(SUM(CASE WHEN status IN ('DRAFT','ORDERED','APPROVED','PARTIALLY_RECEIVED') THEN 1 ELSE 0 END), 0) AS open_count,
+                COALESCE(SUM(CASE WHEN status IN ('ORDERED','APPROVED','PARTIALLY_RECEIVED') THEN total_amount ELSE 0 END), 0) AS open_value
+           FROM purchase_orders WHERE tenant_id = ? AND supplier_id = ?`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT id, grn_number, received_date, status, total_received_value, grand_total, created_at
+           FROM goods_received_notes WHERE tenant_id = ? AND supplier_id = ?
+           ORDER BY received_date DESC, created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS grn_count, COALESCE(SUM(grand_total), 0) AS total_received_value,
+                MAX(received_date) AS last_received_at
+           FROM goods_received_notes WHERE tenant_id = ? AND supplier_id = ?`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT id, payment_number, payment_date, amount, payment_method, status, reference, created_at
+           FROM outgoing_payments WHERE tenant_id = ? AND supplier_id = ?
+           ORDER BY payment_date DESC, created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS payment_count, COALESCE(SUM(amount), 0) AS total_paid
+           FROM outgoing_payments
+           WHERE tenant_id = ? AND supplier_id = ? AND status = 'completed'`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT id, expense_number, expense_date, category, amount, status, created_at
+           FROM expenses WHERE tenant_id = ? AND supplier_id = ?
+           ORDER BY expense_date DESC, created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS expense_count,
+                COALESCE(SUM(CASE WHEN status IN ('unpaid','partial') THEN amount ELSE 0 END), 0) AS unpaid_total
+           FROM expenses WHERE tenant_id = ? AND supplier_id = ? AND status != 'cancelled'`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT id, memo_no, direction, status, issue_date, due_date, total_value, created_at
+           FROM memo_transactions WHERE tenant_id = ? AND supplier_id = ?
+           ORDER BY issue_date DESC, created_at DESC LIMIT ${LIMIT}`,
+        [tenant_id, id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS open_count, COALESCE(SUM(total_value), 0) AS open_value
+           FROM memo_transactions
+           WHERE tenant_id = ? AND supplier_id = ? AND direction = 'in'
+             AND status IN ('open','partially_returned')`,
+        [tenant_id, id]
+      ),
+    ]);
+
+    const num = (v) => parseFloat(v) || 0;
+    res.json({
+      status: 'success',
+      data: {
+        kpis: {
+          po_count: poAgg[0].po_count,
+          po_total: num(poAgg[0].po_total),
+          open_po_count: poAgg[0].open_count,
+          open_po_value: num(poAgg[0].open_value),
+          grn_count: grnAgg[0].grn_count,
+          total_received: num(grnAgg[0].total_received_value),
+          last_received_at: grnAgg[0].last_received_at,
+          payment_count: payAgg[0].payment_count,
+          total_paid: num(payAgg[0].total_paid),
+          expense_count: expAgg[0].expense_count,
+          unpaid_expense_total: num(expAgg[0].unpaid_total),
+          memo_open: { count: memoAgg[0].open_count, value: num(memoAgg[0].open_value) },
+        },
+        purchase_orders: pos,
+        receipts: grns,
+        payments,
+        expenses,
+        memos,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching supplier 360:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to fetch supplier 360 data' });
+  }
+});
+
+/**
  * @route   POST /api/suppliers
  * @desc    Create a new supplier
  * @access  Private (requires suppliers.create permission)

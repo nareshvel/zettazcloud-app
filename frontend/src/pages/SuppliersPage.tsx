@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Edit, Trash2, Users, Briefcase, Ban, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import type { Supplier } from '@/types';
@@ -14,6 +15,7 @@ import { useRefresh } from '@/contexts/RefreshContext';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
 
 const SuppliersListPage: React.FC = () => {
+  const navigate = useNavigate();
   const { refreshKey, triggerRefresh } = useRefresh() ?? { refreshKey: 0, triggerRefresh: () => fetchSuppliers() }; 
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -133,10 +135,10 @@ const SuppliersListPage: React.FC = () => {
       accessor: 'id', // Accessor is needed, can be any unique key like 'id'
       Cell: (item) => (
         <div className="flex space-x-2">
-          <button onClick={() => handleEdit(item)} className="p-1 text-primary hover:text-primary/80">
+          <button onClick={(e) => { e.stopPropagation(); handleEdit(item); }} className="p-1 text-primary hover:text-primary/80">
             <Edit size={18} />
           </button>
-          <button onClick={() => handleDelete(item.id)} className="p-1 text-red-600 hover:text-red-800">
+          <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="p-1 text-red-600 hover:text-red-800">
             <Trash2 size={18} />
           </button>
         </div>
@@ -301,6 +303,7 @@ const SuppliersListPage: React.FC = () => {
             onPageChange={setCurrentPage}
             itemsPerPage={itemsPerPage}
             totalItems={totalSuppliers}
+            onRowClick={(supplier) => navigate(`/suppliers/${supplier.id}`)}
           />
         )}
       </div>
