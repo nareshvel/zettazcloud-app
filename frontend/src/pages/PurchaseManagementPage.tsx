@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Edit, Eye, Trash2, ShoppingCart, FileText, DollarSign, MoreVertical, Printer, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Edit, Eye, Trash2, ShoppingCart, FileText, MoreVertical, Printer, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import {
   getPurchaseOrders,
@@ -448,9 +448,6 @@ const handlePrintPo = async (po: PurchaseOrder) => {
       cellClassName: 'text-right',
     },
   ], [formatCurrency, formatDate, user?.tenantId]); 
-
-  const totalOpenPOs = purchaseOrders.filter(po => po.status === 'ORDERED' || po.status === 'DRAFT').length;
-  const totalValuePOs = purchaseOrders.reduce((sum, po) => sum + Number(po.totalAmount || 0), 0);
 
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
