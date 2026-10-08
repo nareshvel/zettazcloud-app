@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Edit3,
-  Users, UserCog, UserX, CalendarPlus, Heart, UserCheck, Loader2, UserPlus
+  Users, UserX, CalendarPlus, Heart, UserCheck, Loader2, UserPlus
 } from 'lucide-react';
 import type { Customer, CreateCustomerPayload, NewCustomerData } from '@/types';
 import { getCustomers, getCustomer, createCustomer, updateCustomer, deleteCustomer } from '@/services/api';
