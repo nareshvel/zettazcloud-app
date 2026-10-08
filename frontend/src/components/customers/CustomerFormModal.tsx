@@ -144,7 +144,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
         const v = (customer as any).is_tax_exempt;
         taxExempt = v === true || v === 1;
       }
-      const cType = customer.customerType as CustomerTypeValue;
+      const cType = String(customer.customerType || '').toUpperCase() as CustomerTypeValue;
       const safeType: CustomerTypeValue = ['INDIVIDUAL','RETAIL','BUSINESS','WHOLESALE','TOURIST'].includes(cType)
         ? cType : 'INDIVIDUAL';
 

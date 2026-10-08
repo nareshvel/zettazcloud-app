@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axiosInstance from '@/services/axiosConfig';
+import { getCustomer, updateCustomer, deleteCustomer } from '@/services/api';
+import { setBreadcrumbLabel } from '@/utils/breadcrumbLabels';
 import CustomerFormModal from '@/components/customers/CustomerFormModal';
 import CustomerContactsPanel from '@/components/customers/CustomerContactsPanel';
 import CustomerActivityPanel from '@/components/customers/CustomerActivityPanel';
@@ -135,18 +137,21 @@ const CustomerDetailsPage: React.FC = () => {
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // getCustomer runs the row through mapCustomer, so `customer` carries both
+  // snake_case (displayed below) and camelCase (what CustomerFormModal reads).
   const load = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
     try {
-      const [custRes, viewRes] = await Promise.all([
-        axiosInstance.get(`/api/customers/${id}`),
+      const [cust, viewRes] = await Promise.all([
+        getCustomer(id),
         axiosInstance.get(`/api/customers/${id}/360`),
       ]);
-      const cust = custRes.data?.data?.customer;
-      if (!cust) throw new Error('Customer not found');
+      if (!cust?.id) throw new Error('Customer not found');
       setCustomer(cust);
       setView360(viewRes.data?.data ?? null);
+      const name = [cust.firstName, cust.lastName].filter(Boolean).join(' ');
+      if (name) setBreadcrumbLabel(`/customers/${id}`, name);
     } catch (error) {
       console.error('Error loading customer details:', error);
       toast.error('Failed to load customer details');
@@ -158,16 +163,15 @@ const CustomerDetailsPage: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => () => setBreadcrumbLabel(`/customers/${id}`, null), [id]);
+
   const handleSaveCustomer = async (customerData: any) => {
     if (!customer?.id) return;
     try {
-      const response = await axiosInstance.put(`/api/customers/${customer.id}`, customerData);
-      const updated = response.data?.data?.customer;
-      if (updated) {
-        toast.success('Customer updated successfully');
-        setCustomer(updated);
-      }
+      await updateCustomer(customer.id, customerData);
+      toast.success('Customer updated successfully');
       setIsEditModalOpen(false);
+      load();
     } catch (error) {
       console.error('Error updating customer:', error);
       toast.error('Failed to update customer');
@@ -177,7 +181,7 @@ const CustomerDetailsPage: React.FC = () => {
   const confirmDeleteCustomer = async () => {
     if (!customer?.id) return;
     try {
-      await axiosInstance.delete(`/api/customers/${customer.id}`);
+      await deleteCustomer(customer.id);
       toast.success('Customer deleted successfully');
       navigate('/customers');
     } catch (error) {
@@ -248,7 +252,7 @@ const CustomerDetailsPage: React.FC = () => {
   ].filter(Boolean).join('\n');
 
   return (
-    <div className="container mx-auto p-4 md:p-6 max-w-6xl">
+    <div className="p-4 md:p-6 w-full">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3 min-w-0">

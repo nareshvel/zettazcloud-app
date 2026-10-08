@@ -1,8 +1,13 @@
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { hasPermission } from '@/utils/permissionUtils';
+import {
+  getBreadcrumbLabel,
+  getBreadcrumbLabelsVersion,
+  subscribeBreadcrumbLabels,
+} from '@/utils/breadcrumbLabels';
 
 /**
  * Shared breadcrumb logic, extracted from TopBar.tsx (2026-08-31). TopBar renders the
@@ -28,6 +33,10 @@ const NAME_MAPPING: Record<string, string> = {
 
 export function useBreadcrumbs(): React.ReactNode[] {
   const location = useLocation();
+  // Detail pages (e.g. /customers/:id) register a friendly label for their
+  // pathname via setBreadcrumbLabel so the last crumb reads "Angela Clarke"
+  // rather than a UUID. Re-render when the registry changes.
+  useSyncExternalStore(subscribeBreadcrumbLabels, getBreadcrumbLabelsVersion);
   const pathnames = location.pathname.split('/').filter((x) => x);
 
   // This breadcrumb link pointed straight at /admin for every logged-in
@@ -63,7 +72,10 @@ export function useBreadcrumbs(): React.ReactNode[] {
   let currentPath = '';
   pathnames.forEach((name, index) => {
     currentPath += `/${name}`;
-    const displayName = NAME_MAPPING[name.toLowerCase()] || name.charAt(0).toUpperCase() + name.slice(1);
+    const displayName =
+      getBreadcrumbLabel(currentPath) ||
+      NAME_MAPPING[name.toLowerCase()] ||
+      name.charAt(0).toUpperCase() + name.slice(1);
 
     if ((name.toLowerCase() === 'admin' || name.toLowerCase() === 'dashboard') && index === 0) return;
 
@@ -90,9 +102,12 @@ export function useBreadcrumbs(): React.ReactNode[] {
 /** Just the current page's display name — see the module comment above for why. */
 export function useCurrentPageLabel(): string {
   const location = useLocation();
+  useSyncExternalStore(subscribeBreadcrumbLabels, getBreadcrumbLabelsVersion);
   const pathnames = location.pathname.split('/').filter((x) => x);
 
   if (pathnames.length === 0) return 'Dashboard';
+  const override = getBreadcrumbLabel(location.pathname);
+  if (override) return override;
   const last = pathnames[pathnames.length - 1].toLowerCase();
   if (last === 'admin' || last === 'dashboard') return 'Dashboard';
   return NAME_MAPPING[last] || last.charAt(0).toUpperCase() + last.slice(1);
