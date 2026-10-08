@@ -71,6 +71,7 @@ export default function AccountsPage() {
 
   const [accounts, setAccounts] = useState<MoneyAccount[]>([]);
   const [mappings, setMappings] = useState<AccountMapping[]>([]);
+  const [tab, setTab] = useState<'accounts' | 'rules' | 'period'>('accounts');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mappingError, setMappingError] = useState<string | null>(null);
@@ -380,6 +381,31 @@ export default function AccountsPage() {
 
       {error && <div className="bg-danger-light text-danger-text p-4 rounded-lg flex items-center gap-2"><AlertCircle className="h-4 w-4" /> {error}</div>}
 
+      {/* Section tabs — the page carries three jobs (accounts, posting rules,
+          period & tax ops); stacking them produced one long scroll. */}
+      <div className="border-b border-border overflow-x-auto">
+        <nav className="flex gap-5 min-w-max">
+          {([
+            { id: 'accounts', label: 'Accounts' },
+            { id: 'rules', label: 'Posting rules' },
+            { id: 'period', label: 'Period & tax' },
+          ] as const).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors ${
+                tab === t.id
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {tab === 'accounts' && (<>
       <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         {loading && accounts.length === 0 ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-10 px-4">
@@ -401,8 +427,10 @@ export default function AccountsPage() {
         )}
       </div>
       <p className="text-xs text-muted-foreground">Click a row to see its ledger entries.</p>
+      </>)}
 
       {/* Posting rules — which account each tender/event posts to */}
+      {tab === 'rules' && (
       <div className="rounded-xl border border-border bg-card shadow-sm">
         <div className="px-4 py-3 border-b">
           <h2 className="font-semibold">Posting rules</h2>
@@ -419,31 +447,45 @@ export default function AccountsPage() {
           {mappings.length === 0 && (
             <div className="px-4 py-8 text-sm text-muted-foreground text-center">No mappings loaded.</div>
           )}
-          {mappings.map((m) => (
-            <div key={m.mappingKey} className="flex items-center gap-3 px-4 py-2.5">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">{mappingLabel(m.mappingKey)}</div>
-                <div className="text-xs text-muted-foreground font-mono truncate">{m.mappingKey}</div>
+          {(['tender', 'event'] as const).map((prefix) => {
+            const group = mappings.filter((m) => m.mappingKey.startsWith(`${prefix}:`));
+            if (group.length === 0) return null;
+            return (
+              <div key={prefix}>
+                <div className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/40">
+                  {prefix === 'tender' ? 'Payment methods' : 'Business events'}
+                </div>
+                {group.map((m) => (
+                  <div key={m.mappingKey} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">{mappingLabel(m.mappingKey)}</div>
+                      <div className="text-xs text-muted-foreground font-mono truncate">{m.mappingKey}</div>
+                    </div>
+                    {canManage ? (
+                      <Select value={m.accountId} onValueChange={(v) => remap(m.mappingKey, v)}>
+                        <SelectTrigger className="w-56 h-9" title={`Change posting account for ${m.mappingKey}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {activeAccounts.map(a => (
+                            <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">{m.code} — {m.name}</span>
+                    )}
+                  </div>
+                ))}
               </div>
-              {canManage ? (
-                <Select value={m.accountId} onValueChange={(v) => remap(m.mappingKey, v)}>
-                  <SelectTrigger className="w-56 h-9" title={`Change posting account for ${m.mappingKey}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeAccounts.map(a => (
-                      <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <span className="text-sm text-muted-foreground">{m.code} — {m.name}</span>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
+      )}
 
+      {tab === 'period' && (
+      <div className="grid gap-4 lg:grid-cols-2 items-start">
       {/* Period lock — prevents any journal posting on/before the locked date */}
       <div className="rounded-xl border border-border bg-card shadow-sm">
         <div className="px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
@@ -530,6 +572,8 @@ export default function AccountsPage() {
           </div>
         )}
       </div>
+      </div>
+      )}
 
       {/* New / edit account dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
