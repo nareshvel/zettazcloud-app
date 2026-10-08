@@ -9,33 +9,24 @@ class PermissionSeedingService {
   /**
    * Default permission sets for each role type
    */
+  /**
+   * Platform-scoped permission prefixes — mirrors isSystemPermissionName() in
+   * rbacPermissionMiddleware. These are reserved for NULL-tenant system roles;
+   * a tenant-scoped grant can never satisfy them, so no tenant role should
+   * carry them (the checkbox would lie).
+   */
+  static PLATFORM_PREFIXES = ['platform.', 'tenants.', 'subscriptions.', 'plans.', 'support.'];
+
+  /** WHERE fragment matching every permission a tenant role CAN hold. */
+  static tenantScopedWhere(column = 'name') {
+    return this.PLATFORM_PREFIXES.map(p => `${column} NOT LIKE '${p}%'`).join('\n           AND ');
+  }
+
   static ROLE_PERMISSIONS = {
-    'Tenant Admin': [
-      // All 83 permissions - Full access to all modules
-      'dashboard.view', 'reports.view', 'reports.export',
-      'products.view', 'products.create', 'products.edit', 'products.delete', 'products.import', 'products.export',
-      'categories.view', 'categories.create', 'categories.edit', 'categories.delete',
-      'inventory.view', 'inventory.adjust', 'inventory.transfer', 'inventory.history', 'inventory.count_approve',
-      'sales.view', 'sales.create', 'sales.void', 'sales.refund', 'sales.discount',
-      'customers.view', 'customers.create', 'customers.edit', 'customers.delete',
-      'stores.view', 'stores.create', 'stores.edit', 'stores.delete',
-      'users.view', 'users.create', 'users.edit', 'users.delete',
-      'roles.view', 'roles.create', 'roles.edit', 'roles.delete',
-      'suppliers.view', 'suppliers.create', 'suppliers.edit', 'suppliers.delete',
-      'tax.view', 'tax.create', 'tax.edit',
-      'payments.view', 'payments.create', 'payments.edit',
-      'printer.view', 'printer.settings',
-      'sales-return.view', 'sales-return.create', 'sales-return.process', 'sales-return.approve',
-      'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.edit', 'purchase-orders.delete', 'purchase-orders.approve',
-      'grn.view', 'grn.create', 'grn.edit', 'grn.complete',
-      'promotions.view', 'promotions.create', 'promotions.edit', 'promotions.delete', 'promotions.apply',
-      'settings.view', 'settings.edit', 'settings.tax', 'settings.payment', 'settings.printer', 'settings.store',
-      'system.audit', 'system.backup', 'system.settings', 'system.maintenance',
-      'orders.view', 'orders.delete', 'orders.fulfill',
-      'employees.view', 'employees.create', 'employees.edit', 'employees.delete',
-      'finance.view', 'finance.manage', 'finance.approve',
-      'register.view', 'register.open', 'register.movement', 'register.close'
-    ],
+    // NOTE: 'Tenant Admin' is deliberately absent — its grant set is derived
+    // in assignPermissionsToRole (all tenant-scoped permissions) because the
+    // runtime admin bypass already gives it everything; a hardcoded list here
+    // only ever drifted stale as new permissions were added to the catalog.
 
     'Store Manager': [
       // 60 permissions - Store operations excluding 21 advanced permissions
@@ -308,24 +299,35 @@ class PermissionSeedingService {
    * @param {Object} connection - Database connection
    */
   static async assignPermissionsToRole(roleId, roleName, tenantId, connection) {
-    const permissionNames = this.ROLE_PERMISSIONS[roleName];
+    let permissions;
 
-    if (!permissionNames || permissionNames.length === 0) {
-      console.log(`⚠️ No permissions defined for role: ${roleName}`);
-      return;
+    if (roleName === 'Tenant Admin') {
+      // Tenant admins bypass tenant-scoped permission checks at runtime, so
+      // their stored grants must equal everything a tenant role can hold:
+      // the whole catalog minus the platform-scoped prefixes (which tenant
+      // grants can never satisfy anyway). Derived from the permissions table
+      // rather than a static list so new permissions can't drift out of sync.
+      [permissions] = await connection.execute(
+        `SELECT id, name FROM permissions WHERE ${this.tenantScopedWhere()}`
+      );
+    } else {
+      const permissionNames = this.ROLE_PERMISSIONS[roleName];
+
+      if (!permissionNames || permissionNames.length === 0) {
+        console.log(`⚠️ No permissions defined for role: ${roleName}`);
+        return;
+      }
+
+      const placeholders = permissionNames.map(() => '?').join(',');
+      [permissions] = await connection.execute(`
+        SELECT id, name FROM permissions
+        WHERE name IN (${placeholders})
+      `, permissionNames);
     }
 
     // Seeding is additive-only: we never DELETE permissions a tenant granted
     // themselves — backfilling a default role must not silently strip tenant
     // customizations.
-    const placeholders = permissionNames.map(() => '?').join(',');
-
-    // Insert the expected permission mappings that are missing.
-    const [permissions] = await connection.execute(`
-      SELECT id, name FROM permissions
-      WHERE name IN (${placeholders})
-    `, permissionNames);
-
     for (const permission of permissions) {
       await connection.execute(`
         INSERT IGNORE INTO role_permissions (role_id, permission_id)
@@ -439,9 +441,18 @@ class PermissionSeedingService {
 
       const [roles] = await connection.execute(query, params);
 
+      // Tenant Admin's expected set is derived (every tenant-scoped
+      // permission), not a static list — count it from the catalog.
+      const [tac] = await connection.execute(
+        `SELECT COUNT(*) AS n FROM permissions WHERE ${this.tenantScopedWhere()}`
+      );
+      const tenantScopedCount = tac[0].n;
+
       let updatedRoles = 0;
       for (const role of roles) {
-        const expectedPermissions = this.ROLE_PERMISSIONS[role.name]?.length || 0;
+        const expectedPermissions = role.name === 'Tenant Admin'
+          ? tenantScopedCount
+          : this.ROLE_PERMISSIONS[role.name]?.length || 0;
         
         if (role.current_permission_count < expectedPermissions) {
           console.log(`🔧 Backfilling permissions for role: ${role.name} (${role.current_permission_count}/${expectedPermissions})`);
