@@ -17,9 +17,41 @@ class PermissionSeedingService {
    */
   static PLATFORM_PREFIXES = ['platform.', 'tenants.', 'subscriptions.', 'plans.', 'support.'];
 
+  /**
+   * Platform-scoped names that predate the prefix convention. They gate the
+   * platform console — system-role CRUD (/api/roles/system*, GET
+   * /permissions/system), plan management, platform user registration,
+   * system logs/settings — and resolve through NULL-tenant system roles only.
+   * The remaining system.* names (system.audit, system.backup,
+   * system.settings, system.maintenance) are tenant-scoped: they guard
+   * tenant-facing routes and ARE assignable to tenant roles.
+   */
+  static PLATFORM_ONLY_NAMES = new Set([
+    'system.roles.manage',
+    'system.plans.manage',
+    'system.platform.manage',
+    'system.logs.view',
+    'system.settings.view',
+    'system.settings.edit',
+  ]);
+
+  /**
+   * The single scope rule shared by middleware classification, tenant
+   * catalog filtering, role-grant validation, and seeding — platform-scoped
+   * permissions must never be tenant-assignable or bypass-satisfiable.
+   */
+  static isPlatformScopedName(name) {
+    return !!name && (
+      this.PLATFORM_ONLY_NAMES.has(name) ||
+      this.PLATFORM_PREFIXES.some(p => name.startsWith(p))
+    );
+  }
+
   /** WHERE fragment matching every permission a tenant role CAN hold. */
   static tenantScopedWhere(column = 'name') {
-    return this.PLATFORM_PREFIXES.map(p => `${column} NOT LIKE '${p}%'`).join('\n           AND ');
+    const names = [...this.PLATFORM_ONLY_NAMES].map(n => `'${n}'`).join(', ');
+    return `${this.PLATFORM_PREFIXES.map(p => `${column} NOT LIKE '${p}%'`).join('\n           AND ')}
+           AND ${column} NOT IN (${names})`;
   }
 
   static ROLE_PERMISSIONS = {
@@ -229,6 +261,9 @@ class PermissionSeedingService {
       { name: 'system.backup', description: 'Create system backups', module: 'system' },
       { name: 'system.settings', description: 'Manage system settings', module: 'system' },
       { name: 'system.maintenance', description: 'Perform system maintenance', module: 'system' },
+      // Platform-scoped (PLATFORM_ONLY_NAMES): kept in the catalog because
+      // NULL-tenant system roles grant them via the live checkSystemPermission
+      // path — never assignable to tenant roles.
       { name: 'system.roles.manage', description: 'Manage platform-level system roles', module: 'system' },
       { name: 'system.plans.manage', description: 'Manage subscription plans', module: 'system' },
       { name: 'system.platform.manage', description: 'Platform administration', module: 'system' },

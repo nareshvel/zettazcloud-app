@@ -20,6 +20,7 @@ const RBAC_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Import other services if needed
 const roleService = require('./roleService');
+const PermissionSeedingService = require('./permissionSeedingService');
 
 /*************************************
  * CACHE INVALIDATION
@@ -709,8 +710,9 @@ const getUserPermissions = async (userId, tenantId, storeId = null) => {
  *************************************/
 
 // Permissions that must never be grantable via tenant-level overrides —
-// same boundary the role-permission write path enforces.
-const TENANT_BLOCKED_PREFIX = /^(platform|system|tenants|subscriptions|plans|support)\./;
+// same boundary the role-permission write path enforces, from the shared
+// scope classifier (platform prefixes + legacy platform-only system.* names).
+const isTenantBlockedName = (n) => PermissionSeedingService.isPlatformScopedName(n);
 
 /**
  * List a user's permission overrides for a tenant.
@@ -744,7 +746,7 @@ const setUserPermissionOverride = async ({ userId, tenantId, storeId = null, per
   // Resolve the permission — must exist and (for grants) be tenant-scoped
   const [permRows] = await pool.query('SELECT id, name FROM permissions WHERE id = ?', [permissionId]);
   if (!permRows.length) throw new Error('Permission not found');
-  if (effect === 'grant' && TENANT_BLOCKED_PREFIX.test(permRows[0].name)) {
+  if (effect === 'grant' && isTenantBlockedName(permRows[0].name)) {
     throw new Error(`System permissions cannot be granted via user overrides: ${permRows[0].name}`);
   }
 

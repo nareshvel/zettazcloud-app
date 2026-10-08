@@ -41,15 +41,12 @@ const getSystemPermissions = async (options = {}) => {
  */
 const getTenantPermissions = async (options = {}) => {
   try {
-    // The shared catalog also holds platform-scoped permissions (platform.,
-    // tenants., subscriptions., plans., support.) — isSystemPermissionName
-    // reserves those for NULL-tenant system roles, so a tenant grant can
-    // never satisfy them. Showing them in tenant role management is pure
-    // noise (and the write path rejects them anyway): filter them out.
-    const notPlatform = PermissionSeedingService.PLATFORM_PREFIXES
-      .map(p => `name NOT LIKE '${p}%'`)
-      .join(' AND ');
-    let query = `SELECT * FROM permissions WHERE ${notPlatform}`;
+    // The shared catalog also holds platform-scoped permissions —
+    // isSystemPermissionName reserves those for NULL-tenant system roles,
+    // so a tenant grant can never satisfy them. Showing them in tenant role
+    // management is pure noise (and the write path rejects them anyway):
+    // filter them out using the canonical scope rule.
+    let query = `SELECT * FROM permissions WHERE ${PermissionSeedingService.tenantScopedWhere('name')}`;
     const params = [];
 
     if (options.module) {

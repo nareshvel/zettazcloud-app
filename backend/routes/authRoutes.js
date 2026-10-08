@@ -201,7 +201,7 @@ router.post('/refresh', authMiddleware.authenticate, async (req, res) => {
  */
 router.post('/register', 
   authenticate,
-  requirePermission('system.platform.manage'),
+  requirePermission('platform.manage'),
   async (req, res) => {
     try {
       const { name, email, password } = req.body;

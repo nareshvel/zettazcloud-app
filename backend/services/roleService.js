@@ -6,6 +6,7 @@
 const { pool } = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const permissionService = require('./permissionService');
+const PermissionSeedingService = require('./permissionSeedingService');
 
 // rbacService is lazily required inside functions — it already requires this
 // module at its top level, so a top-level require here would create a cycle.
@@ -18,10 +19,10 @@ const rbacService = () => require('./rbacService');
 const normalizeRoleName = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, '_');
 const isReservedRoleName = (name) => normalizeRoleName(name) === 'tenant_admin';
 
-// Prefixes that resolve through user_system_roles / platform scope, never
-// role_permissions. Granting them to a tenant role is a dead grant at best
-// and an escalation surface if semantics ever change — reject at write time.
-const SYSTEM_PERMISSION_PREFIX = /^(platform|system|tenants|subscriptions|plans|support)\./;
+// Platform-scoped permissions resolve through NULL-tenant system roles,
+// never role_permissions. Granting them to a tenant role is a dead grant at
+// best and an escalation surface if semantics ever change — reject at write
+// time using the canonical scope rule.
 const assertTenantAssignablePermissions = async (permissionIds, conn) => {
   if (!permissionIds || !permissionIds.length) return;
   const placeholders = permissionIds.map(() => '?').join(',');
@@ -29,7 +30,7 @@ const assertTenantAssignablePermissions = async (permissionIds, conn) => {
     `SELECT name FROM permissions WHERE id IN (${placeholders})`,
     permissionIds
   );
-  const blocked = (rows || []).map(r => r.name).filter(n => SYSTEM_PERMISSION_PREFIX.test(n));
+  const blocked = (rows || []).map(r => r.name).filter(n => PermissionSeedingService.isPlatformScopedName(n));
   if (blocked.length) {
     throw new Error(`System permissions cannot be granted to tenant roles: ${blocked.join(', ')}`);
   }

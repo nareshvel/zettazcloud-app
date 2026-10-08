@@ -49,12 +49,24 @@ describe('Platform permission classification', function () {
     }
   });
 
-  it("does not classify 'system.*' as platform-scoped", function () {
-    // system.roles.manage / system.audit / system.maintenance are tenant-admin
-    // capabilities on tenant-facing routes in this codebase — folding them
-    // into the platform set would break tenant role management.
-    assert.strictEqual(isSystemPermissionName('system.roles.manage'), false);
+  it('classifies platform-only system.* names as platform-scoped', function () {
+    // These names predate the prefix convention: they gate platform-console
+    // routes (/api/roles/system* CRUD, plan writes, platform user
+    // registration, system logs/settings). Tenant role management uses
+    // roles.*, so a tenant-admin bypass must never satisfy these.
+    for (const p of [
+      'system.roles.manage', 'system.plans.manage', 'system.platform.manage',
+      'system.logs.view', 'system.settings.view', 'system.settings.edit',
+    ]) {
+      assert.strictEqual(isSystemPermissionName(p), true, `${p} must be platform-scoped`);
+    }
+  });
+
+  it('keeps genuinely tenant-scoped system.* permissions out of the platform set', function () {
+    // system.audit / system.maintenance guard tenant-facing routes (activity
+    // log, print cleanup) — they must stay assignable to tenant roles.
     assert.strictEqual(isSystemPermissionName('system.audit'), false);
+    assert.strictEqual(isSystemPermissionName('system.maintenance'), false);
   });
 });
 

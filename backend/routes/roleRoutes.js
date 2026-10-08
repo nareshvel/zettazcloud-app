@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const roleService = require('../services/roleService');
 const permissionService = require('../services/permissionService');
+const PermissionSeedingService = require('../services/permissionSeedingService');
 const { pool } = require('../config/db');
 const { authenticate, authorize, requireTenantId, requireStoreId } = require('../middleware/unifiedAuthMiddleware');
 // Import the new RBAC permission middleware
@@ -333,8 +334,7 @@ router.get('/permissions/:roleId',
         // (roleService + PUT /permissions/:roleId) rejects them, so offering
         // them in the UI would only produce 400s and dead grants.
         filteredPermissions = allPermissions.filter(permission => {
-          const permName = permission.name;
-          return !/^(platform|system|tenants|subscriptions|plans|support)\./.test(permName);
+          return !PermissionSeedingService.isPlatformScopedName(permission.name);
         });
       }
       
@@ -658,7 +658,7 @@ router.put('/permissions/:roleId',
         );
         const blocked = (rows || [])
           .map(r => r.name)
-          .filter(n => /^(platform|system|tenants|subscriptions|plans|support)\./.test(n));
+          .filter(n => PermissionSeedingService.isPlatformScopedName(n));
         if (blocked.length) {
           return res.status(400).json({
             message: `System permissions cannot be granted to tenant roles: ${blocked.join(', ')}`

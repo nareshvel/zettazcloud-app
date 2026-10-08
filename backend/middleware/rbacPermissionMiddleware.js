@@ -8,6 +8,7 @@
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
 const rbacService = require('../services/rbacService');
+const PermissionSeedingService = require('../services/permissionSeedingService');
 const { JWT_SECRET } = require('../config/constants'); // Import centralized JWT secret
 
 // Set to true to enable RBAC debug logs
@@ -38,18 +39,9 @@ const debugLog = (...args) => {
  * permissions may only come from NULL-tenant roles (system roles) — a
  * tenant-level grant or tenant-admin bypass must never satisfy them.
  */
-const isSystemPermissionName = (name) => !!name && (
-  name.startsWith('platform.') ||
-  name.startsWith('tenants.') ||
-  name.startsWith('subscriptions.') ||
-  name.startsWith('plans.') ||
-  name.startsWith('support.')
-  // NB: 'system.*' is deliberately NOT platform-scoped here — in this
-  // codebase system.roles.manage / system.audit / system.maintenance are
-  // tenant-admin-level permissions on tenant-facing routes (role management
-  // inside a workspace, activity log, print cleanup). Treating them as
-  // platform-only would lock tenant admins out of their own settings.
-);
+// The canonical scope rule lives in permissionSeedingService so catalog
+// filtering, grant validation, seeding, and this runtime check never drift.
+const isSystemPermissionName = (name) => PermissionSeedingService.isPlatformScopedName(name);
 
 /**
  * Check whether a user holds a platform/system permission through a real

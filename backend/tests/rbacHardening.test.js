@@ -153,13 +153,57 @@ describe('RBAC — tenant scoping on role writes', function () {
     );
   });
 
-  it('tenant roles cannot be granted system-prefixed permissions', function () {
+  it('tenant roles cannot be granted platform-scoped permissions', function () {
     const svc = readCode('services/roleService.js');
     assert.ok(/assertTenantAssignablePermissions/.test(svc), 'system-permission guard missing from roleService');
     const route = bodyOf(readCode('routes/roleRoutes.js'), "router.put('/permissions/:roleId'");
     assert.ok(
-      /platform|system|tenants/.test(route),
-      'the permissions write route does not reject system-prefixed permissions',
+      /isPlatformScopedName/.test(route),
+      'the permissions write route does not enforce the platform-scope classifier',
     );
+  });
+});
+
+describe('RBAC — permission scope classifier (platform vs tenant)', function () {
+  const PermissionSeedingService = require('../services/permissionSeedingService');
+  const { isSystemPermissionName } = require('../middleware/rbacPermissionMiddleware');
+
+  it('middleware delegates to the shared classifier', function () {
+    const mw = readCode('middleware/rbacPermissionMiddleware.js');
+    assert.ok(
+      /isPlatformScopedName/.test(mw),
+      'isSystemPermissionName no longer shares the canonical scope rule — the classifiers can drift apart',
+    );
+  });
+
+  it('platform-flavored system.* names resolve as platform-scoped', function () {
+    for (const name of [
+      'system.roles.manage', 'system.plans.manage', 'system.platform.manage',
+      'system.logs.view', 'system.settings.view', 'system.settings.edit',
+      'platform.manage', 'tenants.view', 'plans.create',
+    ]) {
+      assert.ok(
+        PermissionSeedingService.isPlatformScopedName(name),
+        `${name} must be platform-scoped — a tenant-admin bypass satisfying it would be an escalation`,
+      );
+      assert.ok(isSystemPermissionName(name), `${name}: middleware disagrees with the classifier`);
+    }
+  });
+
+  it('tenant-scoped system.* names stay tenant-assignable', function () {
+    for (const name of ['system.audit', 'system.backup', 'system.settings', 'system.maintenance']) {
+      assert.strictEqual(
+        PermissionSeedingService.isPlatformScopedName(name), false,
+        `${name} is tenant-scoped — blocking it would prevent legitimate custom-role grants`,
+      );
+      assert.strictEqual(isSystemPermissionName(name), false, `${name}: middleware disagrees with the classifier`);
+    }
+  });
+
+  it('tenant catalog query excludes the platform-only names', function () {
+    const where = PermissionSeedingService.tenantScopedWhere('name');
+    for (const name of PermissionSeedingService.PLATFORM_ONLY_NAMES) {
+      assert.ok(where.includes(`'${name}'`), `tenantScopedWhere does not exclude ${name}`);
+    }
   });
 });
