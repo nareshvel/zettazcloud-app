@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Loader2, Plus, RefreshCcw, BookOpen, AlertCircle, Ban, Trash2, Download,
+  Search, SlidersHorizontal, CalendarDays, ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +11,7 @@ import DatePickerInput from '@/components/ui/DatePickerInput';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
@@ -21,6 +23,12 @@ import { hasAnyPermission } from '@/utils/permissionUtils';
 import { financeService, MoneyAccount, JournalEntry } from '@/services/financeService';
 
 const ALL = '__all';
+
+type DatePreset = 'all' | 'today' | 'week' | 'month' | 'custom';
+const DATE_PRESET_LABELS: Record<DatePreset, string> = {
+  all: 'All time', today: 'Today', week: 'This week', month: 'This month', custom: 'Custom range',
+};
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
 const SOURCE_LABELS: Record<string, string> = {
   sale: 'Sale', sale_return: 'Return', outgoing_payment: 'Payment',
@@ -63,6 +71,8 @@ export default function LedgerPage() {
   const [sourceFilter, setSourceFilter] = useState(ALL);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [search, setSearch] = useState('');
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
 
   const [journalOpen, setJournalOpen] = useState(false);
   const [jDate, setJDate] = useState(new Date().toISOString().slice(0, 10));
@@ -104,6 +114,35 @@ export default function LedgerPage() {
     () => [...new Set(entries.map(e => e.sourceType))],
     [entries],
   );
+
+  const applyDatePreset = (preset: DatePreset) => {
+    setDatePreset(preset);
+    if (preset === 'custom') return;
+    const today = new Date();
+    const iso = isoDay(today);
+    if (preset === 'all') { setFromDate(''); setToDate(''); }
+    else if (preset === 'today') { setFromDate(iso); setToDate(iso); }
+    else if (preset === 'week') {
+      const start = new Date(today);
+      start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); // Monday
+      setFromDate(isoDay(start)); setToDate(iso);
+    } else if (preset === 'month') {
+      setFromDate(isoDay(new Date(today.getFullYear(), today.getMonth(), 1))); setToDate(iso);
+    }
+  };
+
+  const activeFilterCount = (accountFilter !== ALL ? 1 : 0) + (sourceFilter !== ALL ? 1 : 0);
+
+  const filteredEntries = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return entries;
+    return entries.filter(e =>
+      e.entryNumber.toLowerCase().includes(q) ||
+      (e.memo || '').toLowerCase().includes(q) ||
+      (SOURCE_LABELS[e.sourceType] || e.sourceType).toLowerCase().includes(q) ||
+      e.lines.some(l => l.accountCode.toLowerCase().includes(q) || l.accountName.toLowerCase().includes(q)),
+    );
+  }, [entries, search]);
 
   // --- journal form ---
   const jTotals = useMemo(() => ({
@@ -233,50 +272,122 @@ export default function LedgerPage() {
         title="Ledger"
         subtitle="Every money movement as a balanced journal entry — sales, refunds, payments, deposits."
         actions={(
-          <>
-            <Button
-              variant="outline"
-              title="Export filtered journal lines as CSV"
-              onClick={() => financeService.downloadLedgerCsv({
-                accountId: accountFilter !== ALL ? accountFilter : undefined,
-                sourceType: sourceFilter !== ALL ? sourceFilter : undefined,
-                from: fromDate || undefined,
-                to: toDate || undefined,
-              }).catch((e: any) => setError(e.message || 'Export failed.'))}
-            >
-              <Download className="h-4 w-4 mr-2" /> Export CSV
-            </Button>
-            {canManage && (
-              <Button onClick={openJournal}><Plus className="h-4 w-4 mr-2" /> New Journal Entry</Button>
-            )}
-          </>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading} title="Refresh">
+            <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
         )}
       />
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <Select value={accountFilter} onValueChange={setAccountFilter}>
-          <SelectTrigger className="w-48 h-11" title="Filter by account"><SelectValue placeholder="All accounts" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All accounts</SelectItem>
-            {accounts.map(a => (
-              <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger className="w-44 h-11" title="Filter by source"><SelectValue placeholder="All sources" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All sources</SelectItem>
-            {['sale', 'sale_return', 'outgoing_payment', 'layaway_payment', 'savings_payment', 'payment_received', 'manual']
-              .concat(sourceTypes.filter(t => !['sale', 'sale_return', 'outgoing_payment', 'layaway_payment', 'savings_payment', 'payment_received', 'manual'].includes(t)))
-              .map(t => <SelectItem key={t} value={t}>{SOURCE_LABELS[t] || t}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <DatePickerInput value={fromDate} onChange={setFromDate} placeholder="From" className="w-36" />
-        <DatePickerInput value={toDate} onChange={setToDate} placeholder="To" className="w-36" />
-        <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" onClick={load} disabled={loading} title="Refresh">
-          <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-        </Button>
+      <div className="flex flex-row justify-between items-center gap-2 sm:gap-4">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search entry no, memo, account…"
+            className="pl-10 h-11"
+          />
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="h-11">
+                <SlidersHorizontal className="h-4 w-4 mr-2" /> Filters
+                {activeFilterCount > 0 && (
+                  <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1.5">{activeFilterCount}</Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 space-y-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Account</Label>
+                <Select value={accountFilter} onValueChange={setAccountFilter}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="All accounts" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All accounts</SelectItem>
+                    {accounts.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Source</Label>
+                <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="All sources" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All sources</SelectItem>
+                    {['sale', 'sale_return', 'outgoing_payment', 'layaway_payment', 'savings_payment', 'payment_received', 'manual']
+                      .concat(sourceTypes.filter(t => !['sale', 'sale_return', 'outgoing_payment', 'layaway_payment', 'savings_payment', 'payment_received', 'manual'].includes(t)))
+                      .map(t => <SelectItem key={t} value={t}>{SOURCE_LABELS[t] || t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {activeFilterCount > 0 && (
+                <Button
+                  variant="ghost" size="sm" className="w-full"
+                  onClick={() => { setAccountFilter(ALL); setSourceFilter(ALL); }}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </PopoverContent>
+          </Popover>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="h-11">
+                <CalendarDays className="h-4 w-4 mr-2" /> {DATE_PRESET_LABELS[datePreset]}
+                <ChevronDown className="h-4 w-4 ml-2 text-muted-foreground" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-1.5">
+              <div className="space-y-0.5">
+                {(Object.keys(DATE_PRESET_LABELS) as DatePreset[]).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => applyDatePreset(p)}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                      datePreset === p
+                        ? 'bg-primary/10 text-primary font-medium'
+                        : 'text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {DATE_PRESET_LABELS[p]}
+                  </button>
+                ))}
+              </div>
+              {datePreset === 'custom' && (
+                <div className="space-y-2 border-t border-border mt-1.5 pt-2.5 px-1">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">From</Label>
+                    <DatePickerInput value={fromDate} onChange={setFromDate} className="mt-1 w-full" />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">To</Label>
+                    <DatePickerInput value={toDate} onChange={setToDate} className="mt-1 w-full" />
+                  </div>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+
+          <Button
+            variant="outline"
+            title="Export filtered journal lines as CSV"
+            onClick={() => financeService.downloadLedgerCsv({
+              accountId: accountFilter !== ALL ? accountFilter : undefined,
+              sourceType: sourceFilter !== ALL ? sourceFilter : undefined,
+              from: fromDate || undefined,
+              to: toDate || undefined,
+            }).catch((e: any) => setError(e.message || 'Export failed.'))}
+          >
+            <Download className="h-4 w-4 mr-2" /> Export CSV
+          </Button>
+          {canManage && (
+            <Button onClick={openJournal}><Plus className="h-4 w-4 mr-2" /> New Journal Entry</Button>
+          )}
+        </div>
       </div>
 
       {error && <div className="bg-danger-light text-danger-text p-4 rounded-lg flex items-center gap-2"><AlertCircle className="h-4 w-4" /> {error}</div>}
@@ -286,14 +397,14 @@ export default function LedgerPage() {
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-10 px-4">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading ledger…
           </div>
-        ) : entries.length === 0 ? (
+        ) : filteredEntries.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-12 text-center">
             <BookOpen className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm font-medium text-muted-foreground">No journal entries match.</p>
             <p className="text-xs text-muted-foreground mt-1">Try adjusting your filters.</p>
           </div>
         ) : (
-          <ReusableTable columns={columns} data={entries} isLoading={false} noDataMessage="No entries." />
+          <ReusableTable columns={columns} data={filteredEntries} isLoading={false} noDataMessage="No entries." />
         )}
       </div>
 

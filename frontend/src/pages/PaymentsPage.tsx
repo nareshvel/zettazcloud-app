@@ -13,6 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import ReusableTable, { ColumnDefinition } from '@/components/ReusableTable';
+import PageHeader from '@/components/common/PageHeader';
 import { useCurrency, useDateFormatting } from '@/contexts/LocalizationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
@@ -213,30 +214,40 @@ export default function PaymentsPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><HandCoins className="h-6 w-6" /> Payments</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Money out — supplier settlements, expense payments and other payouts.</p>
-        </div>
-        {canManage && (
-          <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> Record Payment</Button>
+    <div className="p-4 sm:p-6 space-y-5 min-h-screen">
+      <PageHeader
+        icon={HandCoins}
+        title="Payments"
+        subtitle="Money out — supplier settlements, expense payments and other payouts."
+        actions={(
+          <>
+            {canManage && (
+              <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> Record Payment</Button>
+            )}
+            <Button variant="outline" size="sm" onClick={load} disabled={loading} title="Refresh">
+              <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+          </>
         )}
-      </div>
+      />
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-r-4 border-r-emerald-500 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><CircleDollarSign className="h-3.5 w-3.5" /> Paid this month</div>
-          <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(summary?.thisMonth ?? 0)}</div>
-        </div>
-        <div className="rounded-xl border border-r-4 border-r-amber-500 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" /> Owed to suppliers</div>
-          <div className="text-xl font-bold mt-1 tabular-nums text-amber-600">{formatCurrency(summary?.supplierOutstanding ?? 0)}</div>
-        </div>
-        <div className="rounded-xl border border-r-4 border-r-primary/50 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5" /> Paid all-time</div>
-          <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(summary?.totalPaid ?? 0)}</div>
-        </div>
+        {[
+          { label: 'Paid this month', value: formatCurrency(summary?.thisMonth ?? 0), icon: CircleDollarSign, color: 'text-emerald-600' },
+          { label: 'Owed to suppliers', value: formatCurrency(summary?.supplierOutstanding ?? 0), icon: Building2, color: 'text-amber-600' },
+          { label: 'Paid all-time', value: formatCurrency(summary?.totalPaid ?? 0), icon: Receipt, color: 'text-primary' },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="flex items-center gap-3 rounded-xl border border-border border-r-4 border-r-primary/40 bg-card p-3.5">
+              <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
+              <div>
+                <p className="text-2xl font-bold text-foreground leading-none tabular-nums">{item.value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="flex items-center gap-2">
@@ -253,24 +264,17 @@ export default function PaymentsPage() {
             <SelectItem value="other">Other</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" onClick={load} disabled={loading} title="Refresh">
-          <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-        </Button>
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-center gap-2">
-          <AlertCircle className="h-4 w-4" /> {error}
-        </div>
-      )}
+      {error && <div className="bg-danger-light text-danger-text p-4 rounded-lg flex items-center gap-2"><AlertCircle className="h-4 w-4" /> {error}</div>}
 
-      <div className="overflow-x-auto rounded-xl border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         {loading && items.length === 0 ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-10 px-4">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading payments…
           </div>
         ) : items.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="rounded-xl border border-dashed border-border p-12 text-center">
             <HandCoins className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm font-medium text-muted-foreground">
               {search || typeFilter !== ALL ? 'No payments match the current filters.' : 'No payments recorded yet.'}

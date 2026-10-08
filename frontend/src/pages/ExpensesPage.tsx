@@ -22,6 +22,7 @@ import {
 } from '@/services/financeService';
 import AttachmentUploader from '@/components/common/AttachmentUploader';
 import DatePickerInput from '@/components/ui/DatePickerInput';
+import PageHeader from '@/components/common/PageHeader';
 
 const ALL = '__all';
 const CUSTOM = '__custom';
@@ -400,44 +401,49 @@ export default function ExpensesPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Receipt className="h-6 w-6" /> Expenses</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Vendor bills and business expenses — itemized, with tax, shipping and discounts.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={doExport} disabled={exporting} title="Download expenses as CSV">
-            {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />} Export
-          </Button>
-          {canManage && (
-            <Button variant="outline" size="icon" onClick={() => setSettingsOpen(true)} title="Finance settings">
-              <Settings className="h-4 w-4" />
+    <div className="p-4 sm:p-6 space-y-5 min-h-screen">
+      <PageHeader
+        icon={Receipt}
+        title="Expenses"
+        subtitle="Vendor bills and business expenses — itemized, with tax, shipping and discounts."
+        actions={(
+          <>
+            <Button variant="outline" onClick={doExport} disabled={exporting} title="Download expenses as CSV">
+              {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />} Export
             </Button>
-          )}
-          {canManage && (
-            <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> Add Expense</Button>
-          )}
-        </div>
-      </div>
+            {canManage && (
+              <Button variant="outline" size="icon" onClick={() => setSettingsOpen(true)} title="Finance settings">
+                <Settings className="h-4 w-4" />
+              </Button>
+            )}
+            {canManage && (
+              <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> Add Expense</Button>
+            )}
+            <Button variant="outline" size="sm" onClick={load} disabled={loading} title="Refresh">
+              <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+          </>
+        )}
+      />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-r-4 border-r-primary/50 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Wallet className="h-3.5 w-3.5" /> This month</div>
-          <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(summary?.thisMonth ?? 0)}</div>
-        </div>
-        <div className="rounded-xl border border-r-4 border-r-amber-500 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><AlertCircle className="h-3.5 w-3.5" /> Owed</div>
-          <div className="text-xl font-bold mt-1 tabular-nums text-amber-600">{formatCurrency(summary?.unpaidTotal ?? 0)}</div>
-        </div>
-        <div className="rounded-xl border border-r-4 border-r-red-500 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5" /> Overdue</div>
-          <div className="text-xl font-bold mt-1 tabular-nums text-red-600">{formatCurrency(summary?.overdueTotal ?? 0)}</div>
-        </div>
-        <div className="rounded-xl border border-r-4 border-r-emerald-500 bg-card p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5" /> All-time</div>
-          <div className="text-xl font-bold mt-1 tabular-nums">{formatCurrency(summary?.total ?? 0)}</div>
-        </div>
+        {[
+          { label: 'This month', value: formatCurrency(summary?.thisMonth ?? 0), icon: Wallet, color: 'text-primary' },
+          { label: 'Owed', value: formatCurrency(summary?.unpaidTotal ?? 0), icon: AlertCircle, color: 'text-amber-600' },
+          { label: 'Overdue', value: formatCurrency(summary?.overdueTotal ?? 0), icon: CalendarClock, color: 'text-red-600' },
+          { label: 'All-time', value: formatCurrency(summary?.total ?? 0), icon: Receipt, color: 'text-emerald-600' },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="flex items-center gap-3 rounded-xl border border-border border-r-4 border-r-primary/40 bg-card p-3.5">
+              <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
+              <div>
+                <p className="text-2xl font-bold text-foreground leading-none tabular-nums">{item.value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="flex items-center gap-2">
@@ -464,24 +470,17 @@ export default function ExpensesPage() {
             <SelectItem value="cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" onClick={load} disabled={loading} title="Refresh">
-          <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-        </Button>
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-center gap-2">
-          <AlertCircle className="h-4 w-4" /> {error}
-        </div>
-      )}
+      {error && <div className="bg-danger-light text-danger-text p-4 rounded-lg flex items-center gap-2"><AlertCircle className="h-4 w-4" /> {error}</div>}
 
-      <div className="overflow-x-auto rounded-xl border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         {loading && items.length === 0 ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-10 px-4">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading expenses…
           </div>
         ) : items.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="rounded-xl border border-dashed border-border p-12 text-center">
             <Receipt className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm font-medium text-muted-foreground">
               {search || categoryFilter !== ALL || statusFilter !== ALL
