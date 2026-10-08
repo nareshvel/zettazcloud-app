@@ -186,7 +186,7 @@ SMTP_HOST=mail.supremecluster.com
 SMTP_PORT=465
 SMTP_SECURE=true
 SMTP_USER=noreply@zettaz.com
-SMTP_PASS=***REMOVED***
+SMTP_PASS=your_smtp_password
 SMTP_FROM=noreply@zettaz.com
 
 # Frontend URL
