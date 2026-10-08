@@ -1928,6 +1928,157 @@ router.get('/reports/profit-loss', requirePermission('finance.view'), async (req
   }
 });
 
+// ---------------------------------------------------------------------------
+// Customer account payments — collect against a customer's on-account (AR)
+// balance. Every row posts Dr tender / Cr AR and decrements
+// customers.outstanding_credit, all in one transaction. Voids reverse the
+// entry and put the amount back on the balance — never hard-deleted.
+// ---------------------------------------------------------------------------
+
+// GET /api/finance/customer-payments?customer_id=&status=
+router.get('/customer-payments', requirePermission('finance.view'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const { customer_id: customerId, status } = req.query;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  try {
+    const where = ['p.tenant_id = ?'];
+    const params = [tenantId];
+    if (customerId) { where.push('p.customer_id = ?'); params.push(customerId); }
+    if (status) { where.push('p.status = ?'); params.push(status); }
+    const [rows] = await pool.query(
+      `SELECT p.*, c.first_name AS customer_first_name, c.last_name AS customer_last_name,
+              c.company_name AS customer_company, u.name AS received_by_name,
+              e.entry_number AS journal_entry_number
+         FROM customer_account_payments p
+         LEFT JOIN customers c ON c.id = p.customer_id
+         LEFT JOIN users u ON u.id = p.received_by
+         LEFT JOIN money_journal_entries e ON e.id = p.journal_entry_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY p.created_at DESC
+        LIMIT ${limit}`,
+      params
+    );
+    res.json({ status: 'success', data: { payments: rows } });
+  } catch (err) {
+    console.error('[finance] GET /customer-payments failed:', err);
+    res.status(500).json({ message: 'Failed to load customer payments.' });
+  }
+});
+
+// POST /api/finance/customer-payments — collect an on-account payment.
+// { customerId, amount, paymentMethod, reference?, notes?, storeId? }
+router.post('/customer-payments', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const userId = req.user?.id || null;
+  const storeId = req.body?.storeId || req.storeId || null;
+  const { customerId } = req.body || {};
+  const amount = round2(Number(req.body?.amount));
+  const method = String(req.body?.paymentMethod || req.body?.payment_method || 'cash').toLowerCase();
+
+  if (!customerId) return res.status(400).json({ message: 'customerId is required.' });
+  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ message: 'amount must be a positive number.' });
+
+  const conn = await getConnectionWithTimeZone();
+  try {
+    await conn.beginTransaction();
+
+    const [[customer]] = await conn.query(
+      'SELECT id, outstanding_credit FROM customers WHERE id = ? AND tenant_id = ? FOR UPDATE',
+      [customerId, tenantId]
+    );
+    if (!customer) { await conn.rollback(); return res.status(404).json({ message: 'Customer not found.' }); }
+
+    const dr = await moneyPosting.tenderAccountId(conn, tenantId, method, 'in');
+    const cr = await moneyPosting.resolveAccountId(tenantId, 'event:receivable', conn);
+    if (!dr || !cr) { await conn.rollback(); return res.status(500).json({ message: 'Ledger posting failed: money account(s) missing.' }); }
+
+    const id = uuidv4();
+    const entry = await moneyPosting.postEntry({
+      tenantId, storeId,
+      sourceType: 'payment_received', sourceId: id,
+      memo: `Payment received on account${req.body?.reference ? ` — ${req.body.reference}` : ''}`,
+      createdBy: userId,
+      lines: [
+        { accountId: dr, debit: amount, credit: 0, memo: `Tender — ${method}`, customerId },
+        { accountId: cr, debit: 0, credit: amount, memo: 'On-account payment received', customerId },
+      ],
+    }, conn);
+
+    await conn.query(
+      `INSERT INTO customer_account_payments
+         (id, tenant_id, store_id, customer_id, amount, payment_method, reference, notes, journal_entry_id, received_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, tenantId, storeId, customerId, amount, method,
+       req.body?.reference || null, req.body?.notes || null, entry.entryId, userId]
+    );
+
+    await conn.query(
+      'UPDATE customers SET outstanding_credit = outstanding_credit - ? WHERE id = ? AND tenant_id = ?',
+      [amount, customerId, tenantId]
+    );
+
+    await conn.commit();
+    res.status(201).json({
+      status: 'success',
+      data: {
+        id,
+        entryNumber: entry.entryNumber,
+        outstandingCredit: round2(Number(customer.outstanding_credit || 0) - amount),
+      },
+    });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[finance] POST /customer-payments failed:', err);
+    res.status(500).json({ message: 'Failed to record customer payment.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// POST /api/finance/customer-payments/:id/void — reverse the journal entry and
+// put the amount back on the customer's balance (payment never happened).
+router.post('/customer-payments/:id/void', requirePermission('finance.manage'), async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const userId = req.user?.id || null;
+  const reason = req.body?.reason || 'Payment voided';
+  const conn = await getConnectionWithTimeZone();
+  try {
+    await conn.beginTransaction();
+    const [[payment]] = await conn.query(
+      'SELECT * FROM customer_account_payments WHERE id = ? AND tenant_id = ? FOR UPDATE',
+      [req.params.id, tenantId]
+    );
+    if (!payment) { await conn.rollback(); return res.status(404).json({ message: 'Payment not found.' }); }
+    if (payment.status === 'voided') { await conn.rollback(); return res.status(400).json({ message: 'Payment is already voided.' }); }
+
+    if (payment.journal_entry_id) {
+      await moneyPosting.reverseEntry(payment.journal_entry_id, {
+        tenantId, memo: `Void: ${reason}`, createdBy: userId,
+      }, conn);
+    }
+
+    await conn.query(
+      'UPDATE customers SET outstanding_credit = outstanding_credit + ? WHERE id = ? AND tenant_id = ?',
+      [payment.amount, payment.customer_id, tenantId]
+    );
+    await conn.query(
+      `UPDATE customer_account_payments
+          SET status = 'voided', voided_by = ?, voided_at = NOW(), void_reason = ?
+        WHERE id = ?`,
+      [userId, reason, req.params.id]
+    );
+
+    await conn.commit();
+    res.json({ status: 'success' });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[finance] POST /customer-payments/:id/void failed:', err);
+    res.status(500).json({ message: 'Failed to void customer payment.' });
+  } finally {
+    conn.release();
+  }
+});
+
 // GET /api/finance/ledger/export.csv — flat journal-lines CSV for accountants.
 // Same filters as GET /ledger.
 router.get('/ledger/export.csv', requirePermission('finance.view'), async (req, res) => {

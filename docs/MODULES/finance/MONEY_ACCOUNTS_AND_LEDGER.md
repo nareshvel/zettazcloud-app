@@ -1,8 +1,9 @@
 # Money Accounts & Ledger (Finance Module)
 
-Status: Phases 1–5 complete and pushed (through `ab81c23`, 2026-10-13).
-Author: Devin sessions 2026-10-12 → 2026-10-13. Session-log entries under the
-same dates in `docs/AI_CONTEXT/SESSION_LOG.md` carry the per-phase detail.
+Status: Phases 1–5 + integrity fixes + customer receivables complete
+(2026-10-13). Author: Devin sessions 2026-10-12 → 2026-10-13. Session-log
+entries under the same dates in `docs/AI_CONTEXT/SESSION_LOG.md` carry the
+per-phase detail.
 
 This document is the map of the double-entry accounting layer: what exists,
 how the invariants work, where every hook lives, and the known gaps.
@@ -17,6 +18,7 @@ how the invariants work, where every hook lives, and the known gaps.
 |---|---|
 | `2026-10-12a_money_accounts_ledger.sql` | `money_accounts`, `money_journal_entries`, `money_journal_lines`, `finance_account_mappings` (+ seeds for existing tenants) |
 | `2026-10-12b_drawer_sessions.sql` | `cash_drawer_sessions`, `money_drawer_movements` |
+| `2026-10-13a_customer_account_payments.sql` | `customer_account_payments` |
 
 `money_accounts` — tenant chart of accounts. `account_type` ∈
 `asset | liability | equity | revenue | expense` drives the normal-balance
@@ -50,6 +52,23 @@ unlimited). The opening float lives **on the session row, not the ledger**
 
 `money_drawer_movements` — paid-in/paid-out rows → `journal_entry_id`.
 
+`customer_account_payments` — a payment collected against a customer's
+on-account (AR) balance. Carries `journal_entry_id` (the Dr tender / Cr AR
+entry), `status` (`posted`/`voided`), void metadata, `received_by`. Rows are
+never hard-deleted — voids reverse the journal and put the amount back on
+`customers.outstanding_credit`. Balance invariant:
+
+```
+customers.outstanding_credit
+  =  Σ on-account sales (bumped inside createSale's transaction)
+   − Σ posted customer_account_payments
+   − Σ deleted on-account sales (decremented inside the delete transaction)
+```
+
+Overpayment is allowed — the balance simply goes negative, which reads as
+"customer has credit with us". This is deliberate (tenant flexibility); the
+UI should surface a negative balance as credit owed to the customer.
+
 ## 2. Service — `backend/services/moneyPostingService.js`
 
 - `postEntry({ tenantId, storeId, entryDate, sourceType, sourceId, memo,
@@ -81,7 +100,7 @@ unlimited). The opening float lives **on the session row, not the ledger**
 
 | Event | File | Entry |
 |---|---|---|
-| Sale | `controllers/createSaleController.js` | Dr tender / Cr `event:revenue` (net) / Cr `event:tax`. Skips `$0`/`none` sales. Also writes the `payment_transactions` tender row (previously missing on this path). |
+| Sale | `controllers/createSaleController.js` | Dr tender / Cr `event:revenue` (net) / Cr `event:tax`. Skips `$0`/`none` sales. Also writes the `payment_transactions` tender row (previously missing on this path). `on_account` sales additionally require a customer on the ticket (400 without) and bump `customers.outstanding_credit` by the sale total — the tender resolves to AR via `tender:on_account`. |
 | Return/refund | `controllers/salesReturnController.js` | Dr `event:returns` + Dr `event:tax` (claw-back) / Cr refund tender. `store_credit`/`exchange` credit AR (no cash moves). |
 | Outgoing payment (create-paid, top-up, POST /payments, approve+pay) | `routes/finance.routes.js` | Dr `event:purchases` (supplier) or `event:expense` (other) / Cr tender out-account — cash basis; remap to AP for accrual. |
 | Payment void (unpaid-flip, delete, /payments/:id/void) | `routes/finance.routes.js` | `reverseEntry` mirror. |
@@ -94,7 +113,9 @@ unlimited). The opening float lives **on the session row, not the ledger**
 | Drawer close variance | `finance.routes.js` | short: Dr `OVERSHORT` / Cr drawer; over: Dr drawer / Cr `OVERSHORT`. |
 | Account transfer | `finance.routes.js` | Dr destination / Cr source, `source_type='transfer'`. |
 | Manual journal + reversal | `finance.routes.js` | `POST /journal`, `POST /journal/:id/reverse`. |
-| Sale delete | `services/saleDeletionService.js` | `reverseEntry` on the sale's posted entry inside the delete transaction — a failed reversal rolls the whole delete back. Skipped only when `money_journal_entries` doesn't exist (unmigrated DB). |
+| Sale delete | `services/saleDeletionService.js` | `reverseEntry` on the sale's posted entry inside the delete transaction — a failed reversal rolls the whole delete back. If the sale was `on_account` (raw code or a tenant payment-method row whose code resolves to it), also decrements `customers.outstanding_credit` in the same transaction. Skipped only when `money_journal_entries` doesn't exist (unmigrated DB). |
+| Customer payment received | `routes/finance.routes.js` `POST /customer-payments` | Dr tender (`tender:<method>`, `in`) / Cr AR (`event:receivable`), `source_type='payment_received'`. Inserts the `customer_account_payments` row and decrements `outstanding_credit` — journal, record, and balance in one transaction; customer row is `SELECT … FOR UPDATE` locked. |
+| Customer payment void | `routes/finance.routes.js` `POST /customer-payments/:id/void` | `reverseEntry` mirror + `outstanding_credit += amount` + payment row → `voided` (with `voided_by`/`voided_at`/`void_reason`). Double-void → 400. Payment row itself is never deleted. |
 | Layaway cancel / default | `routes/layaway.routes.js` `POST /:id/status` | Dr `LAYDEF` / Cr refund tender (default `cash`, `body.refundMethod` overrides) on `cancelled`; `defaulted` (or `body.forfeit`) → Cr `event:forfeited_deposits` mapping else `event:revenue`. `source_type='layaway_cancel'`. |
 | Savings cancel | `routes/savingsSchemes.routes.js` `POST /enrollments/:id/status` | Same shape on `total_paid`: Dr `SAVDEF` / Cr refund tender or forfeit income. `source_type='savings_cancel'`. Route now runs in a transaction (was bare `pool` calls). |
 
@@ -105,6 +126,8 @@ unlimited). The opening float lives **on the session row, not the ledger**
 `POST /journal` · `POST /journal/:id/reverse` · `GET/POST /drawer-sessions`,
 `GET /drawer-sessions/current`, `POST /drawer-sessions/:id/movements`,
 `POST /drawer-sessions/:id/close` · `POST /transfers` ·
+`GET /customer-payments?customer_id=&status=` · `POST /customer-payments` ·
+`POST /customer-payments/:id/void` ·
 `GET /reports/cash-flow` · `GET /reports/profit-loss`.
 
 Reads = `finance.view`; writes = `finance.manage`; expense approvals =
@@ -119,6 +142,7 @@ Reads = `finance.view`; writes = `finance.manage`; expense approvals =
 | `/drawer` | `DrawerPage.tsx` — open float, live expected cash, paid-in/out, close with variance preview, history |
 | `/reports/cash-flow` | `reports/CashFlowReportPage.tsx` — opening/inflow/outflow/closing per asset account + by-source summary |
 | `/reports/profit-loss` | `reports/ProfitLossReportPage.tsx` — revenue/expense sections + net line |
+| `/customers/:id` (Payments tab) | `CustomerDetailsPage.tsx` — Receive Payment dialog (amount, tender method, reference, notes), payment history with entry numbers + status, Void action, balance refresh after each op |
 
 Sidebar: Finance → Expenses · Payments · Money Accounts · Ledger · Cash Drawer.
 Reports Center has Cash Flow + Profit & Loss cards.
@@ -129,41 +153,39 @@ Reports Center has Cash Flow + Profit & Loss cards.
 
 Tracked here and in `CLAUDE.md` → Known pending work. Ordered roughly by
 impact. (Fixed 2026-10-13: sale-delete reversal, drawer-float journaling,
-layaway/savings cancel relief — see §3.)
+layaway/savings cancel relief, and the full `customers.outstanding_credit`
+lifecycle — on-account sale bump, receive-payment decrement, void restore,
+delete decrement; see §1 invariant + §3.)
 
-1. **`customers.outstanding_credit` is never written at runtime** — the
-   charge-account report reads a field only a backfill script updates. Needs
-   a real receive-payment-on-account flow (`payment_received` source type is
-   ready for it) that posts Dr tender / Cr AR **and** writes the column.
-2. **Layaway/savings *redemption* isn't relieved** — completing a layaway
+1. **Layaway/savings *redemption* isn't relieved** — completing a layaway
    (status → completed + final sale) or redeeming a matured savings scheme
    leaves the liability unless the completing sale is tendered with a method
    mapped to `LAYDEF`/`SAVDEF`. Elegant no-code path: create a payment method
    and map `tender:<code>` to the liability account — the completing sale
    then posts Dr LAYDEF / Cr SALES, which is exactly right. If tenants want a
    dedicated redeem flow, post Dr `LAYDEF`/`SAVDEF` at the status transition.
-3. **No COGS / inventory-asset accounting** — supplier purchases post to
+2. **No COGS / inventory-asset accounting** — supplier purchases post to
    `PURCH` at payment time (cash basis). P&L shows purchases, not
    cost-of-goods-sold at sale, and there is no inventory-asset account
    movement. That's an accrual-vs-cash design choice for a later phase —
    documented so nobody mistakes `totalExpenses` for COGS.
-4. **Legacy `payment.controller.js` transaction-refund path** — references
+3. **Legacy `payment.controller.js` transaction-refund path** — references
    columns absent from the current schema (`original_transaction_id`,
    `type`); canonical refunds go through `salesReturnController` (hooked).
    Decide: repair or remove.
-5. **Split tender** — `sales.payment_method` is still a single string; the
+4. **Split tender** — `sales.payment_method` is still a single string; the
    `payment_transactions` row mirrors that one tender. True multi-tender
    checkout isn't modeled.
-6. **No period locking / fiscal close** — any `finance.manage` user can post
+5. **No period locking / fiscal close** — any `finance.manage` user can post
    or reverse into any date. Add a `period_close` table + a guard in
    `postEntry` when needed.
-7. **No bank reconciliation / statement import** — transfers model the
+6. **No bank reconciliation / statement import** — transfers model the
    deposit chain but there's no match-against-statement screen. Journal CSV
    export is the accountant hand-off for now.
-8. **Tax remittance** — `TAXPAY` accrues credits on sales and debits on
+7. **Tax remittance** — `TAXPAY` accrues credits on sales and debits on
    returns forever; no remittance workflow. A manual journal entry
    (Dr TAXPAY / Cr BANK) is the current workaround.
-9. **Forfeit income has no dedicated seeded account** — cancel-forfeit posts
+8. **Forfeit income has no dedicated seeded account** — cancel-forfeit posts
    to `event:forfeited_deposits` when the tenant defines that mapping, else
    `event:revenue` (SALES). To keep forfeited deposits out of sales figures,
    the tenant creates an income account and adds the mapping key.

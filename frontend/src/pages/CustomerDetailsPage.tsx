@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Pencil, Phone, Mail, Globe, MoreHorizontal, Trash2,
   ShoppingCart, Heart, Wallet, ReceiptText, RotateCcw, CalendarClock,
-  Loader2, User,
+  Loader2, User, Banknote, Ban,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axiosInstance from '@/services/axiosConfig';
@@ -15,9 +15,21 @@ import CustomerActivityPanel from '@/components/customers/CustomerActivityPanel'
 import CustomerCrmDrawer from '@/components/crm/CustomerCrmDrawer';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import MetricCard from '@/components/MetricCard';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from '@/components/ui/dialog';
 import { useCurrency } from '@/contexts/LocalizationContext';
 import { useDateFormatting } from '@/contexts/LocalizationContext';
 import { useIndustry } from '@/hooks/useIndustry';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasAnyPermission } from '@/utils/permissionUtils';
+import { financeService, CustomerAccountPayment } from '@/services/financeService';
+import paymentService from '@/services/paymentService';
 
 // ── Types matching the /api/customers/:id/360 payload (snake_case, as returned) ─
 
@@ -128,6 +140,9 @@ const CustomerDetailsPage: React.FC = () => {
   const { formatDate, formatDateTime } = useDateFormatting();
   const { industry } = useIndustry();
 
+  const { user } = useAuth();
+  const canReceivePayment = hasAnyPermission(user, ['finance.manage']);
+
   const [customer, setCustomer] = useState<any>(null);
   const [view360, setView360] = useState<Customer360 | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -136,6 +151,16 @@ const CustomerDetailsPage: React.FC = () => {
   const [isCrmOpen, setIsCrmOpen] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // On-account payments — receive + history + void.
+  const [payOpen, setPayOpen] = useState(false);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payAmount, setPayAmount] = useState('');
+  const [payMethod, setPayMethod] = useState('cash');
+  const [payReference, setPayReference] = useState('');
+  const [payNotes, setPayNotes] = useState('');
+  const [payMethods, setPayMethods] = useState<{ code: string; name: string }[]>([]);
+  const [accountPayments, setAccountPayments] = useState<CustomerAccountPayment[] | null>(null);
 
   // getCustomer runs the row through mapCustomer, so `customer` carries both
   // snake_case (displayed below) and camelCase (what CustomerFormModal reads).
@@ -164,6 +189,77 @@ const CustomerDetailsPage: React.FC = () => {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => () => setBreadcrumbLabel(`/customers/${id}`, null), [id]);
+
+  const loadPayments = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await financeService.listCustomerPayments({ customerId: id, limit: 100 });
+      setAccountPayments(res.payments ?? []);
+    } catch {
+      setAccountPayments([]);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === 'payments' && accountPayments === null) loadPayments();
+  }, [activeTab, accountPayments, loadPayments]);
+
+  const openReceivePayment = async () => {
+    setPayAmount(String(Number(customer?.outstanding_credit) > 0 ? Number(customer.outstanding_credit).toFixed(2) : ''));
+    setPayMethod('cash');
+    setPayReference('');
+    setPayNotes('');
+    setPayOpen(true);
+    if (payMethods.length === 0) {
+      try {
+        const methods = await paymentService.getPaymentMethods();
+        // Receiving on-account payments via 'on_account' would move money
+        // from AR to AR — exclude it and any other non-collectible codes.
+        setPayMethods(
+          (methods || [])
+            .filter((m: any) => m.isActive !== false && m.is_active !== 0 && !['on_account', 'none'].includes(String(m.code || '').toLowerCase()))
+            .map((m: any) => ({ code: String(m.code || m.id).toLowerCase(), name: m.name || m.code }))
+        );
+      } catch { /* dropdown falls back to the seeded tenders below */ }
+    }
+  };
+
+  const submitPayment = async () => {
+    const amount = parseFloat(payAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter an amount greater than zero.');
+      return;
+    }
+    setPayBusy(true);
+    try {
+      const res = await financeService.receiveCustomerPayment({
+        customerId: customer.id,
+        amount,
+        paymentMethod: payMethod,
+        reference: payReference.trim() || undefined,
+        notes: payNotes.trim() || undefined,
+      });
+      toast.success(`Payment recorded — ${res.entryNumber}. New balance: ${money(res.outstandingCredit)}`);
+      setPayOpen(false);
+      setAccountPayments(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to record payment');
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
+  const voidPayment = async (paymentId: string) => {
+    try {
+      await financeService.voidCustomerPayment(paymentId, 'Voided from customer page');
+      toast.success('Payment voided — balance restored.');
+      setAccountPayments(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to void payment');
+    }
+  };
 
   const handleSaveCustomer = async (customerData: any) => {
     if (!customer?.id) return;
@@ -240,6 +336,7 @@ const CustomerDetailsPage: React.FC = () => {
     ...(canRepairs || n(view360?.repairs) ? [{ id: 'repairs', label: `Repairs (${n(view360?.repairs)})` }] : []),
     ...(isJewelry || n(view360?.old_gold) ? [{ id: 'old-gold', label: `Old Gold (${n(view360?.old_gold)})` }] : []),
     ...(isJewelry || n(view360?.savings) ? [{ id: 'savings', label: `Savings (${n(view360?.savings)})` }] : []),
+    { id: 'payments', label: `Payments${accountPayments ? ` (${accountPayments.length})` : ''}` },
     { id: 'activity', label: 'Activity' },
   ];
 
@@ -286,6 +383,15 @@ const CustomerDetailsPage: React.FC = () => {
           >
             <ShoppingCart size={16} /> New Sale
           </button>
+          {canReceivePayment && (
+            <button
+              onClick={openReceivePayment}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
+              title="Collect an on-account payment"
+            >
+              <Banknote size={16} /> Receive Payment
+            </button>
+          )}
           <button
             onClick={() => setIsCrmOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/70 text-foreground rounded-lg text-sm"
@@ -567,6 +673,38 @@ const CustomerDetailsPage: React.FC = () => {
           />
         )}
 
+        {activeTab === 'payments' && (
+          accountPayments === null ? (
+            <p className="py-10 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading payments…
+            </p>
+          ) : (
+            <MiniTable
+              headers={['Date', 'Method', 'Reference', 'Journal', 'Status', 'Amount']}
+              empty="No on-account payments collected yet."
+              rows={(accountPayments ?? []).map((p) => [
+                formatDateTime(p.createdAt),
+                <span className="capitalize">{p.paymentMethod}</span>,
+                p.reference || '—',
+                <span className="font-mono text-xs">{p.journalEntryNumber || '—'}</span>,
+                <StatusChip status={p.status} />,
+                <span className="inline-flex items-center justify-end gap-2">
+                  {money(p.amount)}
+                  {canReceivePayment && p.status === 'posted' && (
+                    <button
+                      onClick={() => voidPayment(p.id)}
+                      className="text-muted-foreground hover:text-destructive"
+                      title="Void this payment — reverses the journal entry and restores the balance"
+                    >
+                      <Ban size={14} />
+                    </button>
+                  )}
+                </span>,
+              ])}
+            />
+          )
+        )}
+
         {activeTab === 'activity' && (
           <div className="p-5">
             <CustomerActivityPanel customerId={customer.id} />
@@ -599,6 +737,60 @@ const CustomerDetailsPage: React.FC = () => {
         variant="destructive"
         onConfirm={confirmDeleteCustomer}
       />
+
+      {/* Receive on-account payment */}
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Receive Payment</DialogTitle>
+            <DialogDescription>
+              Collect a payment against {fullName}'s on-account balance
+              ({money(customer.outstanding_credit)} outstanding). Posts
+              Dr tender / Cr Accounts Receivable to the ledger.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Amount</Label>
+              <Input
+                type="number" min="0.01" step="0.01"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                className="mt-1" autoFocus
+              />
+            </div>
+            <div>
+              <Label>Payment method</Label>
+              <Select value={payMethod} onValueChange={setPayMethod}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(payMethods.length
+                    ? payMethods
+                    : [{ code: 'cash', name: 'Cash' }, { code: 'card', name: 'Card' }, { code: 'bank_transfer', name: 'Bank Transfer' }]
+                  ).map((m) => (
+                    <SelectItem key={m.code} value={m.code}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Reference <span className="text-muted-foreground">(optional)</span></Label>
+              <Input value={payReference} onChange={(e) => setPayReference(e.target.value)} placeholder="Cheque no, txn ref…" className="mt-1" />
+            </div>
+            <div>
+              <Label>Notes <span className="text-muted-foreground">(optional)</span></Label>
+              <Textarea value={payNotes} onChange={(e) => setPayNotes(e.target.value)} rows={2} className="mt-1" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayOpen(false)} disabled={payBusy}>Cancel</Button>
+            <Button onClick={submitPayment} disabled={payBusy}>
+              {payBusy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Record Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

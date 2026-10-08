@@ -308,6 +308,32 @@ class SaleDeletionService {
         }
       }
 
+      // 4c. If the deleted sale was charged on account, release the
+      // customer's outstanding_credit — the sale bumped it at creation
+      // (createSaleController) so deleting must give it back. payment_method
+      // stores the raw payment_method_id: the system code 'on_account' or a
+      // tenant payment_methods UUID whose code resolves to 'on_account'.
+      if (saleData.customer_id) {
+        let pmCode = String(saleData.payment_method || '').toLowerCase();
+        if (pmCode && pmCode !== 'on_account') {
+          try {
+            const [pmRows] = await connection.execute(
+              'SELECT code FROM payment_methods WHERE id = ? AND tenant_id = ?',
+              [saleData.payment_method, tenantId]
+            );
+            if (pmRows.length) pmCode = String(pmRows[0].code || '').toLowerCase();
+          } catch (pmErr) {
+            if (pmErr.code !== 'ER_NO_SUCH_TABLE') throw pmErr;
+          }
+        }
+        if (pmCode === 'on_account') {
+          await connection.execute(
+            'UPDATE customers SET outstanding_credit = outstanding_credit - ? WHERE id = ? AND tenant_id = ?',
+            [Number(saleData.total) || 0, saleData.customer_id, tenantId]
+          );
+        }
+      }
+
       // 5. Verify sale is completely deleted
       const [verifyRows] = await connection.execute(
         'SELECT COUNT(*) as count FROM sales WHERE id = ?',

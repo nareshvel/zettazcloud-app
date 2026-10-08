@@ -406,6 +406,12 @@ exports.createSale = async (req, res) => {
     });
   }
 
+  // Charge-account sales create a receivable — they must carry a customer or
+  // the AR entry (and outstanding_credit bump) has nowhere to land.
+  if (validationPaymentMethodId === 'on_account' && !actualCustomerId) {
+    return res.status(400).json({ message: 'Charge-account sales require a customer on the ticket.' });
+  }
+
   debugLog(`Using payment method: ${paymentMethod.name} (${validationPaymentMethodId})`);
   
   try {
@@ -900,6 +906,17 @@ exports.createSale = async (req, res) => {
         createdBy: actualCashierId,
         lines: journalLines,
       }, connection);
+
+      // Charge-account sales grow the customer's running balance — the
+      // debit lands on AR in the journal above; this mirrors it onto
+      // customers.outstanding_credit inside the same transaction so the
+      // Charge Account report and the ledger never diverge.
+      if (validationPaymentMethodId === 'on_account' && actualCustomerId) {
+        await connection.query(
+          'UPDATE customers SET outstanding_credit = outstanding_credit + ? WHERE id = ? AND tenant_id = ?',
+          [saleTotal, actualCustomerId, actualTenantId]
+        );
+      }
     }
 
     // Tender record — one row per tender on the sale. The current checkout

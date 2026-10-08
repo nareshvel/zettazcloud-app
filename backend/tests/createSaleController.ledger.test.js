@@ -183,13 +183,38 @@ describe('createSaleController — ledger posting', function () {
       const { controller, posted, tenderCalls, restore } = loadController({ jurisdiction: DOMESTIC });
       try {
         const res = fakeRes();
-        await controller.createSale(fakeReq({ ...BASE_BODY, payment_method_id: method }), res);
+        // on_account requires a customer on the ticket (receivable needs an owner).
+        const body = method === 'on_account' ? { ...BASE_BODY, customerId: 'cust-1' } : BASE_BODY;
+        await controller.createSale(fakeReq({ ...body, payment_method_id: method }), res);
         assert.strictEqual(res.statusCode, 201, `${method}: ${JSON.stringify(res.body)}`);
         assert.deepStrictEqual(tenderCalls[0], { code: method, direction: 'in' });
         // on_account posts to AR via its tender mapping — still Dr side.
         assert.strictEqual(posted[0].lines[0].accountId, 'acct-tender');
       } finally { restore(); }
     }
+  });
+
+  it('bumps customers.outstanding_credit for an on_account sale', async function () {
+    const { controller, queryLog, restore } = loadController({ jurisdiction: DOMESTIC });
+    try {
+      const res = fakeRes();
+      await controller.createSale(fakeReq({ ...BASE_BODY, payment_method_id: 'on_account', customerId: 'cust-9', tax: 0 }), res);
+      assert.strictEqual(res.statusCode, 201, JSON.stringify(res.body));
+      const bump = queryLog.find((q) => /UPDATE customers SET outstanding_credit = outstanding_credit \+/.test(q.sql));
+      assert.ok(bump, 'expected an outstanding_credit increment');
+      assert.strictEqual(bump.values[0], 100); // full sale total goes on account
+      assert.strictEqual(bump.values[1], 'cust-9');
+    } finally { restore(); }
+  });
+
+  it('rejects an on_account sale without a customer', async function () {
+    const { controller, restore } = loadController({ jurisdiction: DOMESTIC });
+    try {
+      const res = fakeRes();
+      await controller.createSale(fakeReq({ ...BASE_BODY, payment_method_id: 'on_account' }), res);
+      assert.strictEqual(res.statusCode, 400, JSON.stringify(res.body));
+      assert.match(res.body.message, /customer/i);
+    } finally { restore(); }
   });
 
   it('custom tenant payment methods resolve their own code and still post', async function () {

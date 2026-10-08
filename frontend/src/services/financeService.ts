@@ -237,6 +237,27 @@ export interface DrawerMovement {
   createdAt: string;
 }
 
+export interface CustomerAccountPayment {
+  id: string;
+  tenantId: string;
+  storeId?: string | null;
+  customerId: string;
+  amount: number;
+  paymentMethod: string;
+  reference?: string | null;
+  notes?: string | null;
+  journalEntryId?: string | null;
+  journalEntryNumber?: string | null;
+  status: 'posted' | 'voided';
+  voidedAt?: string | null;
+  voidReason?: string | null;
+  receivedByName?: string | null;
+  customerFirstName?: string | null;
+  customerLastName?: string | null;
+  customerCompany?: string | null;
+  createdAt: string;
+}
+
 export interface CashFlowAccountRow {
   id: string;
   code: string;
@@ -438,6 +459,30 @@ export const financeService = {
 
   async createTransfer(payload: { fromAccountId: string; toAccountId: string; amount: number; memo?: string; entryDate?: string; storeId?: string }) {
     return fetchApi<{ entryId: string; entryNumber: string }>('/finance/transfers', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  // ---- Customer account payments -----------------------------------------
+
+  async listCustomerPayments(params: { customerId?: string; status?: string; limit?: number } = {}) {
+    const qs = new URLSearchParams();
+    if (params.customerId) qs.set('customer_id', params.customerId);
+    if (params.status) qs.set('status', params.status);
+    if (params.limit) qs.set('limit', String(params.limit));
+    return fetchApi<{ payments: CustomerAccountPayment[] }>(`/finance/customer-payments?${qs.toString()}`);
+  },
+
+  async receiveCustomerPayment(payload: { customerId: string; amount: number; paymentMethod?: string; reference?: string; notes?: string; storeId?: string }) {
+    return fetchApi<{ id: string; entryNumber: string; outstandingCredit: number }>(
+      '/finance/customer-payments',
+      { method: 'POST', body: JSON.stringify(payload) },
+    );
+  },
+
+  async voidCustomerPayment(id: string, reason?: string) {
+    return fetchApi(`/finance/customer-payments/${id}/void`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
   },
 
   // ---- Reports -----------------------------------------------------------
