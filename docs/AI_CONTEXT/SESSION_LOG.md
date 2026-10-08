@@ -387,3 +387,31 @@ single-VPS layout — confirmed live by the user's deploy output.
 **Fixed this session:** superseded banners on `docs/ARCHITECTURE/{DEPLOYMENT_GUIDE,PRODUCTION_DEPLOYMENT_INSTRUCTIONS,production-deployment,infrastructure-architecture,frontend-deployment-steps,CODEBASE_AND_DEPLOYMENT,PM2_CACHE_FIX_NOTES}.md` and `docs/ISSUES_FIXES/TROUBLESHOOTING_SUMMARY.md`; README index marked them historical; deleted obsolete `scripts/deploy-remote.sh` + `scripts/deploy_production.sh` (old path, wrong app name `api`, port 3001); `backend/.env.example` DB default → `zettaz_dev`.
 
 **Flag for user:** `backend/.env.production.example` contains a real-looking MySQL password — if it's live, rotate it and scrub the file; example files should hold placeholders only.
+
+---
+
+## Session: 2026-10-14 (cont.) — Git history rewrite: credentials purged
+
+**What:** `git filter-repo --replace-text` scrubbed 3 committed credentials
+(MySQL password, JWT secret, SMTP password) from all history — they entered in
+the root commit `cb6124e`, so **every commit hash changed** (new HEAD `d6a25f7`).
+Force-pushed to GitHub.
+
+**Repo moved:** the GitHub remote is now `https://github.com/nareshvel/zettazcloud-app.git`
+(was `narevel/zettazcloud-app` — transferred to the `nareshvel` account). Local
+`origin` updated; no doc referenced the old org name.
+
+**IMPORTANT for the VPS:** the production clone at `/var/www/zettazcloud-app`
+still holds pre-rewrite history — `git pull --ff-only` in `deploy.sh` will fail.
+Before the next deploy, run on the VPS:
+```bash
+cd /var/www/zettazcloud-app
+git remote set-url origin https://github.com/nareshvel/zettazcloud-app.git
+git fetch origin && git reset --hard origin/main
+```
+Same for any other clones on other machines — re-clone or `fetch + reset --hard`.
+
+**Still required:** rotate the 3 credentials (MySQL `zettazcloud_systemadmin`,
+JWT_SECRET — invalidates all sessions, SMTP `noreply@zettaz.com`). History is
+clean but the secrets were live values; anyone with an old clone still has them.
+Local mirror backup with old history: `/tmp/zettazcloud-app-backup.git` (auto-cleared on reboot).
