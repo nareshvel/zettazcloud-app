@@ -262,6 +262,17 @@ const tick = async () => {
 /** Start the scheduler. Called once from server.js after DB is ready. */
 const start = () => {
   if (process.env.PLATFORM_JOBS_DISABLED === 'true' || timer) return;
+  // Seed lastAttempt from job_runs so a restart (nodemon on every file save,
+  // PM2 reloads) doesn't immediately re-fire hourly jobs that just ran.
+  pool.query(
+    `SELECT job_name, MAX(COALESCE(finished_at, started_at)) AS last_at
+       FROM job_runs GROUP BY job_name`
+  ).then(([rows]) => {
+    for (const r of rows) {
+      const s = state.get(r.job_name);
+      if (s && r.last_at) s.lastAttempt = new Date(r.last_at).getTime();
+    }
+  }).catch(() => {});
   // First tick shortly after boot (let the DB settle), then every minute.
   setTimeout(() => tick().catch(() => {}), 30 * 1000);
   timer = setInterval(() => tick().catch(() => {}), TICK_MS);
