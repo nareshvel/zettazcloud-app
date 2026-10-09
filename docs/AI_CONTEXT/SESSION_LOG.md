@@ -436,3 +436,35 @@ after each pair, LaunchAgent `KeepAlive`, per-device printer override in
 `docs/MODULES/print-module/CLOUD_MEDIATED_PRINTING_DESIGN.md` (enrollment +
 cloud job queue + per-agent printer mappings; fleet plane ~60% exists).
 Not implemented — awaiting product decision.
+
+---
+
+## Session: 2026-10-16 (cont.) — Register lifecycle + 2.3.11 installer
+
+**What:** Deferred register backlog completed (`2765cb5`):
+- `stores.require_open_register` (migration `2026-10-16a`) — when enabled,
+  `createSaleController` refuses sale creation with 409 REGISTER_REQUIRED
+  until a drawer session is open; `RegisterOpenPrompt` becomes a hard gate
+  (non-dismissable, re-checks on window focus). Toggle in General Settings →
+  Cash Register.
+- `register_close` added to `print_document_settings` enum — Z-report now
+  follows the store's delivery mode / printer / paper / copies / auto_print.
+  Printer Settings gains a third card (built-in layout; no template picker —
+  a Z-report template renderer is a separate epic).
+- Auto-print on close: Z-report routes through configured delivery when
+  `auto_print` is on.
+- Shift drill-down: report endpoint returns session sales (cap 500);
+  `RegisterReportDialog` gets a collapsible sales list.
+- Drawer-account edge: `PUT /finance/mappings` refuses `tender:cash` /
+  `event:default_in` remaps while a register session is open.
+
+Print Agent 2.3.11 installer built — signed, notarized, stapled
+(`a781a2e`), sha256 `458f3ebb…830d`. Carries all Tier 2 changes.
+
+**Verified:** 463 backend tests, 748 frontend tests, tsc clean. Deployed
+to prod earlier at `66c2fd1` — register commit `2765cb5` + version bump
+`a781a2e` pending next `deploy.sh` run.
+
+**Pending:** pkg is gitignored — must be scp'd into the newest
+`print-agent/installer/macos/build-*/` dir on the VPS before `deploy.sh`
+picks it up (see AGENTS.md build notes). Credential rotation still open.
