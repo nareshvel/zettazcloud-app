@@ -1,6 +1,6 @@
 # Zettaz Print Agent v2 — Project Status
 
-**Version:** 2.3.10 *(unreconciled discrepancy: the last version confirmed live via a real
+**Version:** 2.3.11 *(unreconciled discrepancy: the last version confirmed live via a real
 rebuild/deploy during the 2026-08-29 origin/CORS fixes was 2.3.6 — reconcile which number is
 current before relying on this field, see the note under Completed)*
 

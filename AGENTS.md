@@ -13,7 +13,7 @@
 
 ## Print Agent macOS build
 
-- Current version: 2.3.10
+- Current version: 2.3.11
 - Build script: `print-agent/installer/macos/package.sh`
 - Creates a universal (arm64 + x86_64) signed and notarized `.pkg` installer with app icon
 - Requires Developer ID Application and Developer ID Installer certificates in Keychain
