@@ -20,16 +20,16 @@ The Print Module covers:
 
 | Document | Purpose |
 |---|---|
-| [Final architecture blueprint](./PRINT_MODULE_FINAL_BLUEPRINT.md) | Final independent Zettaz Cloud Print Module architecture, job contract, templates, custom designer, devices, routing, and future app readiness |
-| [Print architecture audit](./print-architecture-audit.md) | Current-state code audit, research findings, risks, and target architecture |
-| [Implementation plan and task schedule](./print-implementation-plan.md) | Sequenced plan of action, milestones, dependencies, acceptance criteria, and rollout strategy |
-| [Receipt printing implementation](./receipt-printing-implementation.md) | Existing receipt implementation specification and historical context |
-| [Receipt printing tasks](./receipt-printing-tasks.md) | Existing receipt-specific task list; superseded by the broader implementation plan |
-| [Printer user manual](./printer-user-manual.md) | Hardware reference manual for the 80-series receipt printer |
+| [Print flow and configuration](./PRINT_FLOW_AND_CONFIGURATION.md) | **Start here.** Runtime-truth reference: document types, delivery modes, when the Print Agent is needed, label printing, fallbacks, and a decision guide |
+| [Cloud-mediated printing design](./CLOUD_MEDIATED_PRINTING_DESIGN.md) | Tier 1 proposal — enroll workstation once, cloud job queue, per-agent printer mappings; pairing becomes the fallback path |
+| [Network ESC/POS troubleshooting](./NETWORK_ESCPOS_TROUBLESHOOTING.md) | Debugging checklist for the raster-based `direct` delivery mode |
 | [Phase 1: store-level print routes](./PHASE_1_STORE_LEVEL_ROUTES.md) | Handoff for the code-complete but not fully field-proven store-level `print_document_settings` checkout path |
 | [Printer Settings UX and logic redesign](./PRINTER_SETTINGS_UX_AND_LOGIC_REDESIGN_PLAN.md) | Approved alignment decisions, runtime fixes, target UI, phased tasks, validation contract, tests, and field-proving criteria |
 | [Print Agent audit and operations](./PRINT_AGENT_AUDIT_AND_OPERATIONS.md) | Architecture, Windows/macOS installation, installer packaging, direct-vs-agent guidance, simulator QA, cleanup proposal, and release checklist |
 | [Print delivery and Agent completion plan](./PRINT_DELIVERY_AND_AGENT_COMPLETION_PLAN.md) | Canonical payload strategy, Electron-vs-Go decision, complete network ESC/POS scope, return modernization, shared Agent v2 contract, security, and certification schedule |
+| [Print job service phase 2](./PRINT_JOB_SERVICE_PHASE2.md) | Durable print-job orchestration work |
+| [Security hardening phase 1](./SECURITY_HARDENING_PHASE1.md) | Print-path security fixes |
+| [Phase 3: templates and duty-free](./PHASE3_TEMPLATES_DUTY_FREE.md) | Template/duty-free phase notes |
 | [Template inventory and maintenance](./TEMPLATE_INVENTORY_AND_MAINTENANCE.md) | Industry template inventory, conditional duty-free/tax-refund documents, return gap, and safe update/provisioning workflow |
 
 ## Status

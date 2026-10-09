@@ -14,6 +14,7 @@
 @property(nonatomic, strong) NSTimer *healthTimer;
 @property(nonatomic) BOOL wasHealthy;
 @property(nonatomic) NSInteger failedJobCount;
+@property(nonatomic, copy) NSString *runningVersion;
 @end
 
 @implementation AppDelegate
@@ -137,6 +138,7 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             if (payload) {
                 NSString *version = payload[@"version"];
+                if (version.length) self.runningVersion = version;
                 self.statusMenuItem.title = version.length ? [NSString stringWithFormat:@"Running · %@", version] : @"Running";
                 if ([payload[@"paired"] boolValue]) {
                     self.pairingMenuItem.title = @"Pairing: Connected";
@@ -205,16 +207,23 @@
 
 - (void)checkForUpdates:(id)sender {
     NSURL *url = [NSURL URLWithString:@"https://cloud.zettaz.com/downloads/manifest.json"];
-    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    // Ephemeral session: manifest.json must never come from the URL cache —
+    // a stale manifest reads as a false "up to date".
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:NSURLSessionConfiguration.ephemeralSessionConfiguration];
+    NSURLSessionDataTask *task = [session dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSDictionary *manifest = data && !error ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
         NSString *latest = manifest[@"macos"][@"version"];
-        NSString *current = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"];
+        // Compare against the version the daemon reports over /v1/health, not
+        // this bundle's plist — a newly installed pkg is only "current" once
+        // the service process is actually running it.
+        NSString *current = self.runningVersion.length ? self.runningVersion : NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"];
         BOOL available = latest.length && [latest compare:current options:NSNumericSearch] == NSOrderedDescending;
         dispatch_async(dispatch_get_main_queue(), ^{
             self.updateMenuItem.title = available ? [NSString stringWithFormat:@"Update Available · %@", latest] : @"Check for Updates";
             if (sender && !available) [self showAlert:@"Software Update" message:manifest ? @"Zettaz Print Agent is up to date." : @"Could not check for updates."];
             if (sender && available) [self openPrintAgentPage:nil];
         });
+        [session invalidateAndCancel];
     }];
     [task resume];
 }
