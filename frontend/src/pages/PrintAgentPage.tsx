@@ -41,6 +41,7 @@ import {
   testPrinter,
   getAgentPairings,
   isAgentPaired,
+  getAgentClientId,
   setAgentToken,
   clearAgentToken,
   AgentHealth,
@@ -49,6 +50,7 @@ import {
   AgentJobSummary,
   AgentClientInfo,
 } from '@/services/printAgentV2Service';
+import { getDevicePrinterOverride, setDevicePrinterOverride } from '@/services/printerService';
 
 type PageStatus = 'idle' | 'checking' | 'available' | 'paired' | 'error';
 
@@ -83,6 +85,7 @@ export default function PrintAgentPage() {
   const [health, setHealth] = useState<AgentHealth | null>(null);
   const [port, setPort] = useState<number | null>(null);
   const [pairingCode, setPairingCode] = useState('');
+  const [devicePrinter, setDevicePrinter] = useState<string | undefined>(getDevicePrinterOverride());
   const [printers, setPrinters] = useState<AgentPrinter[]>([]);
   const [diagnostics, setDiagnostics] = useState<AgentDiagnosticsResponse | null>(null);
   const [jobs, setJobs] = useState<AgentJobSummary[]>([]);
@@ -161,7 +164,7 @@ export default function PrintAgentPage() {
     setStatus('checking');
     setError(null);
     try {
-      const result = await pairAgent({ pairingCode: pairingCode.trim(), clientId: origin, origin });
+      const result = await pairAgent({ pairingCode: pairingCode.trim(), clientId: getAgentClientId(origin), origin });
       setAgentToken(result.token);
       setPort(result.port);
       setStatus('paired');
@@ -346,6 +349,13 @@ export default function PrintAgentPage() {
                     <Input type="text" inputMode="numeric" autoComplete="off" maxLength={12} value={pairingCode} onChange={(e) => { setPairingCode(e.target.value); setError(null); }} aria-label="Print Agent pairing code" className="h-11 max-w-xs bg-white font-mono text-lg tracking-[0.25em] dark:bg-slate-900" placeholder="000000" />
                     <Button type="submit" disabled={!pairingCode.trim() || isBusy} className="h-11 gap-2"><LinkIcon className="h-4 w-4" />Pair browser</Button>
                   </div>
+                  {port !== null && !health?.pairingCode && (
+                    <p className="mt-3 text-xs text-amber-800/80 dark:text-amber-200/70">
+                      Code not shown for this origin — open{' '}
+                      <a href={`http://127.0.0.1:${port}`} target="_blank" rel="noreferrer" className="font-medium underline underline-offset-2">the agent's local page</a>
+                      {' '}on this computer to read the 6-digit code.
+                    </p>
+                  )}
                 </form>
               )}
 
@@ -421,7 +431,7 @@ export default function PrintAgentPage() {
             <Card className="border-0 shadow-md ring-1 ring-slate-200 dark:ring-slate-800">
               <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Printer className="h-5 w-5 text-blue-600" />Available printers <Badge variant="secondary">{printers.length}</Badge></CardTitle></CardHeader>
               <CardContent>
-                {printers.length === 0 ? <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No printers were reported by this workstation.</div> : <ul className="space-y-2">{printers.map((printer) => <li key={printer.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-800"><div className="flex items-center justify-between gap-4"><div className="flex min-w-0 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40"><Printer className="h-4 w-4" /></span><div className="min-w-0"><p className="truncate text-sm font-semibold">{printer.name}</p><p className="truncate text-xs text-muted-foreground">{printer.id}</p></div></div><div className="flex items-center gap-2">{printer.isDefault && <Badge className="bg-emerald-600">Default</Badge>}{printer.isRaw && <Badge variant="outline">Raw</Badge>}<Button variant="outline" size="sm" disabled={testingPrinterId === printer.id} onClick={() => handleTestPrinter(printer.id)} className="h-8 gap-1.5 text-xs">{testingPrinterId === printer.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}Test Print</Button></div></div><div className="mt-3 flex flex-wrap gap-2">{(printer.contentTypes ?? []).map((type) => <Badge key={`${printer.id}-ct-${type}`} variant="outline" className="font-mono text-[10px] uppercase">{type}</Badge>)}{(printer.mediaSizes ?? []).map((size) => <Badge key={`${printer.id}-ms-${size}`} variant="secondary" className="text-[10px]">{size}</Badge>)}</div></li>)}</ul>}
+                {printers.length === 0 ? <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No printers were reported by this workstation.</div> : <ul className="space-y-2">{printers.map((printer) => <li key={printer.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-800"><div className="flex items-center justify-between gap-4"><div className="flex min-w-0 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40"><Printer className="h-4 w-4" /></span><div className="min-w-0"><p className="truncate text-sm font-semibold">{printer.name}</p><p className="truncate text-xs text-muted-foreground">{printer.id}</p></div></div><div className="flex items-center gap-2">{printer.isDefault && <Badge className="bg-emerald-600">Default</Badge>}{printer.isRaw && <Badge variant="outline">Raw</Badge>}{devicePrinter && (printer.id === devicePrinter || printer.name === devicePrinter) && <Badge className="bg-blue-600">This device</Badge>}<Button variant="outline" size="sm" title="Always use this printer on this computer, regardless of the store setting" onClick={() => { const key = printer.id || printer.name; const next = devicePrinter === key ? null : key; setDevicePrinterOverride(next); setDevicePrinter(next || undefined); }} className="h-8 gap-1.5 text-xs"><Printer className="h-3.5 w-3.5" />{devicePrinter === (printer.id || printer.name) ? 'Clear device default' : 'Use on this device'}</Button><Button variant="outline" size="sm" disabled={testingPrinterId === printer.id} onClick={() => handleTestPrinter(printer.id)} className="h-8 gap-1.5 text-xs">{testingPrinterId === printer.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}Test Print</Button></div></div><div className="mt-3 flex flex-wrap gap-2">{(printer.contentTypes ?? []).map((type) => <Badge key={`${printer.id}-ct-${type}`} variant="outline" className="font-mono text-[10px] uppercase">{type}</Badge>)}{(printer.mediaSizes ?? []).map((size) => <Badge key={`${printer.id}-ms-${size}`} variant="secondary" className="text-[10px]">{size}</Badge>)}</div></li>)}</ul>}
               </CardContent>
             </Card>
 
@@ -528,6 +538,9 @@ export default function PrintAgentPage() {
                       </div>
                       <div className="flex items-center gap-2 text-xs">
                         {pairing.paired ? <><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Paired</> : <><AlertCircle className="h-4 w-4 text-amber-500" /> Not paired</>}
+                        {pairing.clients && pairing.clients.length > 0 && (
+                          <span className="text-muted-foreground">· {pairing.clients.length} client{pairing.clients.length === 1 ? '' : 's'} connected</span>
+                        )}
                       </div>
                       <Button variant="outline" size="sm" onClick={handleDisconnect} disabled={isBusy} className="h-8 w-full gap-2"><Unlink className="h-3.5 w-3.5" />Disconnect</Button>
                     </div>

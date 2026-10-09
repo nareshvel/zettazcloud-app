@@ -64,12 +64,37 @@ func TestPrintersRequiresToken(t *testing.T) {
 
 func TestRejectsUnknownOrigin(t *testing.T) {
 	server := newTestServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/printers", nil)
 	req.Header.Set("Origin", "https://malicious.example")
 	res := httptest.NewRecorder()
 	server.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", res.Code)
+	}
+}
+
+func TestHealthOpenButHidesPairingCodeFromUnknownOrigin(t *testing.T) {
+	server := newTestServer(t)
+	// /v1/health stays reachable from any origin — a page must be able to
+	// discover the agent before it can pair — but the pairing code (the
+	// secret that grants access) is only returned to trusted origins.
+	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req.Header.Set("Origin", "https://malicious.example")
+	res := httptest.NewRecorder()
+	server.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200 for health discovery, got %d", res.Code)
+	}
+	if strings.Contains(res.Body.String(), "pairingCode") {
+		t.Fatal("pairingCode must not be exposed to an untrusted origin")
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req2.Header.Set("Origin", "http://localhost:5173")
+	res2 := httptest.NewRecorder()
+	server.Handler().ServeHTTP(res2, req2)
+	if !strings.Contains(res2.Body.String(), "pairingCode") {
+		t.Fatal("trusted origin should receive pairingCode")
 	}
 }
 
@@ -97,6 +122,61 @@ func TestPairingPersistsHashedToken(t *testing.T) {
 	}
 	if !server.configStore.Verify(token) {
 		t.Fatal("returned token was not persisted")
+	}
+}
+
+func TestPairingIsMultiClient(t *testing.T) {
+	dir := t.TempDir()
+	server := New(Config{
+		AllowedOrigins: []string{"http://localhost:5173"},
+		ConfigPath:     filepath.Join(dir, "config.json"),
+		JobStorePath:   filepath.Join(dir, "jobs.json"),
+	})
+	pairAs := func(clientID string) string {
+		body, _ := json.Marshal(map[string]string{"pairingCode": server.configStore.PairingCode(), "clientId": clientID, "origin": "http://localhost:5173"})
+		req := httptest.NewRequest(http.MethodPost, "/v1/pair", bytes.NewReader(body))
+		req.Header.Set("Origin", "http://localhost:5173")
+		res := httptest.NewRecorder()
+		server.Handler().ServeHTTP(res, req)
+		if res.Code != http.StatusCreated {
+			t.Fatalf("pair %s: expected 201, got %d: %s", clientID, res.Code, res.Body.String())
+		}
+		var response map[string]any
+		_ = json.Unmarshal(res.Body.Bytes(), &response)
+		return response["token"].(string)
+	}
+
+	// A second browser pairing must NOT invalidate the first — the old
+	// single TokenHash design invalidated every existing client on re-pair,
+	// which is what forced daily re-pairing on shared workstations.
+	tokenA := pairAs("browser-a")
+	tokenB := pairAs("browser-b")
+	if !server.configStore.Verify(tokenA) || !server.configStore.Verify(tokenB) {
+		t.Fatal("both clients should stay paired after a second pairing")
+	}
+
+	// Re-pairing the same client rotates only its own token.
+	newA := pairAs("browser-a")
+	if server.configStore.Verify(tokenA) {
+		t.Fatal("re-paired client should replace its own token")
+	}
+	if !server.configStore.Verify(newA) || !server.configStore.Verify(tokenB) {
+		t.Fatal("other clients must survive a same-client re-pair")
+	}
+
+	// Disconnect removes only the token presented.
+	req := httptest.NewRequest(http.MethodDelete, "/v1/pair", nil)
+	req.Header.Set("Authorization", "Bearer "+newA)
+	res := httptest.NewRecorder()
+	server.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.Code)
+	}
+	if server.configStore.Verify(newA) {
+		t.Fatal("disconnected client's token should stop verifying")
+	}
+	if !server.configStore.Verify(tokenB) {
+		t.Fatal("disconnect must not sign other clients out")
 	}
 }
 

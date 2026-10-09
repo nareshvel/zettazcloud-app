@@ -138,7 +138,15 @@
             if (payload) {
                 NSString *version = payload[@"version"];
                 self.statusMenuItem.title = version.length ? [NSString stringWithFormat:@"Running · %@", version] : @"Running";
-                self.pairingMenuItem.title = [payload[@"paired"] boolValue] ? @"Pairing: Connected" : @"Pairing: Ready";
+                if ([payload[@"paired"] boolValue]) {
+                    self.pairingMenuItem.title = @"Pairing: Connected";
+                } else {
+                    // Show the code right in the menu — the agent only returns
+                    // it to local/no-origin clients now, which is exactly what
+                    // this menu bar (NSURLSession, no Origin header) is.
+                    NSString *code = payload[@"pairingCode"];
+                    self.pairingMenuItem.title = code.length ? [NSString stringWithFormat:@"Pairing code: %@", code] : @"Pairing: Ready";
+                }
                 NSNumber *printerCount = payload[@"printerCount"];
                 self.printersMenuItem.title = printerCount ? [NSString stringWithFormat:@"Printers: %@", printerCount] : @"Printers: Open page to view";
                 NSDictionary *queue = payload[@"queue"];

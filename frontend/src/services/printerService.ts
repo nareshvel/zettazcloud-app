@@ -56,7 +56,31 @@ export interface LocalAgentPrinter {
   isDefault?: boolean;
 }
 
+// Per-device printer override — this workstation's choice, kept in
+// localStorage. print_document_settings.printer_name is shared across every
+// workstation on the store, so machines with different printers would
+// otherwise ping-pong the shared value back and forth. The device override
+// wins when set and still resolves locally.
+const DEVICE_PRINTER_KEY = 'zettaz-device-printer';
+export const getDevicePrinterOverride = (): string | undefined => {
+  try { return localStorage.getItem(DEVICE_PRINTER_KEY) || undefined; } catch { return undefined; }
+};
+export const setDevicePrinterOverride = (printerId: string | null): void => {
+  try {
+    if (printerId) localStorage.setItem(DEVICE_PRINTER_KEY, printerId);
+    else localStorage.removeItem(DEVICE_PRINTER_KEY);
+  } catch { /* storage unavailable */ }
+};
+
 export const resolveLocalAgentPrinterId = (configured: string | undefined, printers: LocalAgentPrinter[]): string => {
+  const deviceOverride = getDevicePrinterOverride();
+  if (deviceOverride) {
+    const match = printers.find((printer) => printer.id === deviceOverride || printer.name === deviceOverride);
+    if (match) return match.id || match.name;
+    // Override points at a printer that no longer exists on this machine —
+    // drop it rather than throwing, and continue to the configured value.
+    setDevicePrinterOverride(null);
+  }
   const value = configured?.trim();
   if (value) {
     const match = printers.find((printer) => printer.id === value || printer.name === value);

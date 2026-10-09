@@ -43,6 +43,9 @@ type Server struct {
 	fleetCancel   context.CancelFunc
 	fleetWg       sync.WaitGroup
 	fleetRunning  bool
+	pairMu        sync.Mutex
+	pairFails     int
+	pairBlocked   time.Time
 }
 
 type Job struct {
@@ -113,6 +116,7 @@ func New(config Config) *Server {
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", s.pairingPage)
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /printers", s.listPrinters)
 	mux.HandleFunc("GET /v1/health", s.health)
@@ -165,7 +169,12 @@ func (s *Server) Shutdown() error {
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	paired := s.config.Token != "" || (s.configStore != nil && s.configStore.IsPaired())
 	response := map[string]any{"status": "ok", "agent": "zettaz-print-agent", "version": Version, "platform": runtime.GOOS, "paired": paired}
-	if s.configStore != nil {
+	// The pairing code is the secret that grants a client access — it must
+	// not be broadcast to arbitrary websites. /v1/health is deliberately
+	// open to every origin (discovery before pairing), so the code only
+	// rides along for requests without an Origin (CLI/curl/the agent's own
+	// local page) or from an origin the agent already trusts.
+	if s.configStore != nil && s.originTrusted(r.Header.Get("Origin")) {
 		response["pairingCode"] = s.configStore.PairingCode()
 	}
 	if s.jobStore != nil {
@@ -428,11 +437,32 @@ func (s *Server) pair(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"message": "origin mismatch"})
 		return
 	}
+	// /v1/pair is reachable from every origin by design (a new client cannot
+	// pair otherwise), so the 6-digit code is the only credential — throttle
+	// failures to make brute-force impractical over localhost.
+	s.pairMu.Lock()
+	if time.Now().Before(s.pairBlocked) {
+		retry := int(time.Until(s.pairBlocked).Seconds()) + 1
+		s.pairMu.Unlock()
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{"message": "too many failed pairing attempts", "retryAfterSeconds": retry})
+		return
+	}
+	s.pairMu.Unlock()
 	token, err := s.configStore.Pair(request.PairingCode, request.ClientID, request.Origin)
 	if err != nil {
+		s.pairMu.Lock()
+		s.pairFails++
+		if s.pairFails >= 5 {
+			s.pairBlocked = time.Now().Add(60 * time.Second)
+			s.pairFails = 0
+		}
+		s.pairMu.Unlock()
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"message": err.Error()})
 		return
 	}
+	s.pairMu.Lock()
+	s.pairFails = 0
+	s.pairMu.Unlock()
 	writeJSON(w, http.StatusCreated, map[string]any{"token": token, "paired": true})
 }
 
@@ -445,11 +475,14 @@ func (s *Server) unpair(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"message": "pairing is unavailable"})
 		return
 	}
-	if err := s.configStore.Unpair(); err != nil {
+	// Multi-client: disconnect only the client presenting this token — other
+	// browsers/profiles paired to the same agent stay connected.
+	provided := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	if err := s.configStore.UnpairByToken(provided); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"message": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"paired": false, "pairingCode": s.configStore.PairingCode()})
+	writeJSON(w, http.StatusOK, map[string]any{"paired": false})
 }
 
 func (s *Server) getPairings(w http.ResponseWriter, r *http.Request) {
@@ -458,10 +491,12 @@ func (s *Server) getPairings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientID, origin, paired := "", "", false
+	var clients []ClientConfig
 	if s.configStore != nil {
 		clientID, origin, paired = s.configStore.Pairing()
+		clients = s.configStore.Pairings()
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"clientId": clientID, "origin": origin, "paired": paired})
+	writeJSON(w, http.StatusOK, map[string]any{"clientId": clientID, "origin": origin, "paired": paired, "clients": clients})
 }
 
 func (s *Server) diagnostics(w http.ResponseWriter, r *http.Request) {
@@ -509,6 +544,59 @@ func errorText(err error) string {
 	return err.Error()
 }
 
+// originTrusted reports whether the given Origin header value may see
+// pairing-level information. An empty Origin (CLI, curl, or the agent's own
+// local page loaded via same-origin navigation) is trusted — cross-origin
+// browser requests always carry an Origin, which must be in the baseline or
+// a pairing-grown list.
+func (s *Server) originTrusted(origin string) bool {
+	if origin == "" {
+		return true
+	}
+	for _, o := range s.config.AllowedOrigins {
+		if strings.TrimSpace(o) == origin {
+			return true
+		}
+	}
+	if s.configStore != nil {
+		for _, trusted := range s.configStore.Origins() {
+			if strings.TrimSpace(trusted) == origin {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// pairingPage is a minimal local UI served at http://127.0.0.1:<port>/ —
+// reachable by direct browser navigation (no Origin header), so users can
+// read the pairing code even when their app origin isn't trusted yet.
+func (s *Server) pairingPage(w http.ResponseWriter, r *http.Request) {
+	paired := s.config.Token != "" || (s.configStore != nil && s.configStore.IsPaired())
+	clients := 0
+	code := ""
+	if s.configStore != nil {
+		code = s.configStore.PairingCode()
+		clients = len(s.configStore.Pairings())
+	}
+	status := "Not paired"
+	if paired {
+		status = fmt.Sprintf("Paired (%d clients)", clients)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Zettaz Print Agent</title>
+<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:520px;margin:48px auto;padding:0 16px;color:#1a1a1a}
+.code{font-size:40px;font-weight:700;letter-spacing:8px;text-align:center;background:#f4f4f5;border-radius:12px;padding:18px;margin:16px 0}
+.meta{color:#666;font-size:14px}</style></head><body>
+<h1>Zettaz Print Agent</h1>
+<p class="meta">Version %s · %s · listening on %s</p>
+<p><strong>Status:</strong> %s</p>
+<h2>Pairing code</h2>
+<div class="code">%s</div>
+<p class="meta">Enter this code in the Zettaz Cloud app (Print Agent page) to connect this computer. The code changes after each pairing.</p>
+</body></html>`, Version, runtime.GOOS, s.config.Address, status, code)
+}
+
 func (s *Server) cors(next http.Handler) http.Handler {
 	// Baseline origins are fixed at process startup (ZETTAZ_AGENT_ALLOWED_ORIGINS).
 	// This used to be the ONLY list checked — meaning pairing from a new origin
@@ -544,13 +632,8 @@ func (s *Server) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		allowedNow := baseline[origin] || openPaths[r.URL.Path]
-		if !allowedNow && origin != "" && s.configStore != nil {
-			for _, trusted := range s.configStore.Origins() {
-				if strings.TrimSpace(trusted) == origin {
-					allowedNow = true
-					break
-				}
-			}
+		if !allowedNow && origin != "" {
+			allowedNow = s.originTrusted(origin)
 		}
 		if origin != "" && !allowedNow {
 			writeJSON(w, http.StatusForbidden, map[string]string{"message": "origin not allowed"})

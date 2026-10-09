@@ -6,6 +6,7 @@
  */
 
 export const PRINT_AGENT_TOKEN_KEY = 'zettaz-print-agent-token';
+export const PRINT_AGENT_CLIENT_KEY = 'zettaz-print-agent-client';
 export const PRINT_AGENT_HOST = '127.0.0.1';
 export const PRINT_AGENT_PORTS = [9419, 9420];
 
@@ -91,10 +92,17 @@ export interface AgentClientInfo {
   paired: boolean;
 }
 
+export interface AgentPairedClient {
+  origin?: string;
+  pairedAt?: string;
+}
+
 export interface AgentPairingResponse {
   clientId: string;
   origin: string;
   paired: boolean;
+  // Every currently-paired client — the agent holds one token per clientId.
+  clients?: AgentPairedClient[];
 }
 
 export interface AgentTestPrintResponse {
@@ -366,4 +374,19 @@ export async function getAgentPairings(port: number): Promise<AgentPairingRespon
 
 export function isAgentPaired(): boolean {
   return Boolean(getAgentToken());
+}
+
+/**
+ * Stable per-browser client identity for pairing. Two browsers on the same
+ * machine share the origin, so using the origin as clientId made them fight
+ * over one pairing slot — the second pair invalidated the first. A persisted
+ * UUID keeps every browser's token independent.
+ */
+export function getAgentClientId(origin: string): string {
+  let id = getStoredItem(PRINT_AGENT_CLIENT_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    setStoredItem(PRINT_AGENT_CLIENT_KEY, id);
+  }
+  return `${origin}#${id.slice(0, 8)}`;
 }

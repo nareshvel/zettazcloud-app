@@ -31,6 +31,8 @@ install_agent() {
   </array>
   <key>RunAtLoad</key>
   <true/>
+  <key>KeepAlive</key>
+  <true/>
   <key>StandardOutPath</key>
   <string>$LOG_DIR/stdout.log</string>
   <key>StandardErrorPath</key>
