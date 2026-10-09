@@ -49,6 +49,10 @@ const GeneralSettings: React.FC = () => {
   const [initialDutyFree, setInitialDutyFree] = useState<boolean>(false);
   const [dutyFreeAvailable, setDutyFreeAvailable] = useState<boolean>(false);
 
+  // Register enforcement — a stores.require_open_register flag; on, the POS
+  // cannot complete a sale until a drawer session is open for this store.
+  const [requireRegister, setRequireRegister] = useState<boolean>(false);
+
   // Document numbering. Two independent decisions: whether a gapless number is
   // ISSUED, and whether it is PRINTED — and printing differs by document,
   // because a till slip is identified by its barcode while an invoice is
@@ -68,6 +72,7 @@ const GeneralSettings: React.FC = () => {
         address: store.address || '',
         logoUrl: store.logoUrl || ''
       });
+      setRequireRegister(!!store.requireOpenRegister);
     }
   }, [store]);
 
@@ -157,6 +162,7 @@ const GeneralSettings: React.FC = () => {
       const updatedSettings: Partial<Store> = {
         id: store.id,
         tenantId: store.tenantId,
+        requireOpenRegister: requireRegister,
         ...generalSettings
       };
       await updateStore(updatedSettings);
@@ -461,6 +467,29 @@ const GeneralSettings: React.FC = () => {
               </label>
             </div>
           )}
+
+          {/* Register enforcement — a store policy, not tied to duty-free. */}
+          <div className="pt-1">
+            <p className={labelCls}>
+              {tSettings('general.register_section', 'Cash Register')}
+            </p>
+            <label htmlFor="requireOpenRegister" className="flex items-start gap-3 mt-2 cursor-pointer">
+              <input
+                id="requireOpenRegister"
+                type="checkbox"
+                checked={requireRegister}
+                disabled={!canEdit}
+                onChange={(e) => setRequireRegister(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-border text-primary focus:ring-2 focus:ring-primary/40"
+              />
+              <span className="text-sm text-gray-700 dark:text-foreground">
+                {tSettings('general.require_register', 'Require an open register before selling')}
+                <span className="block mt-0.5 text-xs text-gray-500 dark:text-muted-foreground">
+                  {tSettings('general.require_register_help', 'When on, the POS cannot complete a sale until a register session is open for this store — cash accountability enforced at the till. When off, the open-register prompt is a dismissable reminder.')}
+                </span>
+              </span>
+            </label>
+          </div>
         </div>
         <div className="px-5 py-4 bg-gray-50 dark:bg-muted/50 border-t border-gray-100 dark:border-border flex items-center justify-between gap-3">
           {!canEdit && (

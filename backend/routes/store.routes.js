@@ -505,7 +505,7 @@ router.get('/settings', async (req, res) => {
         currency_code, tenant_id, date_format, time_format, timezone,
         language_code, country_code, locale_code, number_format,
         decimal_precision, measurement_system, allow_negative_stock, default_tax_basis, tax_config, quickstart_progress, theme,
-        industry_code
+        industry_code, require_open_register
       FROM stores
       WHERE tenant_id = ?
     `;
@@ -598,6 +598,9 @@ router.get('/settings', async (req, res) => {
       timezone: store.timezone || 'UTC',
       measurementSystem: store.measurement_system || 'metric',
       allowNegativeStock: !!store.allow_negative_stock,
+      // When on, the POS refuses sale completion until a drawer session is
+      // open for the store (enforced server-side in createSaleController).
+      requireOpenRegister: !!store.require_open_register,
       defaultTaxBasis: store.default_tax_basis || 'EXCLUSIVE', // Ensure this is included
       tax_config: taxConfig, // Add the parsed tax_config
       quickstartProgress: quickstartProgress, // Add the parsed quickstart_progress
@@ -697,6 +700,12 @@ router.patch('/settings', authenticate, requireTenantId, requirePermission('stor
       dbStoreData.allow_negative_stock = storeData.allowNegativeStock ? 1 : 0;
     } else if (storeData.allow_negative_stock !== undefined) {
       dbStoreData.allow_negative_stock = storeData.allow_negative_stock ? 1 : 0;
+    }
+
+    if (storeData.requireOpenRegister !== undefined) {
+      dbStoreData.require_open_register = storeData.requireOpenRegister ? 1 : 0;
+    } else if (storeData.require_open_register !== undefined) {
+      dbStoreData.require_open_register = storeData.require_open_register ? 1 : 0;
     }
 
     // Handle defaultTaxBasis (pricing includes tax or not)

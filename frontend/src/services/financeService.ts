@@ -245,11 +245,22 @@ export interface DrawerTenderTotal {
   txns: number;
 }
 
+export interface DrawerSessionSale {
+  id: string;
+  documentNumber?: string | null;
+  total: number;
+  createdAt: string;
+  status: string;
+  cashierName?: string | null;
+  tenderIds?: string | null;
+}
+
 export interface DrawerReport {
   reportType: 'x' | 'z';
   session: DrawerSession;
   movements: DrawerMovement[];
   tenders: DrawerTenderTotal[];
+  sales: DrawerSessionSale[];
   salesCount: number;
   grossSales: number;
   expectedCashLive: number;

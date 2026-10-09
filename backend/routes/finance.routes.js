@@ -1294,6 +1294,28 @@ router.put('/mappings/:key', requirePermission('finance.manage'), async (req, re
     );
     if (!acct.length) return res.status(400).json({ message: 'Unknown or inactive account' });
 
+    // An open drawer session binds its account at open time, but cash sale
+    // legs resolve tender:cash (falling back to event:default_in) at sale
+    // time — re-pointing either key mid-session would silently divert new
+    // cash legs away from the account the drawer is measuring, so the
+    // variance at close would be wrong. Require a quiet register first.
+    if (key === 'tender:cash' || key === 'event:default_in') {
+      try {
+        const [openSessions] = await pool.query(
+          `SELECT id FROM cash_drawer_sessions WHERE tenant_id = ? AND status = 'open' LIMIT 1`,
+          [tenantId]
+        );
+        if (openSessions.length) {
+          return res.status(409).json({
+            message: `Cannot remap ${key} while a register session is open — close open sessions first.`,
+          });
+        }
+      } catch (sessionErr) {
+        // Drawer module not migrated yet — no sessions can exist.
+        if (sessionErr.code !== 'ER_NO_SUCH_TABLE') throw sessionErr;
+      }
+    }
+
     const [existing] = await pool.query(
       'SELECT id FROM finance_account_mappings WHERE tenant_id = ? AND mapping_key = ?',
       [tenantId, key]
@@ -1832,6 +1854,25 @@ router.get('/drawer-sessions/:id/report', requirePermission('register.view'), as
       [tenantId, session.store_id, session.opened_at, windowEnd]
     );
 
+    // Shift drill-down: the individual sales behind the tender totals.
+    // Capped — a very long shift still gets a full report; the list is for
+    // audit/spot-checks, not a sales export.
+    const [salesRows] = await pool.query(
+      `SELECT s.id, s.document_number, s.total, s.created_at, s.status,
+              u.name AS cashier_name,
+              GROUP_CONCAT(DISTINCT pt.payment_method_id ORDER BY pt.payment_method_id SEPARATOR ', ') AS tender_ids
+         FROM sales s
+         LEFT JOIN users u ON u.id = s.cashier_id
+         LEFT JOIN payment_transactions pt
+                ON pt.sale_id = s.id AND pt.tenant_id = s.tenant_id AND pt.status = 'COMPLETED'
+        WHERE s.tenant_id = ? AND s.store_id = ? AND s.status = 'completed'
+          AND s.created_at BETWEEN ? AND ?
+        GROUP BY s.id
+        ORDER BY s.created_at
+        LIMIT 500`,
+      [tenantId, session.store_id, session.opened_at, windowEnd]
+    );
+
     const expected = session.status === 'closed'
       ? Number(session.expected_cash)
       : await drawerExpectedCash(pool, tenantId, session);
@@ -1843,6 +1884,7 @@ router.get('/drawer-sessions/:id/report', requirePermission('register.view'), as
         session,
         movements,
         tenders,
+        sales: salesRows,
         salesCount: Number(salesAgg[0].sale_count),
         grossSales: Number(salesAgg[0].gross),
         expectedCashLive: expected,

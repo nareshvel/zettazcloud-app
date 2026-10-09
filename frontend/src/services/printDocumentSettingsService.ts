@@ -9,7 +9,10 @@
 
 import { fetchApi } from './api';
 
-export type PrintDocumentType = 'receipt' | 'invoice';
+// 'register_close' configures Z/X register-report delivery — never a checkout
+// document, so the sale-format fields keep the narrower SaleDocumentType.
+export type PrintDocumentType = 'receipt' | 'invoice' | 'register_close';
+export type SaleDocumentType = 'receipt' | 'invoice';
 export type PrintDeliveryMode = 'browser' | 'direct' | 'local_agent';
 
 export interface PrintDocumentSetting {
@@ -28,12 +31,13 @@ export interface PrintDocumentSetting {
 
 export interface PrintDocumentSettingsResponse {
   settings: PrintDocumentSetting[];
-  defaultSaleDocumentType: PrintDocumentType;
+  defaultSaleDocumentType: SaleDocumentType;
 }
 
 export interface SavePrintDocumentSettingsPayload {
-  defaultSaleDocumentType: PrintDocumentType;
-  settings: Record<PrintDocumentType, PrintDocumentSetting>;
+  defaultSaleDocumentType: SaleDocumentType;
+  // register_close may be absent — the backend keeps its defaults then.
+  settings: Partial<Record<PrintDocumentType, PrintDocumentSetting>>;
 }
 
 export const resolveDocumentAction = (
@@ -86,9 +90,9 @@ export const updatePrintDocumentSetting = (
 /** Whether a completed sale at this store prints as a receipt or an invoice. */
 export const updateDefaultSaleDocumentType = (
   storeId: string,
-  defaultSaleDocumentType: PrintDocumentType,
-): Promise<{ defaultSaleDocumentType: PrintDocumentType }> =>
-  fetchApi<{ defaultSaleDocumentType: PrintDocumentType }>(
+  defaultSaleDocumentType: SaleDocumentType,
+): Promise<{ defaultSaleDocumentType: SaleDocumentType }> =>
+  fetchApi<{ defaultSaleDocumentType: SaleDocumentType }>(
     `/settings/print-document-settings/${storeId}/default-format`,
     {
       method: 'PUT',

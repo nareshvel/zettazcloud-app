@@ -18,8 +18,14 @@ const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/db');
 const printerDeviceService = require('../services/printerDeviceService');
 
-const DOCUMENT_TYPES = ['receipt', 'invoice'];
+// register_close configures delivery of the Z/X register report — it is not
+// a checkout document, so it can never be the sale default and its body is a
+// built-in report layout (template_id stays null until a register_close
+// template type exists in print_templates).
+const DOCUMENT_TYPES = ['receipt', 'invoice', 'register_close'];
+const SALE_DOC_TYPES = ['receipt', 'invoice'];
 const DELIVERY_MODES = ['browser', 'direct', 'local_agent'];
+const THERMAL_MEDIA = ['58mm', '80mm', '110mm'];
 
 function defaultsFor(storeId, documentType) {
   return {
@@ -32,7 +38,9 @@ function defaultsFor(storeId, documentType) {
     media_size: documentType === 'invoice' ? 'a4' : '80mm',
     template_id: null,
     copies: 1,
-    enabled: documentType === 'receipt', // a store gets a working receipt out of the box; invoice printing is opt-in
+    // a store gets a working receipt out of the box; invoice is opt-in;
+    // register_close is enabled — the report is built-in, nothing to publish
+    enabled: documentType !== 'invoice',
     auto_print: false,
   };
 }
@@ -93,10 +101,10 @@ exports.updateDefaultSaleDocumentType = async (req, res) => {
     const tenantId = req.user?.tenant_id || req.query?.tenant_id || req.headers['x-tenant-id'] || null;
     const { defaultSaleDocumentType } = req.body;
 
-    if (!DOCUMENT_TYPES.includes(defaultSaleDocumentType)) {
+    if (!SALE_DOC_TYPES.includes(defaultSaleDocumentType)) {
       return res.status(400).json({
         status: 'error',
-        message: `Unknown defaultSaleDocumentType "${defaultSaleDocumentType}". Expected one of: ${DOCUMENT_TYPES.join(', ')}`,
+        message: `Unknown defaultSaleDocumentType "${defaultSaleDocumentType}". Expected one of: ${SALE_DOC_TYPES.join(', ')}`,
       });
     }
 
@@ -126,10 +134,13 @@ exports.updateAllPrintDocumentSettings = async (req, res) => {
   const settings = body.settings;
   const errors = {};
 
-  if (!DOCUMENT_TYPES.includes(defaultSaleDocumentType)) {
+  if (!SALE_DOC_TYPES.includes(defaultSaleDocumentType)) {
     errors.defaultSaleDocumentType = 'Choose Receipt or Invoice.';
   }
   for (const type of DOCUMENT_TYPES) {
+    // register_close is optional — older clients don't send it; leaving it
+    // unset just keeps the built-in defaults.
+    if (type === 'register_close') continue;
     if (!settings?.[type]) errors[type] = `Missing ${type} settings.`;
   }
   if (settings?.[defaultSaleDocumentType] && !settings[defaultSaleDocumentType].enabled) {
@@ -154,6 +165,7 @@ exports.updateAllPrintDocumentSettings = async (req, res) => {
       const result = {};
       for (const type of DOCUMENT_TYPES) {
         const raw = settings[type];
+        if (!raw) continue; // optional types (register_close) may be absent
         const input = {
           ...raw,
           storeId: raw.storeId ?? raw.store_id,
@@ -167,8 +179,9 @@ exports.updateAllPrintDocumentSettings = async (req, res) => {
         };
         const routeErrors = {};
         const deliveryMode = input.deliveryMode;
+        const isRegisterClose = type === 'register_close';
         const mediaSize = input.mediaSize || (type === 'invoice' ? 'a4' : `${Number(input.paperWidth) || 80}mm`);
-        const allowedMedia = type === 'invoice' ? ['a4', 'letter'] : ['58mm', '80mm', '110mm'];
+        const allowedMedia = type === 'invoice' ? ['a4', 'letter'] : THERMAL_MEDIA;
         const compatibleTypes = type === 'invoice' ? ['invoice', 'jewelry_invoice'] : ['receipt'];
         const copies = Number(input.copies);
 
@@ -176,7 +189,7 @@ exports.updateAllPrintDocumentSettings = async (req, res) => {
         if (!allowedMedia.includes(mediaSize)) routeErrors.mediaSize = `Choose one of: ${allowedMedia.join(', ')}.`;
         if (!Number.isInteger(copies) || copies < 1 || copies > 10) routeErrors.copies = 'Copies must be between 1 and 10.';
         if (deliveryMode === 'direct') {
-          if (type !== 'receipt') {
+          if (type === 'invoice') {
             routeErrors.deliveryMode = 'Network ESC/POS delivery is supported only for receipt routes.';
           } else if (!input.printerName) {
             routeErrors.printerName = 'Enter the network printer address as host:port.';
@@ -189,7 +202,9 @@ exports.updateAllPrintDocumentSettings = async (req, res) => {
           }
         }
 
-        let templateId = input.templateId || null;
+        // register_close prints a built-in report layout — no template to
+        // pick or validate. Force null so a stale id can't be stored.
+        let templateId = isRegisterClose ? null : (input.templateId || null);
         if (templateId) {
           const placeholders = compatibleTypes.map(() => '?').join(',');
           const [templates] = await connection.query(
@@ -200,7 +215,7 @@ exports.updateAllPrintDocumentSettings = async (req, res) => {
             [templateId, tenantId, ...compatibleTypes, storeId],
           );
           if (!templates.length) routeErrors.templateId = 'Select a compatible published template for this store.';
-        } else if (input.enabled) {
+        } else if (input.enabled && !isRegisterClose) {
           routeErrors.templateId = 'Select a published template.';
         }
 
@@ -211,7 +226,7 @@ exports.updateAllPrintDocumentSettings = async (req, res) => {
 
         const paperWidth = type === 'invoice'
           ? (mediaSize === 'letter' ? 216 : 210)
-          : Number(mediaSize.replace('mm', ''));
+          : Number(String(mediaSize).replace('mm', '')) || 80;
         const id = input.id || uuidv4();
         await connection.query(
           `INSERT INTO print_document_settings
@@ -249,7 +264,7 @@ exports.updateAllPrintDocumentSettings = async (req, res) => {
 
     return res.json({ status: 'success', message: 'Printer settings saved', data: {
       defaultSaleDocumentType,
-      settings: DOCUMENT_TYPES.map((type) => normalized[type]),
+      settings: DOCUMENT_TYPES.map((type) => normalized[type]).filter(Boolean),
     } });
   } catch (error) {
     const status = error.statusCode || 500;

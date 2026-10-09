@@ -72,7 +72,7 @@ describe('printDocumentSettingsController — pool.query() return shape', functi
       assert.strictEqual(res.statusCode, 200, `expected 200, got ${res.statusCode}: ${JSON.stringify(res.body)}`);
       assert.strictEqual(res.body.status, 'success');
       assert.ok(Array.isArray(res.body.data.settings), 'settings must be an array');
-      assert.strictEqual(res.body.data.settings.length, 2, 'one row per document type (receipt, invoice)');
+      assert.strictEqual(res.body.data.settings.length, 3, 'one row per document type (receipt, invoice, register_close)');
       const receiptRow = res.body.data.settings.find((s) => s.document_type === 'receipt');
       assert.strictEqual(receiptRow.id, 'row-1', 'the real existing row must be used, not a default');
       assert.strictEqual(res.body.data.defaultSaleDocumentType, 'receipt');
@@ -93,7 +93,7 @@ describe('printDocumentSettingsController — pool.query() return shape', functi
       await controller.getPrintDocumentSettings(req, res);
 
       assert.strictEqual(res.statusCode, 200, `expected 200, got ${res.statusCode}: ${JSON.stringify(res.body)}`);
-      assert.strictEqual(res.body.data.settings.length, 2);
+      assert.strictEqual(res.body.data.settings.length, 3);
       assert.strictEqual(res.body.data.defaultSaleDocumentType, 'receipt');
     } finally {
       restore();

@@ -11,9 +11,12 @@ import {
   savePrintDocumentSettings,
   type PrintDocumentSetting,
   type PrintDocumentType,
+  type SaleDocumentType,
   type PrintDeliveryMode,
 } from '../../services/printDocumentSettingsService';
 import { buildPrintableHtml } from '../../utils/printTemplateRenderer';
+import { buildRegisterReportHtml, sampleRegisterReport, REGISTER_REPORT_CSS } from '../../utils/registerReportHtml';
+import { useCurrency, useDateFormatting } from '../../contexts/LocalizationContext';
 import { FileText, Receipt, CheckCircle2, AlertTriangle, ChevronDown, Printer, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -45,7 +48,9 @@ const emptySetting = (storeId: string, documentType: PrintDocumentType): PrintDo
   mediaSize: documentType === 'invoice' ? 'a4' : '80mm',
   templateId: null,
   copies: 1,
-  enabled: documentType === 'receipt',
+  // receipt + register_close work out of the box (built-in report body needs
+  // no template); invoice printing stays opt-in.
+  enabled: documentType !== 'invoice',
   autoPrint: false,
 });
 
@@ -53,6 +58,8 @@ const PrinterSettings: React.FC = () => {
   const { store } = useStore();
   const { user } = useAuth();
   const { t } = useI18n();
+  const { formatCurrency } = useCurrency();
+  const { formatDateTime } = useDateFormatting();
 
   // Save path is PUT /print-document-settings → settings.printer.
   const canEdit = hasPermission(user, 'settings.printer');
@@ -61,9 +68,10 @@ const PrinterSettings: React.FC = () => {
   const [docSettings, setDocSettings] = useState<DocSettingsByType>({
     receipt: emptySetting('', 'receipt'),
     invoice: emptySetting('', 'invoice'),
+    register_close: emptySetting('', 'register_close'),
   });
-  const [saleFormat, setSaleFormat] = useState<PrintDocumentType>('receipt');
-  const [templatesByType, setTemplatesByType] = useState<Record<PrintDocumentType, PrintTemplate[]>>({ receipt: [], invoice: [] });
+  const [saleFormat, setSaleFormat] = useState<SaleDocumentType>('receipt');
+  const [templatesByType, setTemplatesByType] = useState<Record<PrintDocumentType, PrintTemplate[]>>({ receipt: [], invoice: [], register_close: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState('');
@@ -88,9 +96,11 @@ const PrinterSettings: React.FC = () => {
 
       const receipt = docs.settings.find((s) => s.documentType === 'receipt') || emptySetting(storeId, 'receipt');
       const invoice = docs.settings.find((s) => s.documentType === 'invoice') || emptySetting(storeId, 'invoice');
+      const registerClose = docs.settings.find((s) => s.documentType === 'register_close') || emptySetting(storeId, 'register_close');
       const byType: DocSettingsByType = {
         receipt: { ...receipt, mediaSize: receipt.mediaSize || (`${receipt.paperWidth || 80}mm` as PrintDocumentSetting['mediaSize']) },
         invoice: { ...invoice, mediaSize: invoice.mediaSize || 'a4' },
+        register_close: { ...registerClose, mediaSize: registerClose.mediaSize || '80mm' },
       };
       setDocSettings(byType);
       setSaleFormat(docs.defaultSaleDocumentType);
@@ -113,12 +123,12 @@ const PrinterSettings: React.FC = () => {
 
   // Reset workstation-specific agent state when no route uses the Local Agent.
   useEffect(() => {
-    const usesLocalAgent = docSettings.receipt.deliveryMode === 'local_agent' || docSettings.invoice.deliveryMode === 'local_agent';
+    const usesLocalAgent = docSettings.receipt.deliveryMode === 'local_agent' || docSettings.invoice.deliveryMode === 'local_agent' || docSettings.register_close.deliveryMode === 'local_agent';
     if (!usesLocalAgent) {
       setAgentAvailable(null);
       setAgentPrinters([]);
     }
-  }, [docSettings.receipt.deliveryMode, docSettings.invoice.deliveryMode]);
+  }, [docSettings.receipt.deliveryMode, docSettings.invoice.deliveryMode, docSettings.register_close.deliveryMode]);
 
   const detectLocalAgent = async () => {
     setAgentAvailable(null);
@@ -170,6 +180,7 @@ const PrinterSettings: React.FC = () => {
       const nextSettings = {
         receipt: saved.settings.find((s) => s.documentType === 'receipt') || docSettings.receipt,
         invoice: saved.settings.find((s) => s.documentType === 'invoice') || docSettings.invoice,
+        register_close: saved.settings.find((s) => s.documentType === 'register_close') || docSettings.register_close,
       };
       setDocSettings(nextSettings);
       setSaleFormat(saved.defaultSaleDocumentType);
@@ -185,6 +196,27 @@ const PrinterSettings: React.FC = () => {
 
   const handleTestPrint = async (documentType: PrintDocumentType) => {
     const setting = docSettings[documentType];
+    if (documentType === 'register_close') {
+      // No template — print a sample Z-report through the configured route.
+      setTestingRoute(documentType);
+      try {
+        const html = buildRegisterReportHtml(sampleRegisterReport(store?.name || 'Store'), formatCurrency, formatDateTime);
+        await printReceipt(html, REGISTER_REPORT_CSS, {
+          store_id: store?.id || '',
+          enabled: true,
+          auto_print: true,
+          print_mode: setting.deliveryMode === 'local_agent' ? 'local-agent' : setting.deliveryMode,
+          printer_name: setting.printerName || undefined,
+          paper_width: setting.paperWidth,
+        }, undefined, store?.id, true, setting.copies || 1);
+        toast.success('Sample register report sent.');
+      } catch (error: any) {
+        toast.error(error?.message || 'Failed to test the register report route.');
+      } finally {
+        setTestingRoute(null);
+      }
+      return;
+    }
     const template = templatesByType[documentType].find((item) => item.id === setting.templateId);
     if (!template) {
       setFieldErrors((prev) => ({ ...prev, [`${documentType}.templateId`]: 'Select a published template before testing.' }));
@@ -252,6 +284,8 @@ const PrinterSettings: React.FC = () => {
   const renderDeliverySection = (documentType: PrintDocumentType) => {
     const s = docSettings[documentType];
     const isReceipt = documentType === 'receipt';
+    const isRegisterClose = documentType === 'register_close';
+    const isThermal = isReceipt || isRegisterClose;
     const templates = templatesByType[documentType];
     const usesLocalAgent = s.deliveryMode === 'local_agent';
     const needsPrinterName = s.deliveryMode === 'direct' || s.deliveryMode === 'local_agent';
@@ -262,12 +296,16 @@ const PrinterSettings: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-800 dark:text-foreground">
             {isReceipt
               ? tSettings('printer.receipt_title', 'Sales Receipt & Refunds')
-              : tSettings('printer.invoice_title', 'Invoices')}
+              : isRegisterClose
+                ? tSettings('printer.register_close_title', 'Register Close Report (Z)')
+                : tSettings('printer.invoice_title', 'Invoices')}
           </h3>
           <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">
             {isReceipt
               ? tSettings('printer.receipt_desc', 'Thermal receipt printer, used for sales and refund slips.')
-              : tSettings('printer.invoice_desc', 'A4/Letter document printer, used for invoices.')}
+              : isRegisterClose
+                ? tSettings('printer.register_close_desc', 'Where the X/Z shift report prints after a register close. Uses the built-in report layout.')
+                : tSettings('printer.invoice_desc', 'A4/Letter document printer, used for invoices.')}
           </p>
         </div>
         <div className="p-5 space-y-5">
@@ -275,7 +313,7 @@ const PrinterSettings: React.FC = () => {
             <div className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-border bg-gray-50 dark:bg-muted/50 px-4 py-3">
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-foreground">{tSettings('printer.enabled', 'Available for printing')}</p>
-                <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">{documentType === saleFormat ? 'Required because this is the default checkout document.' : 'Allow this alternate document to be generated manually.'}</p>
+                <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">{documentType === saleFormat ? 'Required because this is the default checkout document.' : isRegisterClose ? 'Allow the register report to print through this route.' : 'Allow this alternate document to be generated manually.'}</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
                 <input type="checkbox" checked={s.enabled} onChange={(e) => updateField(documentType, 'enabled', e.target.checked)} disabled={documentType === saleFormat || !canEdit} className="sr-only peer" />
@@ -304,7 +342,7 @@ const PrinterSettings: React.FC = () => {
                 className={fieldCls}
               >
                 <option value="browser">{tSettings('printer.mode_browser', 'Browser Print')}</option>
-                {isReceipt && <option value="direct">{tSettings('printer.mode_direct', 'Network ESC/POS printer (TCP)')}</option>}
+                {isThermal && <option value="direct">{tSettings('printer.mode_direct', 'Network ESC/POS printer (TCP)')}</option>}
                 <option value="local_agent">{tSettings('printer.mode_local_agent', 'Zettaz Print Agent (Silent)')}</option>
               </select>
               {usesLocalAgent && (
@@ -347,7 +385,7 @@ const PrinterSettings: React.FC = () => {
               </div>
             )}
 
-            {isReceipt ? (
+            {isThermal ? (
               <div>
                 <label className={labelCls}>{tSettings('printer.paper_width', 'Paper Width (mm)')}</label>
                 <select
@@ -403,6 +441,23 @@ const PrinterSettings: React.FC = () => {
             </div>
           </div>
 
+          {isRegisterClose ? (
+            <div>
+              <label className={labelCls}>{tSettings('printer.template', 'Template')}</label>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground">
+                {tSettings('printer.register_close_layout', 'Built-in shift-report layout — session totals, tender mix, paid in/out, and variance. No template to publish.')}
+              </p>
+              <button
+                type="button"
+                disabled={testingRoute !== null || !s.enabled}
+                onClick={() => handleTestPrint(documentType)}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-border px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:hover:bg-muted disabled:opacity-50"
+              >
+                <Printer className="h-4 w-4" />
+                {testingRoute === documentType ? 'Testing…' : 'Test report route'}
+              </button>
+            </div>
+          ) : (
           <div>
             <label className={labelCls}>{tSettings('printer.template', 'Template')}</label>
             <select
@@ -445,6 +500,7 @@ const PrinterSettings: React.FC = () => {
               {testingRoute === documentType ? 'Testing…' : `Test ${documentType === 'receipt' ? 'receipt' : 'invoice'} route`}
             </button>
           </div>
+          )}
         </div>
       </div>
     );
@@ -534,6 +590,8 @@ const PrinterSettings: React.FC = () => {
         </button>
         {showAdditional && <div className="border-t p-4">{renderDeliverySection(saleFormat === 'receipt' ? 'invoice' : 'receipt')}</div>}
       </div>
+
+      {renderDeliverySection('register_close')}
 
       {/* Store logo note */}
       <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-lg p-3">

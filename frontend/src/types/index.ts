@@ -33,6 +33,7 @@ export interface Store {
   taxConfig?: TaxConfig | null; // Changed from tax_config
   discountApplicationPreference?: 'BEFORE_TAX' | 'AFTER_TAX' | null; // Changed from discount_application_rule or discount_application_preference
   allowNegativeStock?: boolean; // Store-level setting for allowing negative stock
+  requireOpenRegister?: boolean; // When on, the backend refuses sales until a drawer session is open for this store
   // New localization fields
   numberFormat?: string; // e.g., '1,234.56' or '1.234,56'
   decimalPrecision?: number; // Default decimal precision for numbers (e.g., 2 for currency, 3 for weights)

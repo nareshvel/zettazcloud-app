@@ -56,6 +56,7 @@ export default function DrawerPage() {
   const [fCounterpart, setFCounterpart] = useState('');
   const [closeResult, setCloseResult] = useState<{ expectedCash: number; variance: number } | null>(null);
   const [reportSessionId, setReportSessionId] = useState<string | null>(null);
+  const [reportFreshClose, setReportFreshClose] = useState(false);
 
   const load = useCallback(async () => {
     if (!storeId) { setLoading(false); setError('No store selected.'); return; }
@@ -148,6 +149,7 @@ export default function DrawerPage() {
       const r = await financeService.closeDrawer(session.id, countNum);
       setCloseResult({ expectedCash: r.expectedCash, variance: r.variance });
       setCloseOpen(false); setFCount('');
+      setReportFreshClose(true);
       setReportSessionId(session.id);
       await load();
     } catch (e: any) {
@@ -206,7 +208,7 @@ export default function DrawerPage() {
       Cell: (s) => (
         <Button
           variant="ghost" size="sm"
-          onClick={() => setReportSessionId(s.id)}
+          onClick={() => { setReportFreshClose(false); setReportSessionId(s.id); }}
           title={s.status === 'closed' ? 'Z-report' : 'X-report'}
         >
           <FileText className="h-4 w-4" />
@@ -259,7 +261,7 @@ export default function DrawerPage() {
             </div>
             <div className="flex gap-2">
               {canSeeExpected && (
-                <Button variant="outline" size="sm" onClick={() => setReportSessionId(session.id)} title="X-report — mid-shift snapshot">
+                <Button variant="outline" size="sm" onClick={() => { setReportFreshClose(false); setReportSessionId(session.id); }} title="X-report — mid-shift snapshot">
                   <FileText className="h-4 w-4 mr-1" /> X-report
                 </Button>
               )}
@@ -491,7 +493,8 @@ export default function DrawerPage() {
       <RegisterReportDialog
         sessionId={reportSessionId}
         storeId={storeId}
-        onClose={() => setReportSessionId(null)}
+        autoPrint={reportFreshClose}
+        onClose={() => { setReportSessionId(null); setReportFreshClose(false); }}
       />
     </div>
   );

@@ -49,6 +49,7 @@ const RegisterCards = ({ storeId }: Props) => {
   const [status, setStatus] = useState<Status>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [reportSessionId, setReportSessionId] = useState<string | null>(null);
+  const [reportFreshClose, setReportFreshClose] = useState(false);
   const [accounts, setAccounts] = useState<MoneyAccount[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,8 +125,9 @@ const RegisterCards = ({ storeId }: Props) => {
         if (!status?.session) { setError('No register is open for this store.'); setSaving(false); return; }
         await financeService.closeDrawer(status.session.id, c);
         toast.success('Register closed.');
-        // Offer the Z-report only where the role can actually view it.
-        if (canReport) setReportSessionId(status.session.id);
+        // Offer the Z-report only where the role can actually view it; a fresh
+        // close also honors the store's register_close auto-print setting.
+        if (canReport) { setReportFreshClose(true); setReportSessionId(status.session.id); }
       }
       setAction(null);
       await refresh();
@@ -183,7 +185,7 @@ const RegisterCards = ({ storeId }: Props) => {
             </>
           )}
           {canReport && open && session && (
-            <Button size="sm" variant="outline" onClick={() => setReportSessionId(session.id)}
+            <Button size="sm" variant="outline" onClick={() => { setReportFreshClose(false); setReportSessionId(session.id); }}
               className="bg-white/50 border-white/60 hover:bg-white/80">
               <FileText className="h-4 w-4 mr-1.5" /> X-report
             </Button>
@@ -324,7 +326,8 @@ const RegisterCards = ({ storeId }: Props) => {
       <RegisterReportDialog
         sessionId={reportSessionId}
         storeId={storeId || ''}
-        onClose={() => { setReportSessionId(null); refresh(); }}
+        autoPrint={reportFreshClose}
+        onClose={() => { setReportSessionId(null); setReportFreshClose(false); refresh(); }}
       />
     </>
   );

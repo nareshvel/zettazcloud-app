@@ -125,6 +125,35 @@ exports.createSale = async (req, res) => {
     return res.status(400).json({ message: 'Payment method ID is required.' });
   }
 
+  // Register enforcement: stores.require_open_register makes an open drawer
+  // session a precondition for completing a sale at that store. Checked
+  // cheaply up front (before inventory/payment work); a race with a
+  // concurrent close is acceptable — worst case a sale completes while a
+  // close is in flight, and its cash leg still lands on the drawer account.
+  try {
+    const [flagRows] = await pool.query(
+      'SELECT require_open_register FROM stores WHERE id = ? AND tenant_id = ?',
+      [store_id, actualTenantId]
+    );
+    if (flagRows.length && flagRows[0].require_open_register) {
+      const [openSessions] = await pool.query(
+        `SELECT id FROM cash_drawer_sessions
+          WHERE tenant_id = ? AND store_id = ? AND status = 'open' LIMIT 1`,
+        [actualTenantId, store_id]
+      );
+      if (!openSessions.length) {
+        return res.status(409).json({
+          status: 'error',
+          code: 'REGISTER_REQUIRED',
+          message: 'Open the register before completing a sale at this store.',
+        });
+      }
+    }
+  } catch (regErr) {
+    // A missing table/column (migration not yet applied) must not block sales.
+    if (!['ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR'].includes(regErr.code)) throw regErr;
+  }
+
   // --- Backend Calculations ---
   let calculatedSubtotal = 0;
   items.forEach(item => {

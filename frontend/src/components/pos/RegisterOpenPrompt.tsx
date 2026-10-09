@@ -8,6 +8,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOptionalStore } from '@/contexts/StoreContext';
 import { useCurrency } from '@/contexts/LocalizationContext';
 import { hasAnyPermission } from '@/utils/permissionUtils';
 import { financeService, MoneyAccount } from '@/services/financeService';
@@ -31,6 +32,10 @@ interface Props {
 const RegisterOpenPrompt = ({ storeId }: Props) => {
   const { user } = useAuth();
   const { currencySymbol } = useCurrency();
+  const storeCtx = useOptionalStore();
+  // Hard gate: when the store requires an open register, dismissal is not an
+  // option — the backend refuses sales until a session is open anyway.
+  const required = !!storeCtx?.store?.requireOpenRegister;
   const canOpen = hasAnyPermission(user, ['register.open', 'finance.manage']);
 
   const [open, setOpen] = useState(false);
@@ -54,7 +59,7 @@ const RegisterOpenPrompt = ({ storeId }: Props) => {
     if (!storeId || !canOpen) return;
     try {
       const { session } = await financeService.currentDrawerSession(storeId);
-      if (!session && !sessionStorage.getItem(DISMISS_KEY)) {
+      if (!session && (required || !sessionStorage.getItem(DISMISS_KEY))) {
         const { accounts: accts } = await financeService.listAccounts().catch(() => ({ accounts: [] as MoneyAccount[] }));
         setAccounts(accts);
         const assets = accts.filter(a => a.isActive && a.accountType === 'asset');
@@ -66,9 +71,19 @@ const RegisterOpenPrompt = ({ storeId }: Props) => {
     } finally {
       setChecked(true);
     }
-  }, [storeId, canOpen]);
+  }, [storeId, canOpen, required]);
 
   useEffect(() => { check(); }, [check]);
+
+  // Hard gate also needs to catch a mid-shift close (a manager closing the
+  // register from another screen while this POS stays open). Re-check when
+  // the window regains focus — cheap, no polling.
+  useEffect(() => {
+    if (!required || open) return;
+    const onFocus = () => check();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [required, open, check]);
 
   const dismiss = () => {
     sessionStorage.setItem(DISMISS_KEY, '1');
@@ -92,12 +107,14 @@ const RegisterOpenPrompt = ({ storeId }: Props) => {
   if (!open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) dismiss(); }}>
-      <DialogContent className="max-w-sm">
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !required) dismiss(); }}>
+      <DialogContent className="max-w-sm" onEscapeKeyDown={(e) => { if (required) e.preventDefault(); }}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Vault className="h-5 w-5" /> Open the register?</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Vault className="h-5 w-5" /> {required ? 'Open the register to continue' : 'Open the register?'}</DialogTitle>
           <DialogDescription>
-            No register is open for this store. Opening one tracks today's cash against sales and paid-ins/outs.
+            {required
+              ? 'This store requires an open register before any sale can be completed. Count the float and open the register to start selling.'
+              : 'No register is open for this store. Opening one tracks today\'s cash against sales and paid-ins/outs.'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -130,7 +147,7 @@ const RegisterOpenPrompt = ({ storeId }: Props) => {
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="ghost" onClick={dismiss}>Not now</Button>
+          {!required && <Button variant="ghost" onClick={dismiss}>Not now</Button>}
           <Button onClick={doOpen} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Open register
           </Button>

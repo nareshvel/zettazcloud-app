@@ -394,6 +394,7 @@ function mapCamelStoreToBackendStore(camelStore: any): BackendStoreForApi | null
     tax_config: camelStore.taxConfig, // Assuming TaxConfig type is compatible or handled by toCamelCase
     discount_application_preference: camelStore.discountApplicationPreference,
     allow_negative_stock: camelStore.allowNegativeStock,
+    require_open_register: camelStore.requireOpenRegister,
     number_format: camelStore.numberFormat,
     decimal_precision: camelStore.decimalPrecision,
     locale_code: camelStore.localeCode,
@@ -607,6 +608,7 @@ function mapBackendStoreToFrontendStore(backendStore: BackendStoreForApi): Store
     taxConfig: backendStore.tax_config || null,
     discountApplicationPreference: discountAppPref,
     allowNegativeStock: Boolean(backendStore.allow_negative_stock),
+    requireOpenRegister: Boolean(backendStore.require_open_register ?? backendStore.requireOpenRegister),
     numberFormat: backendStore.number_format || 'en-US',
     decimalPrecision: backendStore.decimal_precision || 2,
     localeCode: backendStore.locale_code || 'en-US',
