@@ -415,3 +415,24 @@ Same for any other clones on other machines — re-clone or `fetch + reset --har
 JWT_SECRET — invalidates all sessions, SMTP `noreply@zettaz.com`). History is
 clean but the secrets were live values; anyone with an old clone still has them.
 Local mirror backup with old history: `/tmp/zettazcloud-app-backup.git` (auto-cleared on reboot).
+
+---
+
+## Session: 2026-10-16 — Print Agent Tier 2 + cloud-print design
+
+**What:** Print Agent Tier 2 hardening shipped (`45c89f7`): multi-client
+pairing (`map[clientId]→tokenHash` in `config_store.go` with legacy
+migration + downgrade-safe legacy fields), per-client disconnect, pairing
+code removed from `/v1/health` for untrusted origins (local page at `GET /`
++ macOS menu bar now show it), `/v1/pair` failure throttling + code rotation
+after each pair, LaunchAgent `KeepAlive`, per-device printer override in
+`printerService.ts`, stable per-browser clientId in
+`printAgentV2Service.ts`.
+
+**Verified:** go test/build/vet clean, clang syntax-check on MenuBar.m,
+748 frontend tests, tsc clean.
+
+**Pending:** Tier 1 cloud-mediated printing — design proposal committed at
+`docs/MODULES/print-module/CLOUD_MEDIATED_PRINTING_DESIGN.md` (enrollment +
+cloud job queue + per-agent printer mappings; fleet plane ~60% exists).
+Not implemented — awaiting product decision.
