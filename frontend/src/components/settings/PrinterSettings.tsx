@@ -17,7 +17,8 @@ import {
 import { buildPrintableHtml } from '../../utils/printTemplateRenderer';
 import { buildRegisterReportHtml, sampleRegisterReport, REGISTER_REPORT_CSS } from '../../utils/registerReportHtml';
 import { useCurrency, useDateFormatting } from '../../contexts/LocalizationContext';
-import { FileText, Receipt, CheckCircle2, AlertTriangle, ChevronDown, Printer, RotateCcw } from 'lucide-react';
+import { FileText, Receipt, CheckCircle2, AlertTriangle, ChevronDown, Printer, RotateCcw, Info } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import toast from 'react-hot-toast';
 
 /*
@@ -53,6 +54,20 @@ const emptySetting = (storeId: string, documentType: PrintDocumentType): PrintDo
   enabled: documentType !== 'invoice',
   autoPrint: false,
 });
+
+// Field-label info tooltip — keeps explanatory text out of the layout.
+const Hint: React.FC<{ text: string }> = ({ text }) => (
+  <TooltipProvider delayDuration={150}>
+    <Tooltip>
+      <TooltipTrigger type="button" className="inline-flex align-middle ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-foreground">
+        <Info className="h-3.5 w-3.5" />
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={5} className="max-w-xs">
+        <p>{text}</p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+);
 
 const PrinterSettings: React.FC = () => {
   const { store } = useStore();
@@ -281,6 +296,29 @@ const PrinterSettings: React.FC = () => {
     return <div className="bg-white dark:bg-card rounded-xl border border-gray-200 dark:border-border p-8 text-center text-sm text-gray-400 dark:text-muted-foreground">Loading printer settings…</div>;
   }
 
+  const TestButton: React.FC<{ documentType: PrintDocumentType; disabled: boolean; label: string }> = ({ documentType, disabled, label }) => (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => handleTestPrint(documentType)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 dark:border-border px-3 py-2 text-xs font-medium hover:bg-gray-50 dark:hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              {testingRoute === documentType ? 'Testing…' : label}
+            </button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={5} className="max-w-xs">
+          <p>Sends one sample document through the current (unsaved) form values.</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+
   const renderDeliverySection = (documentType: PrintDocumentType) => {
     const s = docSettings[documentType];
     const isReceipt = documentType === 'receipt';
@@ -292,44 +330,50 @@ const PrinterSettings: React.FC = () => {
 
     return (
       <div className="bg-white dark:bg-card rounded-xl border border-gray-200 dark:border-border overflow-hidden shadow-sm">
-        <div className="px-5 py-4 border-b border-gray-100 dark:border-border">
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-foreground">
+        <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-100 dark:border-border">
+          <h3 className="flex items-center text-sm font-semibold text-gray-800 dark:text-foreground">
             {isReceipt
               ? tSettings('printer.receipt_title', 'Sales Receipt & Refunds')
               : isRegisterClose
                 ? tSettings('printer.register_close_title', 'Register Close Report (Z)')
                 : tSettings('printer.invoice_title', 'Invoices')}
+            <Hint
+              text={isReceipt
+                ? tSettings('printer.receipt_desc', 'Thermal receipt printer, used for sales and refund slips.')
+                : isRegisterClose
+                  ? tSettings('printer.register_close_desc', 'Where the X/Z shift report prints after a register close. Uses the built-in report layout.')
+                  : tSettings('printer.invoice_desc', 'A4/Letter document printer, used for invoices.')}
+            />
           </h3>
-          <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">
-            {isReceipt
-              ? tSettings('printer.receipt_desc', 'Thermal receipt printer, used for sales and refund slips.')
-              : isRegisterClose
-                ? tSettings('printer.register_close_desc', 'Where the X/Z shift report prints after a register close. Uses the built-in report layout.')
-                : tSettings('printer.invoice_desc', 'A4/Letter document printer, used for invoices.')}
-          </p>
+          {s.enabled && (
+            <span className="text-xs text-gray-400 dark:text-muted-foreground">
+              {s.deliveryMode === 'browser' ? 'Browser' : s.deliveryMode === 'local_agent' ? 'Print Agent' : 'Network ESC/POS'}
+              {s.deliveryMode !== 'browser' && s.printerName ? ` · ${s.printerName}` : ''}
+            </span>
+          )}
         </div>
-        <div className="p-5 space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-border bg-gray-50 dark:bg-muted/50 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-foreground">{tSettings('printer.enabled', 'Available for printing')}</p>
-                <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">{documentType === saleFormat ? 'Required because this is the default checkout document.' : isRegisterClose ? 'Allow the register report to print through this route.' : 'Allow this alternate document to be generated manually.'}</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+        <div className="p-5 space-y-4">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <span className="relative inline-flex items-center shrink-0">
                 <input type="checkbox" checked={s.enabled} onChange={(e) => updateField(documentType, 'enabled', e.target.checked)} disabled={documentType === saleFormat || !canEdit} className="sr-only peer" />
                 <div className={toggleCls}></div>
-              </label>
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-border bg-gray-50 dark:bg-muted/50 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-foreground">{tSettings('printer.auto_print', 'Auto Print')}</p>
-                <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">{tSettings('printer.auto_print_desc', 'Off opens a preview; on starts the configured delivery automatically.')}</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+              </span>
+              <span className="flex items-center text-sm font-medium text-gray-900 dark:text-foreground">
+                {tSettings('printer.enabled', 'Available for printing')}
+                <Hint text={documentType === saleFormat ? 'Required because this is the default checkout document.' : isRegisterClose ? 'Allow the register report to print through this route.' : 'Allow this alternate document to be generated manually.'} />
+              </span>
+            </label>
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <span className="relative inline-flex items-center shrink-0">
                 <input type="checkbox" checked={s.autoPrint} onChange={(e) => updateField(documentType, 'autoPrint', e.target.checked)} disabled={!s.enabled || !canEdit} className="sr-only peer" />
                 <div className={toggleCls}></div>
-              </label>
-            </div>
+              </span>
+              <span className="flex items-center text-sm font-medium text-gray-900 dark:text-foreground">
+                {tSettings('printer.auto_print', 'Auto Print')}
+                <Hint text={tSettings('printer.auto_print_desc', 'Off opens a preview; on starts the configured delivery automatically. Only fully silent for agent/direct delivery — browser mode still shows the print dialog.')} />
+              </span>
+            </label>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -423,7 +467,12 @@ const PrinterSettings: React.FC = () => {
             )}
 
             <div>
-              <label className={labelCls}>{tSettings('printer.copies', 'Copies')}</label>
+              <label className={labelCls}>
+                {tSettings('printer.copies', 'Copies')}
+                {s.deliveryMode === 'browser' && (
+                  <Hint text={tSettings('printer.copies_browser_hint', "Browser printing can't preset copies — the browser's own print dialog controls this.")} />
+                )}
+              </label>
               <input
                 type="number"
                 min={1}
@@ -433,74 +482,52 @@ const PrinterSettings: React.FC = () => {
                 disabled={!s.enabled || s.deliveryMode === 'browser' || !canEdit}
                 className={fieldCls}
               />
-              {s.deliveryMode === 'browser' && (
-                <p className="mt-1.5 text-xs text-gray-500 dark:text-muted-foreground">
-                  {tSettings('printer.copies_browser_hint', "Browser printing can't preset copies — use the browser's print dialog instead.")}
-                </p>
-              )}
             </div>
           </div>
 
-          {isRegisterClose ? (
-            <div>
-              <label className={labelCls}>{tSettings('printer.template', 'Template')}</label>
-              <p className="text-xs text-gray-500 dark:text-muted-foreground">
-                {tSettings('printer.register_close_layout', 'Built-in shift-report layout — session totals, tender mix, paid in/out, and variance. No template to publish.')}
-              </p>
-              <button
-                type="button"
-                disabled={testingRoute !== null || !s.enabled}
-                onClick={() => handleTestPrint(documentType)}
-                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-border px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:hover:bg-muted disabled:opacity-50"
-              >
-                <Printer className="h-4 w-4" />
-                {testingRoute === documentType ? 'Testing…' : 'Test report route'}
-              </button>
-            </div>
-          ) : (
           <div>
-            <label className={labelCls}>{tSettings('printer.template', 'Template')}</label>
-            <select
-              value={s.templateId || ''}
-              onChange={(e) => updateField(documentType, 'templateId', e.target.value || null)}
-              disabled={!s.enabled || !canEdit}
-              className={fieldCls}
-            >
-              <option value="">{tSettings('printer.select_template', 'Select a published template')}</option>
-              {templates.map((tpl) => (
-                <option key={tpl.id} value={tpl.id}>
-                  {tpl.name} · {tpl.templateType === 'jewelry_invoice' ? 'Jewelry invoice' : tpl.templateType === 'invoice' ? 'General invoice' : 'Receipt'}{tpl.isDefault ? ' · Default' : ''}
-                </option>
-              ))}
-            </select>
-            {fieldErrors[`${documentType}.templateId`] && (
-              <p className="mt-1.5 flex items-center gap-1 text-xs text-red-600"><AlertTriangle className="h-3.5 w-3.5" />{fieldErrors[`${documentType}.templateId`]}</p>
-            )}
-            {templates.length === 0 && (
-              <p className="mt-1.5 text-xs text-amber-700">
-                {tSettings(
-                  'printer.no_templates',
-                  'No published template for this document type yet — publish one in Print Templates before enabling this section.',
+            {isRegisterClose ? (
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <span className="flex items-center text-sm font-medium text-gray-700 dark:text-foreground">
+                  {tSettings('printer.template', 'Layout')}
+                  <Hint text={tSettings('printer.register_close_layout', 'Built-in shift-report layout — session totals, tender mix, paid in/out, and variance. No template to publish.')} />
+                </span>
+                <TestButton documentType={documentType} disabled={testingRoute !== null || !s.enabled} label="Test report route" />
+              </div>
+            ) : (
+              <div>
+                <label className={labelCls}>
+                  {tSettings('printer.template', 'Template')}
+                  <Hint text={tSettings('printer.template_hint', 'Header, footer, logo, and layout live in the template — edit it in Print Templates. Upload the logo in General Settings.')} />
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={s.templateId || ''}
+                    onChange={(e) => updateField(documentType, 'templateId', e.target.value || null)}
+                    disabled={!s.enabled || !canEdit}
+                    className={fieldCls}
+                  >
+                    <option value="">{tSettings('printer.select_template', 'Select a published template')}</option>
+                    {templates.map((tpl) => (
+                      <option key={tpl.id} value={tpl.id}>
+                        {tpl.name} · {tpl.templateType === 'jewelry_invoice' ? 'Jewelry invoice' : tpl.templateType === 'invoice' ? 'General invoice' : 'Receipt'}{tpl.isDefault ? ' · Default' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <TestButton documentType={documentType} disabled={testingRoute !== null || !s.enabled || !s.templateId} label={`Test ${documentType}`} />
+                </div>
+                {fieldErrors[`${documentType}.templateId`] && (
+                  <p className="mt-1.5 flex items-center gap-1 text-xs text-red-600"><AlertTriangle className="h-3.5 w-3.5" />{fieldErrors[`${documentType}.templateId`]}</p>
                 )}
-              </p>
+                {templates.length === 0 && (
+                  <p className="mt-1.5 flex items-center gap-1 text-xs text-amber-700">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    {tSettings('printer.no_templates', 'No published template for this document type — publish one in Print Templates first.')}
+                  </p>
+                )}
+              </div>
             )}
-            <p className="mt-1.5 text-xs text-gray-500 dark:text-muted-foreground">
-              {tSettings(
-                'printer.template_hint',
-                'To change header, footer, logo, or layout, edit the template itself in Print Templates.',
-              )}
-            </p>
-            <button
-              type="button"
-              disabled={testingRoute !== null || !s.enabled || !s.templateId}
-              onClick={() => handleTestPrint(documentType)}
-              className="mt-3 inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-border px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:hover:bg-muted disabled:opacity-50"
-            >
-              <Printer className="h-4 w-4" />
-              {testingRoute === documentType ? 'Testing…' : `Test ${documentType === 'receipt' ? 'receipt' : 'invoice'} route`}
-            </button>
           </div>
-          )}
         </div>
       </div>
     );
@@ -512,10 +539,10 @@ const PrinterSettings: React.FC = () => {
       <div className="bg-white dark:bg-card rounded-xl border border-gray-200 dark:border-border overflow-hidden shadow-sm">
         <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-gray-100 dark:border-border">
           <div>
-            <h3 className="text-base font-semibold text-gray-900 dark:text-foreground">{tSettings('printer.sale_format_title', 'Default document after checkout')}</h3>
-            <p className="text-sm text-gray-500 dark:text-muted-foreground mt-1">
-              {tSettings('printer.sale_format_desc', 'Choose the primary customer document created when a sale is completed at this store.')}
-            </p>
+            <h3 className="flex items-center text-base font-semibold text-gray-900 dark:text-foreground">
+              {tSettings('printer.sale_format_title', 'Default document after checkout')}
+              <Hint text={tSettings('printer.sale_format_desc', 'The primary customer document created when a sale completes. Refunds print through the receipt route using the Refund / Credit Note template.')} />
+            </h3>
           </div>
           <Link
             to="/print-agent"
@@ -550,17 +577,12 @@ const PrinterSettings: React.FC = () => {
                     {selected && <CheckCircle2 className="h-4 w-4 text-primary" />}
                   </span>
                   <span className="mt-1 block text-xs leading-5 text-gray-500 dark:text-muted-foreground">
-                    {type === 'receipt'
-                      ? 'Compact thermal document for walk-in counter sales.'
-                      : 'Formal A4 or Letter document for business, regulated, or high-value sales.'}
+                    {type === 'receipt' ? 'Thermal slip for counter sales' : 'A4/Letter document for formal sales'}
                   </span>
                 </span>
               </button>
             );
           })}
-        </div>
-        <div className="mx-5 mb-5 rounded-lg bg-gray-50 dark:bg-muted/50 px-3 py-2 text-xs text-gray-600 dark:text-muted-foreground">
-          Refunds use a dedicated <strong>Refund / Credit Note</strong> template through the receipt delivery route during this compatibility phase.
         </div>
       </div>
 
@@ -585,20 +607,13 @@ const PrinterSettings: React.FC = () => {
 
       <div className="rounded-xl border border-gray-200 dark:border-border bg-white dark:bg-card overflow-hidden">
         <button type="button" onClick={() => setShowAdditional((value) => !value)} className="w-full flex items-center justify-between px-5 py-4 text-left">
-          <span><span className="block text-sm font-semibold">Additional document formats</span><span className="block text-xs text-muted-foreground mt-0.5">Configure the alternate sales document for manual or future checkout use.</span></span>
+          <span><span className="block text-sm font-semibold">Additional document formats</span><span className="block text-xs text-muted-foreground mt-0.5">Alternate sales document for manual use.</span></span>
           <ChevronDown className={`h-4 w-4 transition-transform ${showAdditional ? 'rotate-180' : ''}`} />
         </button>
         {showAdditional && <div className="border-t p-4">{renderDeliverySection(saleFormat === 'receipt' ? 'invoice' : 'receipt')}</div>}
       </div>
 
       {renderDeliverySection('register_close')}
-
-      {/* Store logo note */}
-      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-lg p-3">
-        <p className="text-xs text-blue-800 dark:text-blue-200">
-          <span className="font-medium">Store logo:</span> Upload your logo in <span className="font-medium">General Settings</span> to use it on receipts and invoices.
-        </p>
-      </div>
 
       {Object.keys(fieldErrors).length > 0 && (
         <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 p-4" role="alert">
@@ -610,10 +625,7 @@ const PrinterSettings: React.FC = () => {
       )}
 
       <div className="sticky bottom-3 z-10 bg-white/95 dark:bg-card/95 backdrop-blur rounded-xl border border-gray-200 dark:border-border px-5 py-4 flex justify-between items-center gap-3 flex-wrap shadow-lg">
-        <div>
-          <p className="text-sm font-medium">{!canEdit ? 'View-only access — ask a manager to make changes.' : isDirty ? 'Unsaved printer-setting changes' : 'Printer settings are up to date'}</p>
-          <p className="text-xs text-muted-foreground">Route tests use the current form values and send one copy.</p>
-        </div>
+        <p className="text-sm font-medium">{!canEdit ? 'View-only access — ask a manager to make changes.' : isDirty ? 'Unsaved changes' : 'Printer settings are up to date'}</p>
         <div className="flex items-center gap-2">
           <button type="button" onClick={discardChanges} disabled={!isDirty || isSaving} className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium disabled:opacity-50">
             <RotateCcw className="h-4 w-4" /> Discard
